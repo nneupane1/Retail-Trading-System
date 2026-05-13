@@ -1,65 +1,73 @@
 import requests
-import pandas as pd
 import time
+from datetime import datetime
+
 
 BASE_URL = "https://api.binance.com/api/v3/klines"
 
 
-def get_klines(symbol, interval, start_ts, end_ts, limit=1000):
+def _format_time(ms):
+    return datetime.utcfromtimestamp(ms / 1000).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def get_klines(
+    symbol="BTCUSDT",
+    interval="1m",
+    startTime=None,
+    endTime=None,
+    limit=1000,
+    verbose=True
+):
+    """
+    Fetch klines from Binance with timing + progress info.
+
+    Parameters:
+    - symbol: trading pair
+    - interval: timeframe
+    - startTime / endTime: in milliseconds
+    - limit: max candles per request (max 1000)
+    - verbose: print progress info
+
+    Returns:
+    - raw JSON data
+    """
+
     params = {
         "symbol": symbol,
         "interval": interval,
-        "startTime": start_ts,
-        "endTime": end_ts,
         "limit": limit
     }
 
+    if startTime:
+        params["startTime"] = startTime
+    if endTime:
+        params["endTime"] = endTime
+
+    start_clock = time.time()
+
+    if verbose:
+        print(f"\n📡 Fetching {symbol} | {interval}")
+        if startTime:
+            print(f"   From: {_format_time(startTime)}")
+        if endTime:
+            print(f"   To:   {_format_time(endTime)}")
+
     response = requests.get(BASE_URL, params=params)
 
+    elapsed = time.time() - start_clock
+
     if response.status_code != 200:
-        raise Exception(f"API Error: {response.text}")
+        raise Exception(f"❌ API Error: {response.status_code} | {response.text}")
 
-    return response.json()
+    data = response.json()
 
+    if verbose:
+        print(f"✅ Received {len(data)} candles")
+        print(f"⏱ Time taken: {elapsed:.2f} sec")
 
-def fetch_full_history(symbol="BTCUSDT", interval="1m"):
-    start = pd.Timestamp("2017-01-01").timestamp() * 1000
-    end   = pd.Timestamp("2026-05-12").timestamp() * 1000
+        if data:
+            first = _format_time(data[0][0])
+            last  = _format_time(data[-1][0])
+            print(f"   Range: {first} → {last}")
 
-    all_data = []
-    current_start = int(start)
-
-    while current_start < end:
-
-        data = get_klines(
-            symbol,
-            interval,
-            start_ts=current_start,
-            end_ts=int(end),
-            limit=1000
-        )
-
-        if not data:
-            break
-
-        all_data.extend(data)
-
-        # move to next batch
-        last_timestamp = data[-1][0]
-        current_start = last_timestamp + 1
-
-        # avoid rate limits
-        time.sleep(0.2)
-
-    # convert to dataframe
-    df = pd.DataFrame(all_data, columns=[
-        "timestamp","open","high","low","close","volume",
-        "close_time","qav","trades","taker_base","taker_quote","ignore"
-    ])
-
-    df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
-    df = df.astype(float)
-
-    df.set_index("timestamp", inplace=True)
-
-    return df[["open","high","low","close","volume"]]
+    return data
