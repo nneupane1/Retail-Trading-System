@@ -1,3 +1,5 @@
+"""Detects close-confirmed breakouts using configured rolling structure columns."""
+
 import time
 
 from config import AppConfig
@@ -16,19 +18,19 @@ class BreakoutDetector:
     def is_breakout(self, row):
         start = time.time()
 
-        print("\n🚀 Checking breakout...")
+        print("\nChecking breakout...")
 
         breakout = row["close"] > row[self.previous_high_column]
 
         if breakout:
-            print("✅ Breakout (CLOSE > previous HH)")
+            print("Breakout (CLOSE > previous HH)")
         else:
-            print("❌ No breakout")
+            print("No breakout")
 
-        print(f"   Close: {row['close']:.2f}")
-        print(f"   Prev HH: {row[self.previous_high_column]:.2f}")
+        print(f"  Close: {row['close']:.2f}")
+        print(f"  Prev HH: {row[self.previous_high_column]:.2f}")
 
-        print(f"⏱ Time taken: {time.time() - start:.4f}s")
+        print(f"Elapsed: {time.time() - start:.4f}s")
 
         return breakout
 

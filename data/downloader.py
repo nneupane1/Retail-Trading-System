@@ -1,3 +1,5 @@
+"""Downloads, checkpoints, resumes, validates, saves, and loads Binance OHLCV market data."""
+
 import pandas as pd
 import time
 import os
@@ -27,7 +29,13 @@ def _fmt_duration(seconds):
 
 class MarketDataDownloader:
     """
-    Handles Binance OHLCV downloads, recent data fetches, and CSV loading.
+    Handles all disk-backed market data access.
+
+    The downloader writes historical Binance batches to a partial CSV as soon
+    as they arrive, stores JSON checkpoint metadata after each batch, and uses
+    those two artifacts to resume safely after interruptions. This makes long
+    one-minute history downloads restartable without wasting previously fetched
+    data.
     """
 
     def __init__(self, config=None, client=None):
@@ -161,6 +169,14 @@ class MarketDataDownloader:
         end_date=None,
         base_path=None
     ):
+        """
+        Download a historical Binance kline range with checkpointed progress.
+
+        If a final CSV already exists, it is loaded directly. If a partial CSV
+        or checkpoint exists, the next request starts after the last persisted
+        candle. On completion, the partial file is deduplicated, promoted to the
+        final CSV, and the checkpoint is marked complete.
+        """
         symbol = symbol or self.config.require("app", "default_symbol")
         interval = interval or self.config.require("binance", "default_interval")
         start_date = start_date or self.config.require("history", "start_date")
@@ -184,8 +200,8 @@ class MarketDataDownloader:
         resume_enabled = download_config["resume_enabled"]
 
         if resume_enabled and paths["final"].exists():
-            print("\n✅ Completed historical file already exists.")
-            print(f"📄 Using cached file: {paths['final']}")
+            print("\nCompleted historical file already exists.")
+            print(f"Using cached file: {paths['final']}")
             return self.load_from_csv(paths["final"])
 
         checkpoint = self._read_checkpoint(paths["checkpoint"]) if resume_enabled else None
@@ -219,25 +235,25 @@ class MarketDataDownloader:
             max(0, ((current_start - start_ts) / total_range_ms) * 100)
         )
 
-        print(f"\n🚀 Starting download: {symbol} | {interval}")
-        print(f"📅 Range: {start_date} → {end_date}\n")
-        print(f"📁 Final CSV: {paths['final']}")
-        print(f"🧭 Checkpoint: {paths['checkpoint']}")
+        print(f"\nStarting download: {symbol} | {interval}")
+        print(f"Range: {start_date} -> {end_date}\n")
+        print(f"Final CSV: {paths['final']}")
+        print(f"Checkpoint: {paths['checkpoint']}")
 
         if current_start > start_ts:
-            print("\n🔁 Resume checkpoint detected")
-            print(f"   Resuming from: {_fmt(current_start)}")
-            print(f"   Existing rows: {total_rows}")
-            print("   Previous batches will not be downloaded again.\n")
+            print("\nResume checkpoint detected")
+            print(f"  Resuming from: {_fmt(current_start)}")
+            print(f"  Existing rows: {total_rows}")
+            print("  Previous batches will not be downloaded again.\n")
         else:
-            print("🆕 No usable checkpoint found. Starting from the beginning.\n")
+            print("No usable checkpoint found. Starting from the beginning.\n")
 
         while current_start < end_ts:
             batch_start_time = time.time()
             request_batch_number = total_batches + 1
 
             print(
-                f"📡 Requesting batch {request_batch_number} | "
+                f" Requesting batch {request_batch_number} | "
                 f"from {_fmt(current_start)} | limit={limit}"
             )
 
@@ -265,14 +281,14 @@ class MarketDataDownloader:
                     "updated_at": datetime.utcnow().isoformat()
                 })
 
-                print("\n🛑 Download interrupted.")
-                print(f"   Reason: {exc}")
-                print(f"   Checkpoint saved: {paths['checkpoint']}")
-                print("   Re-run the same command and it will continue from the saved point.")
+                print("\nDownload interrupted.")
+                print(f"  Reason: {exc}")
+                print(f"  Checkpoint saved: {paths['checkpoint']}")
+                print("  Re-run the same command and it will continue from the saved point.")
                 raise
 
             if not raw:
-                print("⚠️ No more data returned. Stopping.")
+                print("WARNING: No more data returned. Stopping.")
                 break
 
             batch_df = self.klines_to_df(raw)
@@ -311,26 +327,26 @@ class MarketDataDownloader:
                 })
 
             if total_batches % status_every == 0:
-                print(f"📦 Batch {total_batches} saved")
-                print(f"   Window: {_fmt(raw[0][0])} → {_fmt(last_ts)}")
-                print(f"   Rows this batch: {len(batch_df)} | Total rows: {total_rows}")
-                print(f"   Progress: {progress_pct:.2f}% | Remaining: {remaining_pct:.2f}%")
+                print(f"Batch {total_batches} saved")
+                print(f"  Window: {_fmt(raw[0][0])} -> {_fmt(last_ts)}")
+                print(f"  Rows this batch: {len(batch_df)} | Total rows: {total_rows}")
+                print(f"  Progress: {progress_pct:.2f}% | Remaining: {remaining_pct:.2f}%")
                 print(
                     f"   Timing: batch {_fmt_duration(batch_time)} | "
                     f"elapsed {_fmt_duration(total_time)} | "
                     f"ETA {_fmt_duration(eta_seconds)}"
                 )
-                print(f"   Resume point: {_fmt(current_start)}")
-                print(f"   Checkpoint saved: {paths['checkpoint']}")
+                print(f"  Resume point: {_fmt(current_start)}")
+                print(f"  Checkpoint saved: {paths['checkpoint']}")
 
             if throttle > 0:
-                print(f"   Waiting {throttle:.2f}s before the next Binance request...\n")
+                print(f"  Waiting {throttle:.2f}s before the next Binance request...\n")
                 time.sleep(throttle)
 
         if not paths["partial"].exists():
             raise FileNotFoundError(f"No partial download file found: {paths['partial']}")
 
-        print("\n✅ Download loop complete. Finalizing CSV...\n")
+        print("\nDownload loop complete. Finalizing CSV...\n")
 
         df = self._load_partial(paths["partial"])
         before_dedupe = len(df)
@@ -340,9 +356,9 @@ class MarketDataDownloader:
         save_start = time.time()
         df.to_csv(paths["final"])
 
-        print(f"💾 Saved final CSV: {paths['final']}")
-        print(f"⏱ Save time: {time.time() - save_start:.2f}s")
-        print(f"🧹 Duplicate rows removed: {before_dedupe - len(df)}")
+        print(f"Saved final CSV: {paths['final']}")
+        print(f"Save time: {time.time() - save_start:.2f}s")
+        print(f"Duplicate rows removed: {before_dedupe - len(df)}")
 
         self._write_checkpoint(paths["checkpoint"], {
             "symbol": symbol,
@@ -361,12 +377,12 @@ class MarketDataDownloader:
 
         if download_config["cleanup_partial_on_complete"] and paths["partial"].exists():
             paths["partial"].unlink()
-            print(f"🧹 Removed completed partial file: {paths['partial']}")
+            print(f"Removed completed partial file: {paths['partial']}")
 
         total_time = time.time() - start_clock
-        print(f"\n🎯 TOTAL TIME: {total_time/60:.2f} minutes")
-        print(f"📊 Total candles: {len(df)}")
-        print(f"🧾 Final checkpoint: {paths['checkpoint']}")
+        print(f"\nTOTAL TIME: {total_time/60:.2f} minutes")
+        print(f"Total candles: {len(df)}")
+        print(f"Final checkpoint: {paths['checkpoint']}")
 
         return df
 
@@ -387,7 +403,7 @@ class MarketDataDownloader:
     def load_from_csv(self, filepath):
         filepath = Path(filepath)
 
-        print(f"📂 Loading: {filepath}")
+        print(f"Loading: {filepath}")
 
         start = time.time()
 
@@ -398,7 +414,7 @@ class MarketDataDownloader:
         df.set_index("timestamp", inplace=True)
         df = self._validate_ohlcv(df)
 
-        print(f"✅ Loaded in {time.time() - start:.2f} sec")
+        print(f"Loaded in {time.time() - start:.2f} sec")
 
         return df
 

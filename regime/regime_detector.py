@@ -1,3 +1,5 @@
+"""Scores the higher-timeframe market environment before entries are considered."""
+
 import time
 
 from config import AppConfig
@@ -36,25 +38,25 @@ class RegimeDetector:
     def compute_regime(self, df_5h, df_12h):
         start = time.time()
 
-        print("\n🌊 Computing market regime...")
+        print("\nComputing market regime...")
 
         score = 0
 
-        # ✅ ------------------------------
+        # ------------------------------
         # Macro timeframe
-        # ✅ ------------------------------
+        # ------------------------------
 
         close_12h = df_12h["close"].iloc[-1]
         ema_12h = df_12h[self.ema_column].iloc[-1]
 
         if close_12h > ema_12h:
             score += self.macro_weight
-            print(f"✅ Macro bullish (price > {self.ema_column})")
+            print(f"Macro bullish (price > {self.ema_column})")
 
         else:
-            print("❌ Macro not bullish")
+            print("Macro not bullish")
 
-        # ✅ slope (trend strength)
+        # slope (trend strength)
         slope_12h = _compute_slope(
             df_12h[self.ema_column],
             lookback=self.slope_lookback
@@ -62,41 +64,41 @@ class RegimeDetector:
 
         if slope_12h > 0:
             score += self.macro_slope_weight
-            print(f"✅ Macro EMA slope positive (+{slope_12h:.4f})")
+            print(f"Macro EMA slope positive (+{slope_12h:.4f})")
         else:
-            print("❌ Macro EMA slope not positive")
+            print("Macro EMA slope not positive")
 
-        # ✅ ------------------------------
+        # ------------------------------
         # Trend confirmation timeframe
-        # ✅ ------------------------------
+        # ------------------------------
 
         close_5h = df_5h["close"].iloc[-1]
         ema_5h = df_5h[self.ema_column].iloc[-1]
 
         if close_5h > ema_5h:
             score += self.trend_weight
-            print(f"✅ Trend confirms uptrend (price > {self.ema_column})")
+            print(f"Trend confirms uptrend (price > {self.ema_column})")
         else:
-            print("❌ Trend not confirming")
+            print("Trend not confirming")
 
-        # ✅ ------------------------------
+        # ------------------------------
         # FINAL OUTPUT
-        # ✅ ------------------------------
+        # ------------------------------
 
         elapsed = time.time() - start
 
         max_score = self.macro_weight + self.macro_slope_weight + self.trend_weight
 
-        print(f"\n📊 Regime Score: {score}/{max_score}")
-        print(f"⏱ Time taken: {elapsed:.2f}s")
+        print(f"\nRegime Score: {score}/{max_score}")
+        print(f"Elapsed: {elapsed:.2f}s")
 
-        # ✅ interpretation hint (optional but useful)
+        # interpretation hint (optional but useful)
         if score >= self.strong_score:
-            print("🔥 Strong trending environment")
+            print("Strong trending environment")
         elif score == self.moderate_score:
-            print("⚠️ Moderate trend")
+            print("WARNING: Moderate trend")
         else:
-            print("❌ Weak / choppy market")
+            print("Weak / choppy market")
 
         return score
 

@@ -1,3 +1,5 @@
+"""Orchestrates the complete historical backtest pipeline from data loading through simulation."""
+
 import time
 from pathlib import Path
 
@@ -36,22 +38,22 @@ def run_backtest(
 
     overall_start = time.time()
 
-    print("\n🚀 STARTING FULL BACKTEST PIPELINE\n")
+    print("\nSTARTING FULL BACKTEST PIPELINE\n")
 
-    # ✅ ------------------------------------------
+    # ------------------------------------------
     # 1. LOAD DATA
-    # ✅ ------------------------------------------
+    # ------------------------------------------
 
     path_1m = Path(base_path) / symbol / base_tf["label"] / (
         f"{symbol}_{base_tf['label']}_{start_date}_to_{end_date}.csv"
     )
 
-    print("📂 Loading 1m data...")
+    print("Loading 1m data...")
     df_1m = load_from_csv(path_1m)
 
-    # ✅ ------------------------------------------
+    # ------------------------------------------
     # 2. RESAMPLE
-    # ✅ ------------------------------------------
+    # ------------------------------------------
 
     df_15m, df_1h, df_5h, df_12h = build_timeframes_and_save(
         df_1m,
@@ -61,24 +63,24 @@ def run_backtest(
         base_path=base_path
     )
 
-    # ✅ ------------------------------------------
+    # ------------------------------------------
     # 3. FEATURES
-    # ✅ ------------------------------------------
+    # ------------------------------------------
 
-    print("\n🧮 Computing features on all strategy timeframes...")
+    print("\nComputing features on all strategy timeframes...")
     df_15m = compute_features(df_15m, config=config)
     df_1h = compute_features(df_1h, config=config)
     df_5h = compute_features(df_5h, config=config)
     df_12h = compute_features(df_12h, config=config)
 
-    # ✅ IMPORTANT: prevent lookahead bias
+    # IMPORTANT: prevent lookahead bias
     high_period = config.require("features", "structure", "high_period")
     high_column = f"hh{high_period}"
     df_15m[f"{high_column}_prev"] = df_15m[high_column].shift(1)
 
-    # ✅ ------------------------------------------
+    # ------------------------------------------
     # 4. INITIALIZE SIMULATOR
-    # ✅ ------------------------------------------
+    # ------------------------------------------
 
     sim = Simulator(
         trade_logger=TradeLogger(config=config),
@@ -86,9 +88,9 @@ def run_backtest(
         config=config
     )
 
-    # ✅ ------------------------------------------
+    # ------------------------------------------
     # 5. RUN BACKTEST
-    # ✅ ------------------------------------------
+    # ------------------------------------------
 
     engine = BacktestEngine(
         df_15m=df_15m,
@@ -100,18 +102,18 @@ def run_backtest(
 
     engine.run()
 
-    # ✅ ------------------------------------------
+    # ------------------------------------------
     # 6. FINAL SUMMARY
-    # ✅ ------------------------------------------
+    # ------------------------------------------
 
     total_time = time.time() - overall_start
 
-    print("\n🏁 BACKTEST PIPELINE COMPLETE")
-    print(f"⏱ Total runtime: {total_time/60:.2f} minutes")
+    print("\nBACKTEST PIPELINE COMPLETE")
+    print(f"Total runtime: {total_time/60:.2f} minutes")
 
     return sim
 
 
-# ✅ Run directly
+# Run directly
 if __name__ == "__main__":
     run_backtest()

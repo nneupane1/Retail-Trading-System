@@ -1,3 +1,5 @@
+"""Coordinates strategy context, entries, management, exits, account updates, and logging."""
+
 import time
 
 from config import AppConfig
@@ -16,7 +18,12 @@ from exit.exit_engine import ExitEngine
 
 class Simulator:
     """
-    Core engine running your strategy step-by-step (candle-based).
+    Coordinates one candle of strategy work at a time.
+
+    The simulator is intentionally thin: it asks each configured module for one
+    decision, updates trade/account state, and delegates persistence to loggers.
+    Keeping orchestration here makes the strategy path auditable from context
+    detection through entry, management, exit, and equity logging.
     """
 
     def __init__(
@@ -36,7 +43,7 @@ class Simulator:
         config=None
     ):
 
-        print("\n🧠 Initializing Simulator...")
+        print("\nInitializing Simulator...")
 
         self.config = config or AppConfig.load()
         self.risk_per_trade = (
@@ -64,25 +71,33 @@ class Simulator:
         self.exit_engine = exit_engine or ExitEngine()
         self.position_sizer = position_sizer or PositionSizer()
 
-    # ✅ --------------------------------------------------
+    # --------------------------------------------------
     # Main step function (called each 15m candle)
-    # ✅ --------------------------------------------------
+    # --------------------------------------------------
 
     def step(self, row, df_1h, df_5h, df_12h):
+        """
+        Process one execution-timeframe candle.
+
+        The method receives the current execution row plus higher-timeframe
+        slices that should already be restricted to data available at that
+        timestamp. It then performs context detection, entry checks, open-trade
+        management, exit handling, and optional logging.
+        """
 
         print("\n" + "=" * 60)
-        print(f"⏱ Processing candle: {row.name}")
+        print(f"Processing candle: {row.name}")
 
-        # ✅ --------------------------
+        # --------------------------
         # 1. MARKET CONTEXT
-        # ✅ --------------------------
+        # --------------------------
 
         bias = self.bias_detector.get_bias(df_1h)
         regime = self.regime_detector.compute_regime(df_5h, df_12h)
 
-        # ✅ --------------------------
+        # --------------------------
         # 2. ENTRY LOGIC
-        # ✅ --------------------------
+        # --------------------------
 
         score = self.score_engine.compute_score(row, bias)
 
@@ -92,9 +107,9 @@ class Simulator:
 
             if trade:
 
-                print("\n🚀 EXECUTING NEW TRADE")
+                print("\nEXECUTING NEW TRADE")
 
-                # ✅ position sizing
+                # position sizing
                 size = self.position_sizer.calculate(
                     equity=self.account.equity,
                     risk_per_trade=self.risk_per_trade,
@@ -108,18 +123,18 @@ class Simulator:
                 self.base_size = size
                 self.level = 0
 
-        # ✅ --------------------------
+        # --------------------------
         # 3. TRADE MANAGEMENT
-        # ✅ --------------------------
+        # --------------------------
 
         else:
 
-            print("\n📈 Managing open trade...")
+            print("\nManaging open trade...")
 
             price = row["close"]
             trade = self.current_trade
 
-            # ✅ pyramiding
+            # pyramiding
             new_level = self.pyramiding_engine.check_pyramiding(
                 price=price,
                 entry_price=trade.entry_price,
@@ -137,26 +152,26 @@ class Simulator:
                     trade.add_entry(price, add_size)
                     self.level = new_level
 
-            # ✅ sniffing (trend continuation)
+            # sniffing (trend continuation)
             trend_ok = self.trend_sniffer.is_trend_alive(row)
 
-            # ✅ exit logic
+            # exit logic
             exit_signal = self.exit_engine.should_exit(row, trade.stop)
 
-            # ✅ combine exit logic
+            # combine exit logic
             if exit_signal or not trend_ok:
 
-                print("\n🏁 EXITING TRADE")
+                print("\nEXITING TRADE")
 
                 trade.close(row)
 
-                # ✅ update account
+                # update account
                 self.account.update(trade)
 
                 if self.trade_logger:
                     self.trade_logger.log_trade(trade)
 
-                # ✅ reset
+                # reset
                 self.current_trade = None
                 self.base_size = 0
                 self.level = 0
@@ -166,9 +181,9 @@ class Simulator:
 
         print("=" * 60 + "\n")
 
-    # ✅ --------------------------------------------------
+    # --------------------------------------------------
     # Summary (end of run)
-    # ✅ --------------------------------------------------
+    # --------------------------------------------------
 
     def summary(self):
         self.account.summary()

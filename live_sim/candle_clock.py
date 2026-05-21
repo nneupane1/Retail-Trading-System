@@ -1,3 +1,5 @@
+"""Detects whether a new execution-timeframe candle is available for near-live simulation."""
+
 import time
 
 
@@ -17,23 +19,23 @@ def is_new_15m_candle(df_15m, last_candle_time):
 
     current_time = df_15m.index[-1]
 
-    print("\n🕒 Checking 15m candle...")
+    print("\nChecking 15m candle...")
 
     if last_candle_time is None:
-        print("✅ First run → initializing candle clock")
-        print(f"   Current candle: {current_time}")
+        print("First run -> initializing candle clock")
+        print(f"  Current candle: {current_time}")
 
         return True, current_time
 
     if current_time != last_candle_time:
-        print("✅ New 15m candle detected")
-        print(f"   Previous: {last_candle_time}")
-        print(f"   Current:  {current_time}")
+        print("New 15m candle detected")
+        print(f"  Previous: {last_candle_time}")
+        print(f"  Current:  {current_time}")
 
         return True, current_time
 
-    print("⏳ No new candle yet")
+    print("No new candle yet")
 
-    print(f"⏱ Time taken: {time.time() - start:.4f}s")
+    print(f"Elapsed: {time.time() - start:.4f}s")
 
     return False, last_candle_time

@@ -1,3 +1,5 @@
+"""Builds configured OHLCV timeframes from the base one-minute market data."""
+
 import os
 import time
 
@@ -22,7 +24,7 @@ class TimeframeBuilder:
     def resample(self, df, rule):
         start = time.time()
 
-        print(f"\n⏳ Resampling → {rule}")
+        print(f"\nResampling -> {rule}")
 
         df_resampled = df.resample(
             rule,
@@ -38,7 +40,7 @@ class TimeframeBuilder:
 
         elapsed = time.time() - start
 
-        print(f"✅ Done: {rule} | rows: {len(df_resampled)} | ⏱ {elapsed:.2f}s")
+        print(f"Done: {rule} | rows: {len(df_resampled)} | Time: {elapsed:.2f}s")
 
         return df_resampled
 
@@ -57,8 +59,8 @@ class TimeframeBuilder:
 
         overall_start = time.time()
 
-        print(f"\n📊 Starting resampling pipeline for {symbol}")
-        print(f"📅 Range: {start_date} → {end_date}\n")
+        print(f"\nStarting resampling pipeline for {symbol}")
+        print(f"Range: {start_date} -> {end_date}\n")
 
         base_tf = self.timeframes["base"]
         folder_1m = os.path.join(base_path, symbol, base_tf["label"])
@@ -71,7 +73,7 @@ class TimeframeBuilder:
 
         t0 = time.time()
         df_1m.to_csv(path_1m)
-        print(f"💾 Saved {base_tf['label']} → {path_1m} | ⏱ {time.time() - t0:.2f}s")
+        print(f"Saved {base_tf['label']} -> {path_1m} | Time: {time.time() - t0:.2f}s")
 
         execution_tf = self.timeframes["execution"]
         direction_tf = self.timeframes["direction"]
@@ -95,7 +97,7 @@ class TimeframeBuilder:
             t0 = time.time()
             df.to_csv(filepath)
 
-            print(f"💾 Saved {tf['label']} → {filepath} | ⏱ {time.time() - t0:.2f}s")
+            print(f"Saved {tf['label']} -> {filepath} | Time: {time.time() - t0:.2f}s")
 
         save_tf(df_15m, execution_tf)
         save_tf(df_1h, direction_tf)
@@ -104,13 +106,13 @@ class TimeframeBuilder:
 
         total_time = time.time() - overall_start
 
-        print(f"\n🎯 Resampling pipeline completed in {total_time:.2f}s")
-        print(f"📊 Final rows:")
-        print(f"   {base_tf['label']}:  {len(df_1m)}")
-        print(f"   {execution_tf['label']}: {len(df_15m)}")
-        print(f"   {direction_tf['label']}:  {len(df_1h)}")
-        print(f"   {trend_tf['label']}:  {len(df_5h)}")
-        print(f"   {macro_tf['label']}: {len(df_12h)}\n")
+        print(f"\nResampling pipeline completed in {total_time:.2f}s")
+        print(f"Final rows:")
+        print(f"  {base_tf['label']}:  {len(df_1m)}")
+        print(f"  {execution_tf['label']}: {len(df_15m)}")
+        print(f"  {direction_tf['label']}:  {len(df_1h)}")
+        print(f"  {trend_tf['label']}:  {len(df_5h)}")
+        print(f"  {macro_tf['label']}: {len(df_12h)}\n")
 
         return df_15m, df_1h, df_5h, df_12h
 

@@ -1,3 +1,5 @@
+"""Tracks simulated equity and trade statistics across the strategy run."""
+
 import time
 from config import AppConfig
 
@@ -13,7 +15,7 @@ class Account:
 
     def __init__(self, initial_equity=None, config=None):
 
-        print("\n🏦 Initializing account...")
+        print("\nInitializing account...")
 
         start = time.time()
 
@@ -27,71 +29,71 @@ class Account:
         self.win_count = 0
         self.loss_count = 0
 
-        print(f"✅ Account initialized")
-        print(f"   Starting equity: {self.equity:.2f}")
+        print(f"Account initialized")
+        print(f"  Starting equity: {self.equity:.2f}")
 
-        print(f"⏱ Init time: {time.time() - start:.4f}s")
+        print(f"Init elapsed: {time.time() - start:.4f}s")
 
-    # ✅ ------------------------------------------
+    # ------------------------------------------
     # Update account after trade closes
-    # ✅ ------------------------------------------
+    # ------------------------------------------
 
     def update(self, trade):
         """
         Apply trade results to account.
         """
 
-        print("\n📊 Updating account with trade result...")
+        print("\nUpdating account with trade result...")
 
         start = time.time()
 
         pnl = trade.pnl
 
-        # ✅ update equity
+        # update equity
         self.equity += pnl
 
-        # ✅ update stats
+        # update stats
         self.trade_count += 1
 
         if pnl > 0:
             self.win_count += 1
-            outcome = "WIN ✅"
+            outcome = "WIN"
         else:
             self.loss_count += 1
-            outcome = "LOSS ❌"
+            outcome = "LOSS"
 
-        # ✅ stats
+        # stats
         win_rate = (self.win_count / self.trade_count) * 100
 
         print(f"\n{outcome}")
-        print(f"   Trade PnL: {pnl:.2f}")
-        print(f"   New equity: {self.equity:.2f}")
+        print(f"  Trade PnL: {pnl:.2f}")
+        print(f"  New equity: {self.equity:.2f}")
 
-        print(f"\n📈 Stats:")
-        print(f"   Trades: {self.trade_count}")
-        print(f"   Wins:   {self.win_count}")
-        print(f"   Losses: {self.loss_count}")
-        print(f"   Win rate: {win_rate:.2f}%")
+        print(f"\nStats:")
+        print(f"  Trades: {self.trade_count}")
+        print(f"  Wins:   {self.win_count}")
+        print(f"  Losses: {self.loss_count}")
+        print(f"  Win rate: {win_rate:.2f}%")
 
-        print(f"\n💰 Net PnL: {self.equity - self.initial_equity:.2f}")
+        print(f"\nNet PnL: {self.equity - self.initial_equity:.2f}")
 
-        print(f"⏱ Time taken: {time.time() - start:.4f}s")
+        print(f"Elapsed: {time.time() - start:.4f}s")
 
-    # ✅ ------------------------------------------
+    # ------------------------------------------
     # Optional: current snapshot
-    # ✅ ------------------------------------------
+    # ------------------------------------------
 
     def summary(self):
         """
         Print current account summary.
         """
 
-        print("\n🏦 ACCOUNT SUMMARY")
-        print(f"   Initial equity: {self.initial_equity:.2f}")
-        print(f"   Current equity: {self.equity:.2f}")
-        print(f"   Net PnL: {self.equity - self.initial_equity:.2f}")
-        print(f"   Trades: {self.trade_count}")
+        print("\nACCOUNT SUMMARY")
+        print(f"  Initial equity: {self.initial_equity:.2f}")
+        print(f"  Current equity: {self.equity:.2f}")
+        print(f"  Net PnL: {self.equity - self.initial_equity:.2f}")
+        print(f"  Trades: {self.trade_count}")
 
         if self.trade_count > 0:
             win_rate = (self.win_count / self.trade_count) * 100
-            print(f"   Win rate: {win_rate:.2f}%")
+            print(f"  Win rate: {win_rate:.2f}%")

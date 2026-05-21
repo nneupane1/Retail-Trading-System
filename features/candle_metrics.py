@@ -1,3 +1,5 @@
+"""Computes candle body, wick, and close-location metrics used by entry and management logic."""
+
 import time
 
 from config import AppConfig
@@ -19,9 +21,9 @@ class CandleMetricsCalculator:
     def compute(self, df):
         start = time.time()
 
-        print("\n🧮 Computing candle metrics...")
+        print("\nComputing candle metrics...")
 
-        # ✅ basic components
+        # basic components
         body = (df["close"] - df["open"]).abs()
         avg_body = body.rolling(self.average_body_period).mean()
 
@@ -29,14 +31,14 @@ class CandleMetricsCalculator:
         low = df["low"]
         close = df["close"]
 
-        # ✅ full candle range
+        # full candle range
         candle_range = high - low
 
-        # ✅ wick calculations
+        # wick calculations
         upper_wick = high - df[["open", "close"]].max(axis=1)
         lower_wick = df[["open", "close"]].min(axis=1) - low
 
-        # ✅ core metrics
+        # core metrics
         df["body_strength"] = body / (avg_body + 1e-6)
 
         df["upper_wick_ratio"] = upper_wick / (body + 1e-6)
@@ -46,10 +48,10 @@ class CandleMetricsCalculator:
 
         elapsed = time.time() - start
 
-        print("✅ Candle metrics computed")
-        print(f"⏱ Time taken: {elapsed:.2f}s")
+        print("Candle metrics computed")
+        print(f"Elapsed: {elapsed:.2f}s")
 
-        print("\n📊 Sample output:")
+        print("\nSample output:")
         print(df[[
             "body_strength",
             "upper_wick_ratio",

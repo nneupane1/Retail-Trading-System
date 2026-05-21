@@ -1,3 +1,5 @@
+"""Writes completed live-simulation trades to a dedicated CSV output."""
+
 import os
 import csv
 import time
@@ -14,16 +16,16 @@ class LiveTradeLogger:
 
     def __init__(self, filepath=None, config=None):
 
-        print("\n📝 Initializing LIVE Trade Logger...")
+        print("\nInitializing LIVE Trade Logger...")
 
         self.config = config or AppConfig.load()
         output_dir = self.config.require("live_sim", "output_dir")
         self.filepath = filepath or os.path.join(output_dir, "trades.csv")
 
-        # ✅ ensure folder exists
+        # ensure folder exists
         os.makedirs(os.path.dirname(filepath), exist_ok=True)
 
-        # ✅ create file with header (only once)
+        # create file with header (only once)
         if not os.path.exists(self.filepath):
             with open(self.filepath, "w", newline="") as f:
                 writer = csv.writer(f)
@@ -42,15 +44,15 @@ class LiveTradeLogger:
                     "breakout"
                 ])
 
-        print(f"✅ Live logger ready → {self.filepath}")
+        print(f"Live logger ready -> {self.filepath}")
 
-    # ✅ ------------------------------------------
+    # ------------------------------------------
     # Log completed trade
-    # ✅ ------------------------------------------
+    # ------------------------------------------
 
     def log_trade(self, trade):
 
-        print("\n📝 Logging LIVE trade...")
+        print("\nLogging LIVE trade...")
 
         start = time.time()
 
@@ -72,6 +74,6 @@ class LiveTradeLogger:
                 trade.conditions.get("breakout")
             ])
 
-        print("✅ LIVE trade logged")
+        print("LIVE trade logged")
 
-        print(f"⏱ Time taken: {time.time() - start:.4f}s")
+        print(f"Elapsed: {time.time() - start:.4f}s")

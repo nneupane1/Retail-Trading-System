@@ -1,3 +1,5 @@
+"""Provides a small Binance REST client for public market data and future authenticated endpoints."""
+
 import requests
 import time
 import os
@@ -60,11 +62,11 @@ class BinanceClient:
         start_clock = time.time()
 
         if verbose:
-            print(f"\n📡 Fetching {symbol} | {interval}")
+            print(f"\nFetching {symbol} | {interval}")
             if startTime is not None:
-                print(f"   From: {_format_time(startTime)}")
+                print(f"  From: {_format_time(startTime)}")
             if endTime is not None:
-                print(f"   To:   {_format_time(endTime)}")
+                print(f"  To:   {_format_time(endTime)}")
 
         last_error = None
 
@@ -82,13 +84,13 @@ class BinanceClient:
                     elapsed = time.time() - start_clock
 
                     if verbose:
-                        print(f"✅ Received {len(data)} candles")
-                        print(f"⏱ Time taken: {elapsed:.2f} sec")
+                        print(f"Received {len(data)} candles")
+                        print(f"Elapsed: {elapsed:.2f} sec")
 
                         if data:
                             first = _format_time(data[0][0])
                             last = _format_time(data[-1][0])
-                            print(f"   Range: {first} → {last}")
+                            print(f"  Range: {first} -> {last}")
 
                     return data
 
@@ -102,7 +104,7 @@ class BinanceClient:
             if attempt < self.retry_attempts:
                 time.sleep(self.retry_backoff * attempt)
 
-        raise Exception(f"❌ Binance request failed: {last_error}")
+        raise Exception(f" Binance request failed: {last_error}")
 
 
 def _format_time(ms):

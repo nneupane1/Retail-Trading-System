@@ -1,3 +1,5 @@
+"""Writes the backtest equity curve to CSV so account state can be audited after each candle."""
+
 import os
 import csv
 import time
@@ -12,7 +14,7 @@ class EquityLogger:
 
     def __init__(self, filepath=None, config=None):
 
-        print("\n📈 Initializing Equity Logger...")
+        print("\nInitializing Equity Logger...")
 
         self.config = config or AppConfig.load()
         output_dir = self.config.require("backtest", "output_dir")
@@ -27,9 +29,9 @@ class EquityLogger:
                 "equity"
             ])
 
-        print(f"✅ Equity logger ready → {self.filepath}")
+        print(f"Equity logger ready -> {self.filepath}")
 
-    # ✅ log equity at each update
+    # log equity at each update
     def log(self, timestamp, equity):
 
         with open(self.filepath, "a", newline="") as f:

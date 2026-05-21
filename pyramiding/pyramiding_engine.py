@@ -1,3 +1,5 @@
+"""Controls configured add-to-winner levels and incremental position sizing."""
+
 import time
 
 from config import AppConfig
@@ -15,7 +17,7 @@ class PyramidingEngine:
     def check_pyramiding(self, price, entry_price, R, current_level):
         start = time.time()
 
-        print("\n📈 Checking pyramiding levels...")
+        print("\nChecking pyramiding levels...")
 
         new_level = current_level
 
@@ -27,34 +29,34 @@ class PyramidingEngine:
             if current_level == required_previous_level and price >= trigger_price:
                 new_level = level
                 print(
-                    f"✅ Triggered Level {level} "
+                    f" Triggered Level {level} "
                     f"(>= +{level_config['r_multiple']}R)"
                 )
                 break
 
         if new_level == current_level:
-            print("❌ No pyramiding condition met")
+            print("No pyramiding condition met")
 
-        print(f"   Price: {price:.2f}")
-        print(f"   Entry: {entry_price:.2f}")
-        print(f"   R: {R:.2f}")
-        print(f"   Level: {current_level} → {new_level}")
+        print(f"  Price: {price:.2f}")
+        print(f"  Entry: {entry_price:.2f}")
+        print(f"  R: {R:.2f}")
+        print(f"  Level: {current_level} -> {new_level}")
 
         elapsed = time.time() - start
-        print(f"⏱ Time taken: {elapsed:.4f}s")
+        print(f"Elapsed: {elapsed:.4f}s")
 
         return new_level
 
     def get_pyramid_size(self, base_size, level):
-        print("\n💰 Calculating pyramid position size...")
+        print("\nCalculating pyramid position size...")
 
         for level_config in self.levels:
             if level_config["level"] == level:
                 size = base_size * level_config["size_fraction"]
-                print(f"✅ Add size (Level {level}): {size:.4f}")
+                print(f"Add size (Level {level}): {size:.4f}")
                 return size
 
-        print("❌ No additional position")
+        print("No additional position")
         return 0
 
 

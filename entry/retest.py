@@ -1,3 +1,5 @@
+"""Detects retest-style continuation setups against the configured breakout level."""
+
 import time
 
 from config import AppConfig
@@ -19,39 +21,39 @@ class RetestDetector:
     def is_retest(self, row):
         start = time.time()
 
-        print("\n🔁 Checking retest condition...")
+        print("\nChecking retest condition...")
 
         price = row["close"]
         prev_hh = row[self.previous_high_column]
         ema_value = row[self.fast_ema_column]
 
-        # ✅ Step 1: pullback into zone (near previous HH)
+        # Step 1: pullback into zone (near previous HH)
         pullback = price <= prev_hh
 
-        # ✅ Step 2: holds above EMA
+        # Step 2: holds above EMA
         hold = price > ema_value
 
-        # ✅ Step 3: continuation attempt
+        # Step 3: continuation attempt
         continuation = price > prev_hh
 
         retest = pullback and hold and continuation
 
-        # ✅ Debug prints
-        print(f"   Price: {price:.2f}")
-        print(f"   Prev HH: {prev_hh:.2f}")
-        print(f"   {self.fast_ema_column}: {ema_value:.2f}")
+        # Debug prints
+        print(f"  Price: {price:.2f}")
+        print(f"  Prev HH: {prev_hh:.2f}")
+        print(f"  {self.fast_ema_column}: {ema_value:.2f}")
 
-        print(f"   Pullback: {'✅' if pullback else '❌'}")
-        print(f"   Hold above EMA: {'✅' if hold else '❌'}")
-        print(f"   Continuation: {'✅' if continuation else '❌'}")
+        print(f"  Pullback: {'PASS' if pullback else 'FAIL'}")
+        print(f"  Hold above EMA: {'PASS' if hold else 'FAIL'}")
+        print(f"  Continuation: {'PASS' if continuation else 'FAIL'}")
 
         if retest:
-            print("✅ Retest setup confirmed")
+            print("Retest setup confirmed")
         else:
-            print("❌ No valid retest")
+            print("No valid retest")
 
         elapsed = time.time() - start
-        print(f"⏱ Time taken: {elapsed:.4f}s")
+        print(f"Elapsed: {elapsed:.4f}s")
 
         return retest
 

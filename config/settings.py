@@ -1,3 +1,5 @@
+"""Loads local environment variables and JSON-backed application configuration."""
+
 import json
 import os
 from pathlib import Path

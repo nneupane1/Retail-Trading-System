@@ -1,3 +1,5 @@
+"""Runs the historical event loop over prepared strategy candles and delegates each step to the simulator."""
+
 import time
 
 
@@ -11,7 +13,7 @@ class BacktestEngine:
 
     def __init__(self, df_15m, df_1h, df_5h, df_12h, simulator):
 
-        print("\n📊 Initializing Backtest Engine...")
+        print("\nInitializing Backtest Engine...")
 
         self.df_15m = df_15m
         self.df_1h = df_1h
@@ -20,15 +22,15 @@ class BacktestEngine:
 
         self.sim = simulator
 
-        print("✅ Backtest engine ready")
+        print("Backtest engine ready")
 
-    # ✅ --------------------------------------------------
+    # --------------------------------------------------
     # RUN BACKTEST
-    # ✅ --------------------------------------------------
+    # --------------------------------------------------
 
     def run(self):
 
-        print("\n🚀 Starting backtest...\n")
+        print("\nStarting backtest...\n")
 
         start_time = time.time()
 
@@ -37,30 +39,30 @@ class BacktestEngine:
         for i in range(50, total_candles):
             row = self.df_15m.iloc[i]
 
-            # ✅ Slice higher timeframe data up to current time
+            # Slice higher timeframe data up to current time
             df1h_slice = self.df_1h.loc[:row.name]
             df5h_slice = self.df_5h.loc[:row.name]
             df12h_slice = self.df_12h.loc[:row.name]
 
-            # ✅ Run strategy step
+            # Run strategy step
             self.sim.step(row, df1h_slice, df5h_slice, df12h_slice)
 
-            # ✅ Progress print every N candles
+            # Progress print every N candles
             if i % 100 == 0:
                 progress = (i / total_candles) * 100
                 elapsed = time.time() - start_time
 
-                print("\n📈 BACKTEST PROGRESS")
-                print(f"   Candle: {i}/{total_candles}")
-                print(f"   Progress: {progress:.2f}%")
-                print(f"   Elapsed: {elapsed:.2f}s\n")
+                print("\nBACKTEST PROGRESS")
+                print(f"  Candle: {i}/{total_candles}")
+                print(f"  Progress: {progress:.2f}%")
+                print(f"  Elapsed: {elapsed:.2f}s\n")
 
         total_time = time.time() - start_time
 
-        print("\n🎯 BACKTEST COMPLETE")
-        print(f"⏱ Total time: {total_time:.2f}s")
-        print(f"📊 Candles processed: {total_candles}")
+        print("\nBACKTEST COMPLETE")
+        print(f"Total time: {total_time:.2f}s")
+        print(f"Candles processed: {total_candles}")
 
-        # ✅ Final summary
-        print("\n📊 FINAL ACCOUNT SUMMARY")
+        # Final summary
+        print("\nFINAL ACCOUNT SUMMARY")
         self.sim.summary()

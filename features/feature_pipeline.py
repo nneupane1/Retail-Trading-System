@@ -1,3 +1,5 @@
+"""Creates all configured technical features required by the strategy modules."""
+
 import time
 
 from config import AppConfig
@@ -7,7 +9,11 @@ from .candle_metrics import CandleMetricsCalculator
 
 class FeaturePipeline:
     """
-    Full configured feature pipeline.
+    Builds the configured feature set for one OHLCV timeframe.
+
+    This class owns the column contract used by downstream strategy modules:
+    trend filters, volatility, structure, compression, breakout flags, and
+    candle-behavior metrics are all created here from JSON-backed settings.
     """
 
     def __init__(self, config=None):
@@ -33,11 +39,11 @@ class FeaturePipeline:
     def compute(self, df):
         overall_start = time.time()
 
-        print("\n🚀 Starting feature pipeline...\n")
+        print("\nStarting feature pipeline...\n")
 
-        # ✅ ------------------------------
+        # ------------------------------
         # 1. TREND (EMA)
-        # ✅ ------------------------------
+        # ------------------------------
 
         t0 = time.time()
 
@@ -47,21 +53,21 @@ class FeaturePipeline:
         df[fast_ema_column] = ema(df["close"], self.fast_ema_period)
         df[slow_ema_column] = ema(df["close"], self.slow_ema_period)
 
-        print(f"✅ Trend features done | ⏱ {time.time() - t0:.2f}s\n")
+        print(f"Trend features done | Time: {time.time() - t0:.2f}s\n")
 
-        # ✅ ------------------------------
+        # ------------------------------
         # 2. VOLATILITY (ATR)
-        # ✅ ------------------------------
+        # ------------------------------
 
         t0 = time.time()
 
         df["atr"] = atr(df, self.atr_period)
 
-        print(f"✅ Volatility (ATR) done | ⏱ {time.time() - t0:.2f}s\n")
+        print(f"Volatility (ATR) done | Time: {time.time() - t0:.2f}s\n")
 
-        # ✅ ------------------------------
+        # ------------------------------
         # 3. STRUCTURE (HH / LL)
-        # ✅ ------------------------------
+        # ------------------------------
 
         t0 = time.time()
 
@@ -71,11 +77,11 @@ class FeaturePipeline:
         df[high_column] = rolling_high(df["high"], self.high_period)
         df[low_column] = rolling_low(df["low"], self.low_period)
 
-        print(f"✅ Structure (HH/LL) done | ⏱ {time.time() - t0:.2f}s\n")
+        print(f"Structure (HH/LL) done | Time: {time.time() - t0:.2f}s\n")
 
-        # ✅ ------------------------------
+        # ------------------------------
         # 4. COMPRESSION
-        # ✅ ------------------------------
+        # ------------------------------
 
         t0 = time.time()
 
@@ -96,11 +102,11 @@ class FeaturePipeline:
             df[fast_range_column] < (self.compression_ratio * df[slow_range_column])
         )
 
-        print(f"✅ Compression computed | ⏱ {time.time() - t0:.2f}s\n")
+        print(f"Compression computed | Time: {time.time() - t0:.2f}s\n")
 
-        # ✅ ------------------------------
+        # ------------------------------
         # 5. BREAKOUT (CLOSE-based)
-        # ✅ ------------------------------
+        # ------------------------------
 
         t0 = time.time()
 
@@ -108,24 +114,24 @@ class FeaturePipeline:
         df[previous_high_column] = df[high_column].shift(1)
         df["breakout"] = df["close"] > df[previous_high_column]
 
-        print(f"✅ Breakout logic applied | ⏱ {time.time() - t0:.2f}s\n")
+        print(f"Breakout logic applied | Time: {time.time() - t0:.2f}s\n")
 
-        # ✅ ------------------------------
+        # ------------------------------
         # 6. CANDLE METRICS (IMPORTANT)
-        # ✅ ------------------------------
+        # ------------------------------
 
         df = self.candle_metrics.compute(df)
 
-        # ✅ ------------------------------
+        # ------------------------------
         # FINAL SUMMARY
-        # ✅ ------------------------------
+        # ------------------------------
 
         total_time = time.time() - overall_start
 
-        print("\n🎯 Feature pipeline completed")
-        print(f"⏱ Total time: {total_time:.2f}s")
+        print("\nFeature pipeline completed")
+        print(f"Total time: {total_time:.2f}s")
 
-        print("\n📊 Final columns:")
+        print("\nFinal columns:")
         print(df.columns.tolist())
 
         return df

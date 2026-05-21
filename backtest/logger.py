@@ -1,3 +1,5 @@
+"""Writes completed backtest trades to CSV with entry, exit, PnL, and setup context."""
+
 import os
 import csv
 import time
@@ -18,16 +20,16 @@ class TradeLogger:
 
     def __init__(self, filepath=None, config=None):
 
-        print("\n📝 Initializing Trade Logger...")
+        print("\nInitializing Trade Logger...")
 
         self.config = config or AppConfig.load()
         output_dir = self.config.require("backtest", "output_dir")
         self.filepath = filepath or os.path.join(output_dir, "trades.csv")
 
-        # ✅ ensure folder exists
+        # ensure folder exists
         os.makedirs(os.path.dirname(filepath), exist_ok=True)
 
-        # ✅ create file with header
+        # create file with header
         with open(self.filepath, "w", newline="") as f:
             writer = csv.writer(f)
 
@@ -46,15 +48,15 @@ class TradeLogger:
                 "breakout"
             ])
 
-        print(f"✅ Logger ready → {self.filepath}")
+        print(f"Logger ready -> {self.filepath}")
 
-    # ✅ --------------------------------------------------
+    # --------------------------------------------------
     # Log a completed trade
-    # ✅ --------------------------------------------------
+    # --------------------------------------------------
 
     def log_trade(self, trade):
 
-        print("\n📝 Logging trade...")
+        print("\nLogging trade...")
 
         start = time.time()
 
@@ -76,7 +78,7 @@ class TradeLogger:
                 trade.conditions.get("breakout")
             ])
 
-        print("✅ Trade logged successfully")
+        print("Trade logged successfully")
 
         elapsed = time.time() - start
-        print(f"⏱ Time taken: {elapsed:.4f}s")
+        print(f"Elapsed: {elapsed:.4f}s")
