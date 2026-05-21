@@ -1,75 +1,71 @@
 import time
 
+from config import AppConfig
 
-def check_pyramiding(price, entry_price, R, current_level):
+
+class PyramidingEngine:
     """
-    Determine if we should add to the position.
-
-    Logic:
-    - Add at +1R → level 1
-    - Add at +2R → level 2
-
-    Parameters:
-    - price: current market price
-    - entry_price: initial entry
-    - R: risk unit (entry - stop)
-    - current_level: current pyramid level (0,1,2)
-
-    Returns:
-    - new_level
+    Configured add-to-winner logic.
     """
 
-    start = time.time()
+    def __init__(self, config=None):
+        self.config = config or AppConfig.load()
+        self.levels = self.config.require("strategy", "pyramiding", "levels")
 
-    print("\n📈 Checking pyramiding levels...")
+    def check_pyramiding(self, price, entry_price, R, current_level):
+        start = time.time()
 
-    new_level = current_level
+        print("\n📈 Checking pyramiding levels...")
 
-    # ✅ Level 1: +1R
-    if current_level == 0 and price >= entry_price + R:
-        new_level = 1
-        print("✅ Triggered Level 1 (>= +1R)")
+        new_level = current_level
 
-    # ✅ Level 2: +2R
-    elif current_level == 1 and price >= entry_price + 2 * R:
-        new_level = 2
-        print("✅ Triggered Level 2 (>= +2R)")
+        for level_config in self.levels:
+            level = level_config["level"]
+            required_previous_level = level - 1
+            trigger_price = entry_price + (level_config["r_multiple"] * R)
 
-    else:
-        print("❌ No pyramiding condition met")
+            if current_level == required_previous_level and price >= trigger_price:
+                new_level = level
+                print(
+                    f"✅ Triggered Level {level} "
+                    f"(>= +{level_config['r_multiple']}R)"
+                )
+                break
 
-    print(f"   Price: {price:.2f}")
-    print(f"   Entry: {entry_price:.2f}")
-    print(f"   R: {R:.2f}")
-    print(f"   Level: {current_level} → {new_level}")
+        if new_level == current_level:
+            print("❌ No pyramiding condition met")
 
-    elapsed = time.time() - start
-    print(f"⏱ Time taken: {elapsed:.4f}s")
+        print(f"   Price: {price:.2f}")
+        print(f"   Entry: {entry_price:.2f}")
+        print(f"   R: {R:.2f}")
+        print(f"   Level: {current_level} → {new_level}")
 
-    return new_level
+        elapsed = time.time() - start
+        print(f"⏱ Time taken: {elapsed:.4f}s")
 
+        return new_level
 
-def get_pyramid_size(base_size, level):
-    """
-    Define how much to add at each level.
+    def get_pyramid_size(self, base_size, level):
+        print("\n💰 Calculating pyramid position size...")
 
-    Simple rule:
-    - Level 1 → +50% of base
-    - Level 2 → +50% of base
-    """
+        for level_config in self.levels:
+            if level_config["level"] == level:
+                size = base_size * level_config["size_fraction"]
+                print(f"✅ Add size (Level {level}): {size:.4f}")
+                return size
 
-    print("\n💰 Calculating pyramid position size...")
-
-    if level == 1:
-        size = base_size * 0.5
-        print(f"✅ Add size (Level 1): {size:.4f}")
-
-    elif level == 2:
-        size = base_size * 0.5
-        print(f"✅ Add size (Level 2): {size:.4f}")
-
-    else:
-        size = 0
         print("❌ No additional position")
+        return 0
 
-    return size
+
+def check_pyramiding(price, entry_price, R, current_level, config=None):
+    return PyramidingEngine(config=config).check_pyramiding(
+        price=price,
+        entry_price=entry_price,
+        R=R,
+        current_level=current_level
+    )
+
+
+def get_pyramid_size(base_size, level, config=None):
+    return PyramidingEngine(config=config).get_pyramid_size(base_size, level)

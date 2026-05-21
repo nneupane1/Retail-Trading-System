@@ -1,102 +1,135 @@
 import time
 
+from config import AppConfig
 from .indicators import ema, atr, rolling_high, rolling_low
-from .candle_metrics import compute_candle_metrics
+from .candle_metrics import CandleMetricsCalculator
 
 
-def compute_features(df):
+class FeaturePipeline:
     """
-    Full feature pipeline:
-    - Trend (EMA)
-    - Volatility (ATR)
-    - Structure (HH/LL)
-    - Compression
-    - Breakout
-    - Candle metrics
+    Full configured feature pipeline.
     """
 
-    overall_start = time.time()
+    def __init__(self, config=None):
+        self.config = config or AppConfig.load()
+        self.fast_ema_period = self.config.require("features", "ema_periods", "fast")
+        self.slow_ema_period = self.config.require("features", "ema_periods", "slow")
+        self.atr_period = self.config.require("features", "atr_period")
+        self.high_period = self.config.require("features", "structure", "high_period")
+        self.low_period = self.config.require("features", "structure", "low_period")
+        self.fast_range_period = self.config.require(
+            "features",
+            "compression",
+            "fast_range_period"
+        )
+        self.slow_range_period = self.config.require(
+            "features",
+            "compression",
+            "slow_range_period"
+        )
+        self.compression_ratio = self.config.require("features", "compression", "ratio")
+        self.candle_metrics = CandleMetricsCalculator(config=self.config)
 
-    print("\n🚀 Starting feature pipeline...\n")
+    def compute(self, df):
+        overall_start = time.time()
 
-    # ✅ ------------------------------
-    # 1. TREND (EMA)
-    # ✅ ------------------------------
+        print("\n🚀 Starting feature pipeline...\n")
 
-    t0 = time.time()
+        # ✅ ------------------------------
+        # 1. TREND (EMA)
+        # ✅ ------------------------------
 
-    df["ema20"] = ema(df["close"], 20)
-    df["ema50"] = ema(df["close"], 50)
+        t0 = time.time()
 
-    print(f"✅ Trend features done | ⏱ {time.time() - t0:.2f}s\n")
+        fast_ema_column = f"ema{self.fast_ema_period}"
+        slow_ema_column = f"ema{self.slow_ema_period}"
 
-    # ✅ ------------------------------
-    # 2. VOLATILITY (ATR)
-    # ✅ ------------------------------
+        df[fast_ema_column] = ema(df["close"], self.fast_ema_period)
+        df[slow_ema_column] = ema(df["close"], self.slow_ema_period)
 
-    t0 = time.time()
+        print(f"✅ Trend features done | ⏱ {time.time() - t0:.2f}s\n")
 
-    df["atr"] = atr(df, 14)
+        # ✅ ------------------------------
+        # 2. VOLATILITY (ATR)
+        # ✅ ------------------------------
 
-    print(f"✅ Volatility (ATR) done | ⏱ {time.time() - t0:.2f}s\n")
+        t0 = time.time()
 
-    # ✅ ------------------------------
-    # 3. STRUCTURE (HH / LL)
-    # ✅ ------------------------------
+        df["atr"] = atr(df, self.atr_period)
 
-    t0 = time.time()
+        print(f"✅ Volatility (ATR) done | ⏱ {time.time() - t0:.2f}s\n")
 
-    df["hh20"] = rolling_high(df["high"], 20)
-    df["ll10"] = rolling_low(df["low"], 10)
+        # ✅ ------------------------------
+        # 3. STRUCTURE (HH / LL)
+        # ✅ ------------------------------
 
-    print(f"✅ Structure (HH/LL) done | ⏱ {time.time() - t0:.2f}s\n")
+        t0 = time.time()
 
-    # ✅ ------------------------------
-    # 4. COMPRESSION
-    # ✅ ------------------------------
+        high_column = f"hh{self.high_period}"
+        low_column = f"ll{self.low_period}"
 
-    t0 = time.time()
+        df[high_column] = rolling_high(df["high"], self.high_period)
+        df[low_column] = rolling_low(df["low"], self.low_period)
 
-    df["range_10"] = (
-        df["high"].rolling(10).max() -
-        df["low"].rolling(10).min()
-    )
+        print(f"✅ Structure (HH/LL) done | ⏱ {time.time() - t0:.2f}s\n")
 
-    df["range_30"] = (
-        df["high"].rolling(30).max() -
-        df["low"].rolling(30).min()
-    )
+        # ✅ ------------------------------
+        # 4. COMPRESSION
+        # ✅ ------------------------------
 
-    df["compression"] = df["range_10"] < (0.7 * df["range_30"])
+        t0 = time.time()
 
-    print(f"✅ Compression computed | ⏱ {time.time() - t0:.2f}s\n")
+        fast_range_column = f"range_{self.fast_range_period}"
+        slow_range_column = f"range_{self.slow_range_period}"
 
-    # ✅ ------------------------------
-    # 5. BREAKOUT (CLOSE-based)
-    # ✅ ------------------------------
+        df[fast_range_column] = (
+            df["high"].rolling(self.fast_range_period).max() -
+            df["low"].rolling(self.fast_range_period).min()
+        )
 
-    t0 = time.time()
+        df[slow_range_column] = (
+            df["high"].rolling(self.slow_range_period).max() -
+            df["low"].rolling(self.slow_range_period).min()
+        )
 
-    df["breakout"] = df["close"] > df["hh20"].shift(1)
+        df["compression"] = (
+            df[fast_range_column] < (self.compression_ratio * df[slow_range_column])
+        )
 
-    print(f"✅ Breakout logic applied | ⏱ {time.time() - t0:.2f}s\n")
+        print(f"✅ Compression computed | ⏱ {time.time() - t0:.2f}s\n")
 
-    # ✅ ------------------------------
-    # 6. CANDLE METRICS (IMPORTANT)
-    # ✅ ------------------------------
+        # ✅ ------------------------------
+        # 5. BREAKOUT (CLOSE-based)
+        # ✅ ------------------------------
 
-    df = compute_candle_metrics(df)
+        t0 = time.time()
 
-    # ✅ ------------------------------
-    # FINAL SUMMARY
-    # ✅ ------------------------------
+        previous_high_column = f"{high_column}_prev"
+        df[previous_high_column] = df[high_column].shift(1)
+        df["breakout"] = df["close"] > df[previous_high_column]
 
-    total_time = time.time() - overall_start
+        print(f"✅ Breakout logic applied | ⏱ {time.time() - t0:.2f}s\n")
 
-    print("\n🎯 Feature pipeline completed")
-    print(f"⏱ Total time: {total_time:.2f}s")
+        # ✅ ------------------------------
+        # 6. CANDLE METRICS (IMPORTANT)
+        # ✅ ------------------------------
 
-    print("\n📊 Final columns:")
-    print(df.columns.tolist())
+        df = self.candle_metrics.compute(df)
 
-    return df
+        # ✅ ------------------------------
+        # FINAL SUMMARY
+        # ✅ ------------------------------
+
+        total_time = time.time() - overall_start
+
+        print("\n🎯 Feature pipeline completed")
+        print(f"⏱ Total time: {total_time:.2f}s")
+
+        print("\n📊 Final columns:")
+        print(df.columns.tolist())
+
+        return df
+
+
+def compute_features(df, config=None):
+    return FeaturePipeline(config=config).compute(df)

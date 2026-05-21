@@ -1,28 +1,37 @@
 import time
 
+from config import AppConfig
 
-def is_breakout(row):
+
+class BreakoutDetector:
     """
-    PURE breakout definition.
-
-    Rule:
-    - CLOSE must break previous HH (no momentum here)
+    Close-based breakout detector.
     """
 
-    start = time.time()
+    def __init__(self, config=None):
+        self.config = config or AppConfig.load()
+        high_period = self.config.require("features", "structure", "high_period")
+        self.previous_high_column = f"hh{high_period}_prev"
 
-    print("\n🚀 Checking breakout...")
+    def is_breakout(self, row):
+        start = time.time()
 
-    breakout = row["close"] > row["hh20_prev"]
+        print("\n🚀 Checking breakout...")
 
-    if breakout:
-        print("✅ Breakout (CLOSE > previous HH)")
-    else:
-        print("❌ No breakout")
+        breakout = row["close"] > row[self.previous_high_column]
 
-    print(f"   Close: {row['close']:.2f}")
-    print(f"   Prev HH: {row['hh20_prev']:.2f}")
+        if breakout:
+            print("✅ Breakout (CLOSE > previous HH)")
+        else:
+            print("❌ No breakout")
 
-    print(f"⏱ Time taken: {time.time() - start:.4f}s")
+        print(f"   Close: {row['close']:.2f}")
+        print(f"   Prev HH: {row[self.previous_high_column]:.2f}")
 
-    return breakout
+        print(f"⏱ Time taken: {time.time() - start:.4f}s")
+
+        return breakout
+
+
+def is_breakout(row, config=None):
+    return BreakoutDetector(config=config).is_breakout(row)

@@ -1,56 +1,64 @@
 import time
 
+from config import AppConfig
 
-def compute_candle_metrics(df):
+
+class CandleMetricsCalculator:
     """
-    Compute quantitative candle behavior metrics.
-
-    Features:
-    - body_strength
-    - upper_wick_ratio
-    - lower_wick_ratio
-    - close_position
+    Computes quantitative candle behavior metrics.
     """
 
-    start = time.time()
+    def __init__(self, config=None):
+        self.config = config or AppConfig.load()
+        self.average_body_period = self.config.require(
+            "features",
+            "candle_metrics",
+            "average_body_period"
+        )
 
-    print("\n🧮 Computing candle metrics...")
+    def compute(self, df):
+        start = time.time()
 
-    # ✅ basic components
-    body = (df["close"] - df["open"]).abs()
-    avg_body = body.rolling(10).mean()
+        print("\n🧮 Computing candle metrics...")
 
-    high = df["high"]
-    low = df["low"]
-    close = df["close"]
-    open_ = df["open"]
+        # ✅ basic components
+        body = (df["close"] - df["open"]).abs()
+        avg_body = body.rolling(self.average_body_period).mean()
 
-    # ✅ full candle range
-    candle_range = high - low
+        high = df["high"]
+        low = df["low"]
+        close = df["close"]
 
-    # ✅ wick calculations
-    upper_wick = high - df[["open", "close"]].max(axis=1)
-    lower_wick = df[["open", "close"]].min(axis=1) - low
+        # ✅ full candle range
+        candle_range = high - low
 
-    # ✅ core metrics
-    df["body_strength"] = body / (avg_body + 1e-6)
+        # ✅ wick calculations
+        upper_wick = high - df[["open", "close"]].max(axis=1)
+        lower_wick = df[["open", "close"]].min(axis=1) - low
 
-    df["upper_wick_ratio"] = upper_wick / (body + 1e-6)
-    df["lower_wick_ratio"] = lower_wick / (body + 1e-6)
+        # ✅ core metrics
+        df["body_strength"] = body / (avg_body + 1e-6)
 
-    df["close_position"] = (close - low) / (candle_range + 1e-6)
+        df["upper_wick_ratio"] = upper_wick / (body + 1e-6)
+        df["lower_wick_ratio"] = lower_wick / (body + 1e-6)
 
-    elapsed = time.time() - start
+        df["close_position"] = (close - low) / (candle_range + 1e-6)
 
-    print("✅ Candle metrics computed")
-    print(f"⏱ Time taken: {elapsed:.2f}s")
+        elapsed = time.time() - start
 
-    print("\n📊 Sample output:")
-    print(df[[
-        "body_strength",
-        "upper_wick_ratio",
-        "lower_wick_ratio",
-        "close_position"
-    ]].tail(3))
+        print("✅ Candle metrics computed")
+        print(f"⏱ Time taken: {elapsed:.2f}s")
 
-    return df
+        print("\n📊 Sample output:")
+        print(df[[
+            "body_strength",
+            "upper_wick_ratio",
+            "lower_wick_ratio",
+            "close_position"
+        ]].tail(3))
+
+        return df
+
+
+def compute_candle_metrics(df, config=None):
+    return CandleMetricsCalculator(config=config).compute(df)

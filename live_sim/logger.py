@@ -2,6 +2,8 @@ import os
 import csv
 import time
 
+from config import AppConfig
+
 
 class LiveTradeLogger:
     """
@@ -10,11 +12,13 @@ class LiveTradeLogger:
     Similar to backtest logger but stored separately.
     """
 
-    def __init__(self, filepath="live_sim/output/trades.csv"):
+    def __init__(self, filepath=None, config=None):
 
         print("\n📝 Initializing LIVE Trade Logger...")
 
-        self.filepath = filepath
+        self.config = config or AppConfig.load()
+        output_dir = self.config.require("live_sim", "output_dir")
+        self.filepath = filepath or os.path.join(output_dir, "trades.csv")
 
         # ✅ ensure folder exists
         os.makedirs(os.path.dirname(filepath), exist_ok=True)

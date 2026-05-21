@@ -1,5 +1,7 @@
 import time
 
+from config import AppConfig
+
 
 class Trade:
     """
@@ -14,11 +16,14 @@ class Trade:
     - conditions (WHY trade was taken)
     """
 
-    def __init__(self, row, score):
+    def __init__(self, row, score, config=None):
 
         print("\n📦 Creating new Trade object...")
 
         start = time.time()
+        self.config = config or AppConfig.load()
+        low_period = self.config.require("features", "structure", "low_period")
+        self.stop_column = f"ll{low_period}"
 
         # ✅ Entry info
         self.entry_time = row.name
@@ -26,7 +31,7 @@ class Trade:
         self.score = score
 
         # ✅ Structure
-        self.stop = row["ll10"]     # stop = recent low
+        self.stop = row[self.stop_column]     # stop = recent low
         self.R = abs(self.entry_price - self.stop)
 
         # ✅ Position tracking

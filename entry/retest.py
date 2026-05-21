@@ -1,58 +1,60 @@
 import time
 
+from config import AppConfig
 
-def is_retest(row):
+
+class RetestDetector:
     """
-    Detect a valid retest setup.
-
-    Logic (for long trades):
-    1. Price previously broke out
-    2. Price pulls back near breakout level (HH_20)
-    3. Holds above EMA20
-    4. Shows continuation (close back above prior HH zone)
-
-    NOTE:
-    Requires:
-    - row["hh20"]
-    - row["hh20_prev"]
-    - row["ema20"]
+    Detects configured retest setups.
     """
 
-    start = time.time()
+    def __init__(self, config=None):
+        self.config = config or AppConfig.load()
+        high_period = self.config.require("features", "structure", "high_period")
+        fast_ema_period = self.config.require("features", "ema_periods", "fast")
+        self.high_column = f"hh{high_period}"
+        self.previous_high_column = f"{self.high_column}_prev"
+        self.fast_ema_column = f"ema{fast_ema_period}"
 
-    print("\n🔁 Checking retest condition...")
+    def is_retest(self, row):
+        start = time.time()
 
-    price = row["close"]
-    hh = row["hh20"]
-    prev_hh = row["hh20_prev"]
-    ema20 = row["ema20"]
+        print("\n🔁 Checking retest condition...")
 
-    # ✅ Step 1: pullback into zone (near previous HH)
-    pullback = price <= prev_hh
+        price = row["close"]
+        prev_hh = row[self.previous_high_column]
+        ema_value = row[self.fast_ema_column]
 
-    # ✅ Step 2: holds above EMA20 (trend intact)
-    hold = price > ema20
+        # ✅ Step 1: pullback into zone (near previous HH)
+        pullback = price <= prev_hh
 
-    # ✅ Step 3: continuation attempt
-    continuation = price > prev_hh
+        # ✅ Step 2: holds above EMA
+        hold = price > ema_value
 
-    retest = pullback and hold and continuation
+        # ✅ Step 3: continuation attempt
+        continuation = price > prev_hh
 
-    # ✅ Debug prints
-    print(f"   Price: {price:.2f}")
-    print(f"   Prev HH: {prev_hh:.2f}")
-    print(f"   EMA20: {ema20:.2f}")
+        retest = pullback and hold and continuation
 
-    print(f"   Pullback: {'✅' if pullback else '❌'}")
-    print(f"   Hold above EMA20: {'✅' if hold else '❌'}")
-    print(f"   Continuation: {'✅' if continuation else '❌'}")
+        # ✅ Debug prints
+        print(f"   Price: {price:.2f}")
+        print(f"   Prev HH: {prev_hh:.2f}")
+        print(f"   {self.fast_ema_column}: {ema_value:.2f}")
 
-    if retest:
-        print("✅ Retest setup confirmed")
-    else:
-        print("❌ No valid retest")
+        print(f"   Pullback: {'✅' if pullback else '❌'}")
+        print(f"   Hold above EMA: {'✅' if hold else '❌'}")
+        print(f"   Continuation: {'✅' if continuation else '❌'}")
 
-    elapsed = time.time() - start
-    print(f"⏱ Time taken: {elapsed:.4f}s")
+        if retest:
+            print("✅ Retest setup confirmed")
+        else:
+            print("❌ No valid retest")
 
-    return retest
+        elapsed = time.time() - start
+        print(f"⏱ Time taken: {elapsed:.4f}s")
+
+        return retest
+
+
+def is_retest(row, config=None):
+    return RetestDetector(config=config).is_retest(row)

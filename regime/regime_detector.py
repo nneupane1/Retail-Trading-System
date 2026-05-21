@@ -1,7 +1,9 @@
 import time
 
+from config import AppConfig
 
-def _compute_slope(series, lookback=5):
+
+def _compute_slope(series, lookback):
     """
     Simple slope calculation over last N points.
     """
@@ -12,75 +14,92 @@ def _compute_slope(series, lookback=5):
     return series.iloc[-1] - series.iloc[-lookback]
 
 
-def compute_regime(df_5h, df_12h):
+class RegimeDetector:
     """
-    Multi-timeframe regime detection.
-
-    Uses:
-    - 12H → macro trend
-    - 5H → confirmation
-
-    Returns:
-    - regime_score (0–4)
+    Multi-timeframe regime detector.
     """
 
-    start = time.time()
+    def __init__(self, config=None):
+        self.config = config or AppConfig.load()
+        self.ema_column = self.config.require("strategy", "regime", "ema_column")
+        self.macro_weight = self.config.require("strategy", "regime", "macro_weight")
+        self.macro_slope_weight = self.config.require(
+            "strategy",
+            "regime",
+            "macro_slope_weight"
+        )
+        self.trend_weight = self.config.require("strategy", "regime", "trend_weight")
+        self.slope_lookback = self.config.require("strategy", "regime", "slope_lookback")
+        self.strong_score = self.config.require("strategy", "regime", "strong_score")
+        self.moderate_score = self.config.require("strategy", "regime", "moderate_score")
 
-    print("\n🌊 Computing market regime (5H + 12H)...")
+    def compute_regime(self, df_5h, df_12h):
+        start = time.time()
 
-    score = 0
+        print("\n🌊 Computing market regime...")
 
-    # ✅ ------------------------------
-    # 12H (macro trend)
-    # ✅ ------------------------------
+        score = 0
 
-    close_12h = df_12h["close"].iloc[-1]
-    ema_12h = df_12h["ema50"].iloc[-1]
+        # ✅ ------------------------------
+        # Macro timeframe
+        # ✅ ------------------------------
 
-    if close_12h > ema_12h:
-        score += 2
-        print("✅ 12H bullish (price > EMA50)")
+        close_12h = df_12h["close"].iloc[-1]
+        ema_12h = df_12h[self.ema_column].iloc[-1]
 
-    else:
-        print("❌ 12H not bullish")
+        if close_12h > ema_12h:
+            score += self.macro_weight
+            print(f"✅ Macro bullish (price > {self.ema_column})")
 
-    # ✅ slope (trend strength)
-    slope_12h = _compute_slope(df_12h["ema50"], lookback=5)
+        else:
+            print("❌ Macro not bullish")
 
-    if slope_12h > 0:
-        score += 1
-        print(f"✅ 12H EMA slope positive (+{slope_12h:.4f})")
-    else:
-        print("❌ 12H EMA slope not positive")
+        # ✅ slope (trend strength)
+        slope_12h = _compute_slope(
+            df_12h[self.ema_column],
+            lookback=self.slope_lookback
+        )
 
-    # ✅ ------------------------------
-    # 5H (confirmation)
-    # ✅ ------------------------------
+        if slope_12h > 0:
+            score += self.macro_slope_weight
+            print(f"✅ Macro EMA slope positive (+{slope_12h:.4f})")
+        else:
+            print("❌ Macro EMA slope not positive")
 
-    close_5h = df_5h["close"].iloc[-1]
-    ema_5h = df_5h["ema50"].iloc[-1]
+        # ✅ ------------------------------
+        # Trend confirmation timeframe
+        # ✅ ------------------------------
 
-    if close_5h > ema_5h:
-        score += 1
-        print("✅ 5H confirms uptrend (price > EMA50)")
-    else:
-        print("❌ 5H not confirming trend")
+        close_5h = df_5h["close"].iloc[-1]
+        ema_5h = df_5h[self.ema_column].iloc[-1]
 
-    # ✅ ------------------------------
-    # FINAL OUTPUT
-    # ✅ ------------------------------
+        if close_5h > ema_5h:
+            score += self.trend_weight
+            print(f"✅ Trend confirms uptrend (price > {self.ema_column})")
+        else:
+            print("❌ Trend not confirming")
 
-    elapsed = time.time() - start
+        # ✅ ------------------------------
+        # FINAL OUTPUT
+        # ✅ ------------------------------
 
-    print(f"\n📊 Regime Score: {score}/4")
-    print(f"⏱ Time taken: {elapsed:.2f}s")
+        elapsed = time.time() - start
 
-    # ✅ interpretation hint (optional but useful)
-    if score >= 3:
-        print("🔥 Strong trending environment")
-    elif score == 2:
-        print("⚠️ Moderate trend")
-    else:
-        print("❌ Weak / choppy market")
+        max_score = self.macro_weight + self.macro_slope_weight + self.trend_weight
 
-    return score
+        print(f"\n📊 Regime Score: {score}/{max_score}")
+        print(f"⏱ Time taken: {elapsed:.2f}s")
+
+        # ✅ interpretation hint (optional but useful)
+        if score >= self.strong_score:
+            print("🔥 Strong trending environment")
+        elif score == self.moderate_score:
+            print("⚠️ Moderate trend")
+        else:
+            print("❌ Weak / choppy market")
+
+        return score
+
+
+def compute_regime(df_5h, df_12h, config=None):
+    return RegimeDetector(config=config).compute_regime(df_5h, df_12h)

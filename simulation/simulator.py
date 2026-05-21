@@ -1,17 +1,17 @@
 import time
 
+from config import AppConfig
 from simulation.account import Account
-from simulation.trade import Trade
 
-from core.bias.bias_detector import get_bias
-from core.regime.regime_detector import compute_regime
-from core.entry.scoring import compute_score
-from core.entry.entry_engine import generate_entry
+from bias.bias_detector import BiasDetector
+from regime.regime_detector import RegimeDetector
+from entry.scoring import ScoreEngine
+from entry.entry_engine import EntryEngine
 
-from core.position.sizing import calculate_position_size
-from core.pyramiding.pyramiding_engine import check_pyramiding, get_pyramid_size
-from core.sniffing.trend_sniffer import is_trend_alive
-from core.exit.exit_engine import should_exit
+from position.sizing import PositionSizer
+from pyramiding.pyramiding_engine import PyramidingEngine
+from sniffing.trend_sniffer import TrendSniffer
+from exit.exit_engine import ExitEngine
 
 
 class Simulator:
@@ -19,15 +19,50 @@ class Simulator:
     Core engine running your strategy step-by-step (candle-based).
     """
 
-    def __init__(self, initial_equity=20000):
+    def __init__(
+        self,
+        initial_equity=None,
+        risk_per_trade=None,
+        trade_logger=None,
+        equity_logger=None,
+        entry_engine=None,
+        score_engine=None,
+        bias_detector=None,
+        regime_detector=None,
+        pyramiding_engine=None,
+        trend_sniffer=None,
+        exit_engine=None,
+        position_sizer=None,
+        config=None
+    ):
 
         print("\n🧠 Initializing Simulator...")
 
-        self.account = Account(initial_equity=initial_equity)
+        self.config = config or AppConfig.load()
+        self.risk_per_trade = (
+            risk_per_trade
+            if risk_per_trade is not None
+            else self.config.require("account", "risk_per_trade")
+        )
+
+        self.account = Account(
+            initial_equity=initial_equity,
+            config=self.config
+        )
 
         self.current_trade = None
         self.base_size = 0
         self.level = 0
+        self.trade_logger = trade_logger
+        self.equity_logger = equity_logger
+        self.entry_engine = entry_engine or EntryEngine(config=self.config)
+        self.score_engine = score_engine or ScoreEngine(config=self.config)
+        self.bias_detector = bias_detector or BiasDetector(config=self.config)
+        self.regime_detector = regime_detector or RegimeDetector(config=self.config)
+        self.pyramiding_engine = pyramiding_engine or PyramidingEngine(config=self.config)
+        self.trend_sniffer = trend_sniffer or TrendSniffer(config=self.config)
+        self.exit_engine = exit_engine or ExitEngine()
+        self.position_sizer = position_sizer or PositionSizer()
 
     # ✅ --------------------------------------------------
     # Main step function (called each 15m candle)
@@ -42,29 +77,29 @@ class Simulator:
         # 1. MARKET CONTEXT
         # ✅ --------------------------
 
-        bias = get_bias(df_1h)
-        regime = compute_regime(df_5h, df_12h)
+        bias = self.bias_detector.get_bias(df_1h)
+        regime = self.regime_detector.compute_regime(df_5h, df_12h)
 
         # ✅ --------------------------
         # 2. ENTRY LOGIC
         # ✅ --------------------------
 
-        score = compute_score(row, bias)
+        score = self.score_engine.compute_score(row, bias)
 
         if self.current_trade is None:
 
-            trade = generate_entry(row, score, bias)
+            trade = self.entry_engine.generate_entry(row, score, bias)
 
             if trade:
 
                 print("\n🚀 EXECUTING NEW TRADE")
 
                 # ✅ position sizing
-                size = calculate_position_size(
+                size = self.position_sizer.calculate(
                     equity=self.account.equity,
-                    risk_per_trade=0.01,
+                    risk_per_trade=self.risk_per_trade,
                     entry_price=row["close"],
-                    stop_price=row["ll10"]
+                    stop_price=trade.stop
                 )
 
                 trade.add_entry(row["close"], size)
@@ -85,7 +120,7 @@ class Simulator:
             trade = self.current_trade
 
             # ✅ pyramiding
-            new_level = check_pyramiding(
+            new_level = self.pyramiding_engine.check_pyramiding(
                 price=price,
                 entry_price=trade.entry_price,
                 R=trade.R,
@@ -93,17 +128,20 @@ class Simulator:
             )
 
             if new_level != self.level:
-                add_size = get_pyramid_size(self.base_size, new_level)
+                add_size = self.pyramiding_engine.get_pyramid_size(
+                    self.base_size,
+                    new_level
+                )
 
                 if add_size > 0:
                     trade.add_entry(price, add_size)
                     self.level = new_level
 
             # ✅ sniffing (trend continuation)
-            trend_ok = is_trend_alive(row)
+            trend_ok = self.trend_sniffer.is_trend_alive(row)
 
             # ✅ exit logic
-            exit_signal = should_exit(row, trade.stop)
+            exit_signal = self.exit_engine.should_exit(row, trade.stop)
 
             # ✅ combine exit logic
             if exit_signal or not trend_ok:
@@ -115,10 +153,16 @@ class Simulator:
                 # ✅ update account
                 self.account.update(trade)
 
+                if self.trade_logger:
+                    self.trade_logger.log_trade(trade)
+
                 # ✅ reset
                 self.current_trade = None
                 self.base_size = 0
                 self.level = 0
+
+        if self.equity_logger:
+            self.equity_logger.log(row.name, self.account.equity)
 
         print("=" * 60 + "\n")
 

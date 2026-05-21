@@ -1,4 +1,5 @@
 import time
+from config import AppConfig
 
 
 class Account:
@@ -10,11 +11,14 @@ class Account:
     - Trade updates (PnL)
     """
 
-    def __init__(self, initial_equity=20000):
+    def __init__(self, initial_equity=None, config=None):
 
         print("\n🏦 Initializing account...")
 
         start = time.time()
+
+        self.config = config or AppConfig.load()
+        initial_equity = initial_equity or self.config.require("account", "initial_equity")
 
         self.initial_equity = initial_equity
         self.equity = initial_equity

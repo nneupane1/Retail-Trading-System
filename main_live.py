@@ -1,5 +1,6 @@
 import time
 
+from config import AppConfig
 from live_sim.runner import run_live_sim
 
 
@@ -11,10 +12,11 @@ def main():
     print("\n🚀 LAUNCHING LIVE SIMULATION SYSTEM\n")
 
     start = time.time()
+    config = AppConfig.load()
 
     try:
         # ✅ start continuous live simulation
-        run_live_sim(symbol="BTCUSDT")
+        run_live_sim(config=config)
 
     except KeyboardInterrupt:
         print("\n⛔ Live simulation stopped by user")
@@ -28,4 +30,3 @@ def main():
 # ✅ run directly
 if __name__ == "__main__":
     main()
-``

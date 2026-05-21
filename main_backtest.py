@@ -1,5 +1,6 @@
 import time
 
+from config import AppConfig
 from backtest.runner import run_backtest
 
 
@@ -11,9 +12,10 @@ def main():
     print("\n🚀 LAUNCHING BACKTEST SYSTEM\n")
 
     start = time.time()
+    config = AppConfig.load()
 
     # ✅ Run full pipeline
-    sim = run_backtest(symbol="BTCUSDT")
+    sim = run_backtest(config=config)
 
     # ✅ Final summary already printed inside runner
     # But you can optionally print again:

@@ -2,17 +2,21 @@ import os
 import csv
 import time
 
+from config import AppConfig
+
 
 class EquityLogger:
     """
     Tracks equity curve over time.
     """
 
-    def __init__(self, filepath="backtest/output/equity.csv"):
+    def __init__(self, filepath=None, config=None):
 
         print("\n📈 Initializing Equity Logger...")
 
-        self.filepath = filepath
+        self.config = config or AppConfig.load()
+        output_dir = self.config.require("backtest", "output_dir")
+        self.filepath = filepath or os.path.join(output_dir, "equity.csv")
 
         os.makedirs(os.path.dirname(filepath), exist_ok=True)
 

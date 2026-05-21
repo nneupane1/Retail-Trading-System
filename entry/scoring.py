@@ -1,105 +1,113 @@
 import time
 
+from config import AppConfig
 
-def compute_score(row, bias):
+
+class ScoreEngine:
     """
-    Compute trade quality score.
-
-    Combines:
-    - bias
-    - trend alignment
-    - compression
-    - breakout
-    - candle strength
+    Computes configured trade quality score.
     """
 
-    start = time.time()
+    def __init__(self, config=None):
+        self.config = config or AppConfig.load()
+        self.scoring = self.config.require("strategy", "scoring")
+        fast_ema_period = self.config.require("features", "ema_periods", "fast")
+        self.fast_ema_column = f"ema{fast_ema_period}"
 
-    print("\n🧠 Computing entry score...")
+    def compute_score(self, row, bias):
+        start = time.time()
 
-    score = 0
+        print("\n🧠 Computing entry score...")
 
-    # ✅ ----------------------------------
-    # 1. BIAS (direction alignment)
-    # ✅ ----------------------------------
+        score = 0
 
-    if bias == "bullish":
-        score += 2
-        print("✅ Bias bullish (+2)")
+        # ✅ ----------------------------------
+        # 1. BIAS (direction alignment)
+        # ✅ ----------------------------------
 
-    elif bias == "bearish":
-        print("⚠️ Bearish bias (no score for long)")
+        if bias == "bullish":
+            score += self.scoring["bias_weight"]
+            print(f"✅ Bias bullish (+{self.scoring['bias_weight']})")
 
-    else:
-        print("❌ Neutral bias")
+        elif bias == "bearish":
+            print("⚠️ Bearish bias (no score for long)")
 
-    # ✅ ----------------------------------
-    # 2. TREND CONFIRMATION (15m)
-    # ✅ ----------------------------------
+        else:
+            print("❌ Neutral bias")
 
-    if row["close"] > row["ema20"]:
-        score += 1
-        print("✅ Price above EMA20 (+1)")
-    else:
-        print("❌ Price below EMA20")
+        # ✅ ----------------------------------
+        # 2. TREND CONFIRMATION
+        # ✅ ----------------------------------
 
-    # ✅ ----------------------------------
-    # 3. COMPRESSION (setup quality)
-    # ✅ ----------------------------------
+        if row["close"] > row[self.fast_ema_column]:
+            score += self.scoring["trend_weight"]
+            print(f"✅ Price above {self.fast_ema_column} (+{self.scoring['trend_weight']})")
+        else:
+            print(f"❌ Price below {self.fast_ema_column}")
 
-    if row["compression"]:
-        score += 1
-        print("✅ Compression detected (+1)")
-    else:
-        print("❌ No compression")
+        # ✅ ----------------------------------
+        # 3. COMPRESSION (setup quality)
+        # ✅ ----------------------------------
 
-    # ✅ ----------------------------------
-    # 4. BREAKOUT (core trigger)
-    # ✅ ----------------------------------
+        if row["compression"]:
+            score += self.scoring["compression_weight"]
+            print(f"✅ Compression detected (+{self.scoring['compression_weight']})")
+        else:
+            print("❌ No compression")
 
-    if row["breakout"]:
-        score += 2
-        print("✅ Breakout confirmed (+2)")
-    else:
-        print("❌ No breakout")
+        # ✅ ----------------------------------
+        # 4. BREAKOUT (core trigger)
+        # ✅ ----------------------------------
 
-    # ✅ ----------------------------------
-    # 5. MOMENTUM (candle quality)
-    # ✅ ----------------------------------
+        if row["breakout"]:
+            score += self.scoring["breakout_weight"]
+            print(f"✅ Breakout confirmed (+{self.scoring['breakout_weight']})")
+        else:
+            print("❌ No breakout")
 
-    if row["body_strength"] > 1.3:
-        score += 1
-        print("✅ Strong body (+1)")
-    else:
-        print("❌ Weak body")
+        # ✅ ----------------------------------
+        # 5. MOMENTUM (candle quality)
+        # ✅ ----------------------------------
 
-    if row["close_position"] > 0.6:
-        score += 1
-        print("✅ Strong close position (+1)")
-    else:
-        print("❌ Weak close")
+        if row["body_strength"] > self.scoring["body_strength_min"]:
+            score += self.scoring["body_strength_weight"]
+            print(f"✅ Strong body (+{self.scoring['body_strength_weight']})")
+        else:
+            print("❌ Weak body")
 
-    if row["upper_wick_ratio"] < 1:
-        score += 1
-        print("✅ Low rejection (+1)")
-    else:
-        print("❌ High rejection wick")
+        if row["close_position"] > self.scoring["close_position_min"]:
+            score += self.scoring["close_position_weight"]
+            print(f"✅ Strong close position (+{self.scoring['close_position_weight']})")
+        else:
+            print("❌ Weak close")
 
-    # ✅ ----------------------------------
-    # FINAL OUTPUT
-    # ✅ ----------------------------------
+        if row["upper_wick_ratio"] < self.scoring["upper_wick_max"]:
+            score += self.scoring["upper_wick_weight"]
+            print(f"✅ Low rejection (+{self.scoring['upper_wick_weight']})")
+        else:
+            print("❌ High rejection wick")
 
-    elapsed = time.time() - start
+        # ✅ ----------------------------------
+        # FINAL OUTPUT
+        # ✅ ----------------------------------
 
-    print(f"\n🎯 Final Score: {score}")
-    print(f"⏱ Time taken: {elapsed:.4f}s")
+        elapsed = time.time() - start
 
-    # ✅ quality interpretation
-    if score >= 6:
-        print("🔥 High-quality setup")
-    elif score >= 5:
-        print("✅ Tradable setup")
-    else:
-        print("❌ Weak setup")
+        print(f"\n🎯 Final Score: {score}")
+        print(f"⏱ Time taken: {elapsed:.4f}s")
 
-    return score
+        entry_threshold = self.config.require("entry", "score_threshold")
+
+        # ✅ quality interpretation
+        if score > entry_threshold:
+            print("🔥 High-quality setup")
+        elif score == entry_threshold:
+            print("✅ Tradable setup")
+        else:
+            print("❌ Weak setup")
+
+        return score
+
+
+def compute_score(row, bias, config=None):
+    return ScoreEngine(config=config).compute_score(row, bias)
