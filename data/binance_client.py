@@ -12,8 +12,11 @@ from config import AppConfig, EnvLoader
 class BinanceClient:
     """
     Binance REST client.
+
     Public market data works without keys; keys are loaded for future
-    authenticated endpoints and never printed.
+    authenticated endpoints and never printed. Network, timeout, rate-limit,
+    and server-side failures are retried according to the JSON configuration so
+    long-running data jobs can recover from transient Binance/API issues.
     """
 
     def __init__(self, config=None):
@@ -30,6 +33,26 @@ class BinanceClient:
         self.timeout = self.config.require("binance", "request_timeout_seconds")
         self.retry_attempts = self.config.require("binance", "retry_attempts")
         self.retry_backoff = self.config.require("binance", "retry_backoff_seconds")
+        self.retry_status_codes = set(
+            self.config.require("binance", "retry_status_codes")
+        )
+        self.retry_logging_enabled = self.config.require(
+            "binance",
+            "retry_logging_enabled"
+        )
+
+    def _retry_delay(self, attempt):
+        return self.retry_backoff * attempt
+
+    def _log_retry(self, attempt, delay, reason):
+        if not self.retry_logging_enabled:
+            return
+
+        print(
+            "Binance request failed "
+            f"(attempt {attempt}/{self.retry_attempts}): {reason}"
+        )
+        print(f"Retrying in {delay:.2f}s...")
 
     def get_klines(
         self,
@@ -98,13 +121,20 @@ class BinanceClient:
                     f"Binance API error: {response.status_code} | {response.text}"
                 )
 
+                if response.status_code not in self.retry_status_codes:
+                    raise last_error
+
             except requests.RequestException as exc:
                 last_error = exc
 
             if attempt < self.retry_attempts:
-                time.sleep(self.retry_backoff * attempt)
+                delay = self._retry_delay(attempt)
+                self._log_retry(attempt, delay, last_error)
+                time.sleep(delay)
 
-        raise Exception(f" Binance request failed: {last_error}")
+        raise Exception(
+            f"Binance request failed after {self.retry_attempts} attempts: {last_error}"
+        )
 
 
 def _format_time(ms):

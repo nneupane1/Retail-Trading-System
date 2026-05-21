@@ -12,7 +12,7 @@ confirmed winners, and make every decision traceable.
 Retail-Trading-System/
 ├── config/              # JSON-backed application settings
 ├── data/                # Binance client, historical download, CSV loading, resampling
-├── features/            # EMA, ATR, structure, compression, candle metrics
+├── features/            # EMA, structure, compression, candle metrics
 ├── bias/                # Directional bias detection
 ├── regime/              # Higher-timeframe regime detection
 ├── entry/               # Breakout, retest, score, entry engine
@@ -81,6 +81,10 @@ The real `.env` file is ignored by git. VS Code is configured through
 Public Binance kline data does not require API keys, but the client loads them
 for future authenticated endpoints.
 
+Binance connection behavior is controlled in JSON. Request timeout, retry
+attempts, retry backoff, retryable HTTP status codes, and retry logging can be
+changed in `config/settings.json` without editing Python files.
+
 ## Data Pipeline
 
 The data layer is class-backed and resumable:
@@ -140,7 +144,6 @@ Console logs show:
 `FeaturePipeline` computes configured indicators and signal columns:
 
 - EMA fast/slow
-- ATR
 - Rolling high and low structure
 - Compression ranges
 - Close-based breakout

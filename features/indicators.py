@@ -23,31 +23,6 @@ def ema(series, period=20):
 
 
 # ------------------------------------------
-# ATR (simple version)
-# ------------------------------------------
-
-def atr(df, period=14):
-
-    start = time.time()
-
-    print(f"Computing ATR{period}...")
-
-    high_low = df["high"] - df["low"]
-    high_close = (df["high"] - df["close"].shift()).abs()
-    low_close = (df["low"] - df["close"].shift()).abs()
-
-    tr = high_low.combine(high_close, max).combine(low_close, max)
-
-    result = tr.rolling(period).mean()
-
-    elapsed = time.time() - start
-
-    print(f"ATR{period} computed | Time: {elapsed:.2f}s")
-
-    return result
-
-
-# ------------------------------------------
 # Rolling High
 # ------------------------------------------
 

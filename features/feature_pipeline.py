@@ -3,7 +3,7 @@
 import time
 
 from config import AppConfig
-from .indicators import ema, atr, rolling_high, rolling_low
+from .indicators import ema, rolling_high, rolling_low
 from .candle_metrics import CandleMetricsCalculator
 
 
@@ -12,15 +12,14 @@ class FeaturePipeline:
     Builds the configured feature set for one OHLCV timeframe.
 
     This class owns the column contract used by downstream strategy modules:
-    trend filters, volatility, structure, compression, breakout flags, and
-    candle-behavior metrics are all created here from JSON-backed settings.
+    trend filters, structure, compression, breakout flags, and candle-behavior
+    metrics are all created here from JSON-backed settings.
     """
 
     def __init__(self, config=None):
         self.config = config or AppConfig.load()
         self.fast_ema_period = self.config.require("features", "ema_periods", "fast")
         self.slow_ema_period = self.config.require("features", "ema_periods", "slow")
-        self.atr_period = self.config.require("features", "atr_period")
         self.high_period = self.config.require("features", "structure", "high_period")
         self.low_period = self.config.require("features", "structure", "low_period")
         self.fast_range_period = self.config.require(
@@ -56,17 +55,7 @@ class FeaturePipeline:
         print(f"Trend features done | Time: {time.time() - t0:.2f}s\n")
 
         # ------------------------------
-        # 2. VOLATILITY (ATR)
-        # ------------------------------
-
-        t0 = time.time()
-
-        df["atr"] = atr(df, self.atr_period)
-
-        print(f"Volatility (ATR) done | Time: {time.time() - t0:.2f}s\n")
-
-        # ------------------------------
-        # 3. STRUCTURE (HH / LL)
+        # 2. STRUCTURE (HH / LL)
         # ------------------------------
 
         t0 = time.time()
@@ -80,7 +69,7 @@ class FeaturePipeline:
         print(f"Structure (HH/LL) done | Time: {time.time() - t0:.2f}s\n")
 
         # ------------------------------
-        # 4. COMPRESSION
+        # 3. COMPRESSION
         # ------------------------------
 
         t0 = time.time()
@@ -105,7 +94,7 @@ class FeaturePipeline:
         print(f"Compression computed | Time: {time.time() - t0:.2f}s\n")
 
         # ------------------------------
-        # 5. BREAKOUT (CLOSE-based)
+        # 4. BREAKOUT (CLOSE-based)
         # ------------------------------
 
         t0 = time.time()
@@ -117,7 +106,7 @@ class FeaturePipeline:
         print(f"Breakout logic applied | Time: {time.time() - t0:.2f}s\n")
 
         # ------------------------------
-        # 6. CANDLE METRICS (IMPORTANT)
+        # 5. CANDLE METRICS
         # ------------------------------
 
         df = self.candle_metrics.compute(df)
