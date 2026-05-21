@@ -3,6 +3,8 @@
 import os
 import time
 
+import pandas as pd
+
 from config import AppConfig
 
 
@@ -14,12 +16,38 @@ def _ensure_folder(path):
 class TimeframeBuilder:
     """
     Builds configured OHLCV timeframes from the base 1m DataFrame.
+
+    Resampled candles use right-edge labels. With the default configuration,
+    any higher-timeframe candle whose close boundary has not been reached by
+    the available 1m source data is removed before strategy logic can see it.
     """
 
     def __init__(self, config=None):
         self.config = config or AppConfig.load()
         self.timeframes = self.config.require("timeframes")
         self.resample_config = self.timeframes.get("resample", {})
+
+    def _source_close_cutoff(self, df):
+        base_rule = self.timeframes["base"]["rule"]
+        base_offset = pd.tseries.frequencies.to_offset(base_rule)
+        return df.index.max() + base_offset
+
+    def _drop_incomplete_resampled_candles(self, df_source, df_resampled):
+        if not self.resample_config.get("drop_incomplete", True):
+            return df_resampled
+
+        close_cutoff = self._source_close_cutoff(df_source)
+        before = len(df_resampled)
+        df_resampled = df_resampled.loc[df_resampled.index <= close_cutoff]
+        removed = before - len(df_resampled)
+
+        if removed:
+            print(
+                f"Removed {removed} incomplete resampled candle(s); "
+                f"latest usable close: {close_cutoff}"
+            )
+
+        return df_resampled
 
     def resample(self, df, rule):
         start = time.time()
@@ -37,6 +65,11 @@ class TimeframeBuilder:
             "close": "last",
             "volume": "sum"
         }).dropna()
+
+        df_resampled = self._drop_incomplete_resampled_candles(
+            df,
+            df_resampled
+        )
 
         elapsed = time.time() - start
 

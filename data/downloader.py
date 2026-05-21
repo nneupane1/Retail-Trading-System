@@ -70,7 +70,7 @@ class MarketDataDownloader:
         return df
 
     @staticmethod
-    def klines_to_df(raw):
+    def klines_to_df(raw, closed_only=True, now_ms=None):
         if not raw:
             raise ValueError("No kline data returned from Binance")
 
@@ -79,6 +79,19 @@ class MarketDataDownloader:
             "close_time", "quote_asset_volume", "number_of_trades",
             "taker_buy_base", "taker_buy_quote", "ignore"
         ])
+
+        if closed_only:
+            now_ms = now_ms or int(pd.Timestamp.utcnow().timestamp() * 1000)
+            df["close_time"] = pd.to_numeric(df["close_time"], errors="raise")
+            before = len(df)
+            df = df[df["close_time"] <= now_ms]
+
+            removed = before - len(df)
+            if removed:
+                print(f"Removed {removed} still-forming Binance candle(s)")
+
+            if df.empty:
+                raise ValueError("No closed kline data returned from Binance")
 
         df = df[["timestamp", "open", "high", "low", "close", "volume"]]
 
@@ -291,10 +304,14 @@ class MarketDataDownloader:
                 print("WARNING: No more data returned. Stopping.")
                 break
 
-            batch_df = self.klines_to_df(raw)
+            batch_df = self.klines_to_df(
+                raw,
+                closed_only=self.config.require("binance", "closed_klines_only")
+            )
             self._append_batch(paths["partial"], batch_df)
 
-            last_ts = raw[-1][0]
+            first_ts = self._to_utc_ms(batch_df.index[0])
+            last_ts = self._to_utc_ms(batch_df.index[-1])
             current_start = last_ts + 1
 
             total_batches += 1
@@ -328,7 +345,7 @@ class MarketDataDownloader:
 
             if total_batches % status_every == 0:
                 print(f"Batch {total_batches} saved")
-                print(f"  Window: {_fmt(raw[0][0])} -> {_fmt(last_ts)}")
+                print(f"  Window: {_fmt(first_ts)} -> {_fmt(last_ts)}")
                 print(f"  Rows this batch: {len(batch_df)} | Total rows: {total_rows}")
                 print(f"  Progress: {progress_pct:.2f}% | Remaining: {remaining_pct:.2f}%")
                 print(
@@ -398,7 +415,10 @@ class MarketDataDownloader:
             verbose=True
         )
 
-        return self.klines_to_df(raw)
+        return self.klines_to_df(
+            raw,
+            closed_only=self.config.require("binance", "closed_klines_only")
+        )
 
     def load_from_csv(self, filepath):
         filepath = Path(filepath)

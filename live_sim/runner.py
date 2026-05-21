@@ -51,6 +51,9 @@ def run_live_sim(symbol=None, config=None):
 
         print("Computing features...")
         df_15m = compute_features(df_15m, config=config)
+        df_1h = compute_features(df_1h, config=config)
+        df_5h = compute_features(df_5h, config=config)
+        df_12h = compute_features(df_12h, config=config)
 
         # avoid lookahead
         high_period = config.require("features", "structure", "high_period")
@@ -69,7 +72,15 @@ def run_live_sim(symbol=None, config=None):
 
             row = df_15m.iloc[-1]
 
-            sim.step(row, df_1h, df_5h, df_12h)
+            df_1h_context = df_1h.loc[:row.name]
+            df_5h_context = df_5h.loc[:row.name]
+            df_12h_context = df_12h.loc[:row.name]
+
+            if df_1h_context.empty or df_5h_context.empty or df_12h_context.empty:
+                print("Waiting for higher-timeframe candles to close before strategy run")
+                continue
+
+            sim.step(row, df_1h_context, df_5h_context, df_12h_context)
 
         else:
             print("No new 15m candle yet")

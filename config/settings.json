@@ -20,6 +20,7 @@
     "retry_backoff_seconds": 1,
     "retry_status_codes": [418, 429, 500, 502, 503, 504],
     "retry_logging_enabled": true,
+    "closed_klines_only": true,
     "throttle_seconds": 0.2
   },
   "downloads": {
@@ -134,7 +135,8 @@
     },
     "resample": {
       "closed": "left",
-      "label": "right"
+      "label": "right",
+      "drop_incomplete": true
     }
   }
 }

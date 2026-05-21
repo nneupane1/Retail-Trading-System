@@ -105,6 +105,12 @@ Default configured timeframes:
 12h   macro regime
 ```
 
+Resampled candles are right-labeled and closed-candle only. For example, the
+1h candle labeled `10:00` represents the completed `09:00 -> 10:00` window.
+The system removes still-forming Binance klines and drops any resampled
+higher-timeframe candle whose close boundary has not been reached by the
+available 1m source data.
+
 ## Resumable Binance Downloads
 
 Historical 1-minute downloads are checkpointed. If a run stops because of a
