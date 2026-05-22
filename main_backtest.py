@@ -2,6 +2,7 @@
 
 import time
 
+from common.debug import configure_debug
 from config import AppConfig
 from backtest.runner import run_backtest
 
@@ -15,6 +16,7 @@ def main():
 
     start = time.time()
     config = AppConfig.load()
+    configure_debug(config=config)
 
     # Run full pipeline
     sim = run_backtest(config=config)

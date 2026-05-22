@@ -2,6 +2,8 @@
 
 import time
 
+from common.debug import debug_print as print
+
 
 def is_new_15m_candle(df_15m, last_candle_time):
     """
@@ -16,6 +18,12 @@ def is_new_15m_candle(df_15m, last_candle_time):
     """
 
     start = time.time()
+
+    if df_15m.empty:
+        print("\nChecking 15m candle...")
+        print("No 15m candles available yet")
+        print(f"Elapsed: {time.time() - start:.4f}s")
+        return False, last_candle_time
 
     current_time = df_15m.index[-1]
 

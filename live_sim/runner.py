@@ -2,6 +2,7 @@
 
 import time
 
+from common.debug import configure_debug, debug_print as print
 from config import AppConfig
 from simulation.simulator import Simulator
 from data.downloader import fetch_recent
@@ -13,6 +14,7 @@ from live_sim.logger import LiveTradeLogger
 
 def run_live_sim(symbol=None, config=None):
     config = config or AppConfig.load()
+    configure_debug(config=config)
     symbol = symbol or config.require("app", "default_symbol")
     interval = config.require("binance", "default_interval")
     recent_limit = config.require("binance", "recent_limit")
@@ -54,11 +56,6 @@ def run_live_sim(symbol=None, config=None):
         df_1h = compute_features(df_1h, config=config)
         df_5h = compute_features(df_5h, config=config)
         df_12h = compute_features(df_12h, config=config)
-
-        # avoid lookahead
-        high_period = config.require("features", "structure", "high_period")
-        high_column = f"hh{high_period}"
-        df_15m[f"{high_column}_prev"] = df_15m[high_column].shift(1)
 
         # check if new 15m candle formed
         is_new, last_candle_time = is_new_15m_candle(

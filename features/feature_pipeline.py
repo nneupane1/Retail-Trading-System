@@ -2,6 +2,7 @@
 
 import time
 
+from common.debug import debug_print as print
 from config import AppConfig
 from .indicators import ema, rolling_high, rolling_low
 from .candle_metrics import CandleMetricsCalculator
@@ -34,6 +35,19 @@ class FeaturePipeline:
         )
         self.compression_ratio = self.config.require("features", "compression", "ratio")
         self.candle_metrics = CandleMetricsCalculator(config=self.config)
+
+    @staticmethod
+    def _drop_incomplete_feature_rows(df, required_columns):
+        before = len(df)
+        df = df.dropna(subset=required_columns).copy()
+        removed = before - len(df)
+
+        if removed:
+            print(f"Dropped {removed} incomplete feature row(s)")
+        else:
+            print("No incomplete feature rows detected")
+
+        return df
 
     def compute(self, df):
         overall_start = time.time()
@@ -94,22 +108,47 @@ class FeaturePipeline:
         print(f"Compression computed | Time: {time.time() - t0:.2f}s\n")
 
         # ------------------------------
-        # 4. BREAKOUT (CLOSE-based)
+        # 4. BREAKOUT EVENT (CLOSE-based)
         # ------------------------------
 
         t0 = time.time()
 
         previous_high_column = f"{high_column}_prev"
+        df["prev_close"] = df["close"].shift(1)
         df[previous_high_column] = df[high_column].shift(1)
-        df["breakout"] = df["close"] > df[previous_high_column]
+        df["above_breakout_level"] = df["close"] > df[previous_high_column]
+        df["breakout"] = (
+            df["above_breakout_level"] &
+            (df["prev_close"] <= df[previous_high_column])
+        )
 
-        print(f"Breakout logic applied | Time: {time.time() - t0:.2f}s\n")
+        print(f"Breakout event logic applied | Time: {time.time() - t0:.2f}s\n")
 
         # ------------------------------
         # 5. CANDLE METRICS
         # ------------------------------
 
         df = self.candle_metrics.compute(df)
+
+        # ------------------------------
+        # 6. CLEAN INCOMPLETE ROWS
+        # ------------------------------
+
+        required_columns = [
+            fast_ema_column,
+            slow_ema_column,
+            high_column,
+            low_column,
+            fast_range_column,
+            slow_range_column,
+            "prev_close",
+            previous_high_column,
+            "body_strength",
+            "upper_wick_ratio",
+            "lower_wick_ratio",
+            "close_position",
+        ]
+        df = self._drop_incomplete_feature_rows(df, required_columns)
 
         # ------------------------------
         # FINAL SUMMARY

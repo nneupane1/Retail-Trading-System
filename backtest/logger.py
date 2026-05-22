@@ -4,6 +4,7 @@ import os
 import csv
 import time
 
+from common.debug import debug_print as print
 from config import AppConfig
 
 
@@ -27,7 +28,9 @@ class TradeLogger:
         self.filepath = filepath or os.path.join(output_dir, "trades.csv")
 
         # ensure folder exists
-        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        directory = os.path.dirname(self.filepath)
+        if directory:
+            os.makedirs(directory, exist_ok=True)
 
         # create file with header
         with open(self.filepath, "w", newline="") as f:
@@ -40,6 +43,10 @@ class TradeLogger:
                 "exit_price",
                 "pnl",
                 "pnl_R",
+                "pnl_R_total",
+                "pnl_R_initial",
+                "initial_risk_amount",
+                "total_risk_amount",
                 "score",
                 "body_strength",
                 "close_position",
@@ -70,6 +77,10 @@ class TradeLogger:
                 trade.exit_price,
                 trade.pnl,
                 trade.pnl_R,
+                trade.pnl_R_total,
+                trade.pnl_R_initial,
+                trade.initial_risk_amount,
+                trade.total_risk_amount,
                 trade.conditions.get("score"),
                 trade.conditions.get("body_strength"),
                 trade.conditions.get("close_position"),

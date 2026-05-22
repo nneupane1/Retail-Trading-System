@@ -5,6 +5,7 @@ import time
 
 import pandas as pd
 
+from common.debug import debug_print as print
 from config import AppConfig
 
 

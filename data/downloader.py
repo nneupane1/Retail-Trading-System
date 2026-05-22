@@ -7,6 +7,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
+from common.debug import debug_print as print
 from config import AppConfig
 from .binance_client import BinanceClient
 

@@ -2,6 +2,7 @@
 
 import time
 
+from common.debug import debug_print as print
 from config import AppConfig
 
 
@@ -62,14 +63,14 @@ class ScoreEngine:
             print("No compression")
 
         # ----------------------------------
-        # 4. BREAKOUT (core trigger)
+        # 4. BREAKOUT EVENT (core trigger)
         # ----------------------------------
 
         if row["breakout"]:
             score += self.scoring["breakout_weight"]
-            print(f"Breakout confirmed (+{self.scoring['breakout_weight']})")
+            print(f"Breakout event confirmed (+{self.scoring['breakout_weight']})")
         else:
-            print("No breakout")
+            print("No breakout event")
 
         # ----------------------------------
         # 5. MOMENTUM (candle quality)

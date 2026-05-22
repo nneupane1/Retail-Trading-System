@@ -2,6 +2,7 @@
 
 import time
 
+from common.debug import debug_print as print
 from config import AppConfig
 
 
@@ -32,8 +33,14 @@ class TrendSniffer:
         strong_body = body_strength > self.thresholds["body_strength_min"]
         low_rejection = upper_wick < self.thresholds["upper_wick_max"]
         strong_close = close_pos > self.thresholds["close_position_min"]
+        min_confirmations = self.thresholds.get("min_confirmations", 1)
 
-        trend_alive = above_ema and strong_body and low_rejection and strong_close
+        confirmation_count = sum([
+            strong_body,
+            low_rejection,
+            strong_close,
+        ])
+        trend_alive = above_ema and confirmation_count >= min_confirmations
 
         # Debug prints
         print(f"  Price: {price:.2f}")
@@ -43,6 +50,11 @@ class TrendSniffer:
         print(f"  Body strength: {body_strength:.2f} {'PASS' if strong_body else 'FAIL'}")
         print(f"  Upper wick: {upper_wick:.2f} {'PASS' if low_rejection else 'FAIL'}")
         print(f"  Close position: {close_pos:.2f} {'PASS' if strong_close else 'FAIL'}")
+        print(
+            "  Confirmation count: "
+            f"{confirmation_count}/3 "
+            f"(need {min_confirmations})"
+        )
 
         if trend_alive:
             print("\nTrend is alive -> HOLD")

@@ -2,6 +2,7 @@
 
 import time
 
+from common.debug import debug_print as print
 from config import AppConfig
 
 

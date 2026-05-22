@@ -6,6 +6,7 @@ import os
 from datetime import datetime
 from urllib.parse import urljoin
 
+from common.debug import debug_print as print
 from config import AppConfig, EnvLoader
 
 

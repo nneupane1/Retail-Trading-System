@@ -1,6 +1,7 @@
 {
   "app": {
-    "default_symbol": "BTCUSDT"
+    "default_symbol": "BTCUSDT",
+    "debug": true
   },
   "account": {
     "initial_equity": 20000,
@@ -35,7 +36,7 @@
     }
   },
   "entry": {
-    "score_threshold": 5
+    "score_threshold": 4
   },
   "features": {
     "ema_periods": {
@@ -63,13 +64,20 @@
     "output_dir": "live_sim/output",
     "poll_seconds": 30
   },
+  "position": {
+    "min_stop_distance_ratio": 0.001,
+    "min_stop_distance_absolute": 0.0,
+    "max_position_size_units": null,
+    "max_notional_equity_multiple": null
+  },
   "storage": {
     "base_path": "data_storage"
   },
   "strategy": {
     "bias": {
       "ema_column": "ema50",
-      "slope_lookback": 3
+      "slope_lookback": 3,
+      "slope_threshold": 0.0005
     },
     "pyramiding": {
       "max_total_risk_multiple": 1.0,
@@ -92,6 +100,7 @@
       "macro_slope_weight": 1,
       "trend_weight": 1,
       "slope_lookback": 5,
+      "slope_threshold": 0.0005,
       "strong_score": 3,
       "moderate_score": 2
     },
@@ -110,7 +119,8 @@
     "sniffing": {
       "body_strength_min": 0.8,
       "close_position_min": 0.4,
-      "upper_wick_max": 1.5
+      "upper_wick_max": 1.5,
+      "min_confirmations": 1
     }
   },
   "timeframes": {

@@ -1,6 +1,8 @@
 """Tracks simulated equity and trade statistics across the strategy run."""
 
 import time
+
+from common.debug import debug_print as print
 from config import AppConfig
 
 

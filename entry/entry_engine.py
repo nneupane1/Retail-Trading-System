@@ -1,8 +1,10 @@
 """Converts a scored setup into a Trade object when configured entry rules are satisfied."""
 
 import time
-from simulation.trade import Trade
+
+from common.debug import debug_print as print
 from config import AppConfig
+from simulation.trade import Trade
 
 
 class EntryEngine:
@@ -29,9 +31,9 @@ class EntryEngine:
             print(f"No entry: score too low ({score} < {self.entry_threshold})")
             return None
 
-        # Breakout must be present (core rule)
+        # Breakout event must be present (core rule)
         if not row["breakout"]:
-            print("No entry: breakout not confirmed")
+            print("No entry: breakout event not confirmed")
             return None
 
         # Optional: allow retest as alternative (if you want later)

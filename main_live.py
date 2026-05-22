@@ -2,6 +2,7 @@
 
 import time
 
+from common.debug import configure_debug
 from config import AppConfig
 from live_sim.runner import run_live_sim
 
@@ -15,6 +16,7 @@ def main():
 
     start = time.time()
     config = AppConfig.load()
+    configure_debug(config=config)
 
     try:
         # start continuous live simulation

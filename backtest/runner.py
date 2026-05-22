@@ -3,6 +3,7 @@
 import time
 from pathlib import Path
 
+from common.debug import configure_debug, debug_print as print
 from config import AppConfig
 from simulation.simulator import Simulator
 from backtest.engine import BacktestEngine
@@ -30,6 +31,7 @@ def run_backtest(
     """
 
     config = config or AppConfig.load()
+    configure_debug(config=config)
     symbol = symbol or config.require("app", "default_symbol")
     base_path = base_path or config.require("storage", "base_path")
     start_date = start_date or config.require("history", "start_date")
@@ -72,11 +74,6 @@ def run_backtest(
     df_1h = compute_features(df_1h, config=config)
     df_5h = compute_features(df_5h, config=config)
     df_12h = compute_features(df_12h, config=config)
-
-    # IMPORTANT: prevent lookahead bias
-    high_period = config.require("features", "structure", "high_period")
-    high_column = f"hh{high_period}"
-    df_15m[f"{high_column}_prev"] = df_15m[high_column].shift(1)
 
     # ------------------------------------------
     # 4. INITIALIZE SIMULATOR

@@ -2,6 +2,7 @@
 
 import time
 
+from common.debug import debug_print as print
 from config import AppConfig
 
 
@@ -44,6 +45,10 @@ class Trade:
         # Results
         self.pnl = 0
         self.pnl_R = 0
+        self.pnl_R_total = 0
+        self.pnl_R_initial = 0
+        self.initial_risk_amount = 0
+        self.total_risk_amount = 0
 
         # Store WHY trade happened (very important)
         self.conditions = {
@@ -71,6 +76,9 @@ class Trade:
         print("\nAdding position...")
 
         start = time.time()
+
+        if not self.entries:
+            self.initial_risk_amount = abs(price - self.stop) * size
 
         self.entries.append((price, size))
 
@@ -138,11 +146,18 @@ class Trade:
 
         self.pnl = total
 
-        risk = self.total_risk_to_stop()
-        if risk:
-            self.pnl_R = total / risk
+        total_risk = self.total_risk_to_stop()
+        self.total_risk_amount = total_risk
+
+        if total_risk:
+            self.pnl_R = total / total_risk
+            self.pnl_R_total = self.pnl_R
+
+        if self.initial_risk_amount:
+            self.pnl_R_initial = total / self.initial_risk_amount
 
         print(f"\nTotal PnL: {self.pnl:.2f}")
-        print(f"PnL (R multiple): {self.pnl_R:.2f}")
+        print(f"PnL (R multiple, total risk): {self.pnl_R_total:.2f}")
+        print(f"PnL (R multiple, initial risk): {self.pnl_R_initial:.2f}")
 
         print(f"Elapsed: {time.time() - start:.4f}s")

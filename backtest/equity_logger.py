@@ -4,6 +4,7 @@ import os
 import csv
 import time
 
+from common.debug import debug_print as print
 from config import AppConfig
 
 
@@ -20,7 +21,9 @@ class EquityLogger:
         output_dir = self.config.require("backtest", "output_dir")
         self.filepath = filepath or os.path.join(output_dir, "equity.csv")
 
-        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        directory = os.path.dirname(self.filepath)
+        if directory:
+            os.makedirs(directory, exist_ok=True)
 
         with open(self.filepath, "w", newline="") as f:
             writer = csv.writer(f)

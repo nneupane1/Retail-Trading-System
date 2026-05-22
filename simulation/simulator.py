@@ -2,6 +2,7 @@
 
 import time
 
+from common.debug import configure_debug, debug_print as print
 from config import AppConfig
 from simulation.account import Account
 
@@ -46,6 +47,7 @@ class Simulator:
         print("\nInitializing Simulator...")
 
         self.config = config or AppConfig.load()
+        configure_debug(config=self.config)
         self.risk_per_trade = (
             risk_per_trade
             if risk_per_trade is not None
@@ -70,6 +72,28 @@ class Simulator:
         self.trend_sniffer = trend_sniffer or TrendSniffer(config=self.config)
         self.exit_engine = exit_engine or ExitEngine()
         self.position_sizer = position_sizer or PositionSizer()
+
+    def _close_current_trade(self, row, reason=None):
+        trade = self.current_trade
+
+        if reason:
+            print(f"\nEXITING TRADE ({reason})")
+
+        trade.close(row)
+        self.account.update(trade)
+
+        if self.trade_logger:
+            self.trade_logger.log_trade(trade)
+
+        self.current_trade = None
+        self.base_size = 0
+        self.level = 0
+
+    def _regime_allows_entry(self, regime_score):
+        allows_entries = getattr(self.regime_detector, "allows_entries", None)
+        if callable(allows_entries):
+            return allows_entries(regime_score)
+        return True
 
     # --------------------------------------------------
     # Main step function (called each 15m candle)
@@ -99,29 +123,34 @@ class Simulator:
         # 2. ENTRY LOGIC
         # --------------------------
 
-        score = self.score_engine.compute_score(row, bias)
-
         if self.current_trade is None:
+            if not self._regime_allows_entry(regime):
+                print(f"No entry: regime too weak ({regime})")
+            else:
+                score = self.score_engine.compute_score(row, bias)
 
-            trade = self.entry_engine.generate_entry(row, score, bias)
+                trade = self.entry_engine.generate_entry(row, score, bias)
 
-            if trade:
+                if trade:
 
-                print("\nEXECUTING NEW TRADE")
+                    print("\nEXECUTING NEW TRADE")
 
-                # position sizing
-                size = self.position_sizer.calculate(
-                    equity=self.account.equity,
-                    risk_per_trade=self.risk_per_trade,
-                    entry_price=row["close"],
-                    stop_price=trade.stop
-                )
+                    # position sizing
+                    size = self.position_sizer.calculate(
+                        equity=self.account.equity,
+                        risk_per_trade=self.risk_per_trade,
+                        entry_price=row["close"],
+                        stop_price=trade.stop
+                    )
 
-                trade.add_entry(row["close"], size)
+                    if size <= 0:
+                        print("Entry skipped: position size invalid")
+                    else:
+                        trade.add_entry(row["close"], size)
 
-                self.current_trade = trade
-                self.base_size = size
-                self.level = 0
+                        self.current_trade = trade
+                        self.base_size = size
+                        self.level = 0
 
         # --------------------------
         # 3. TRADE MANAGEMENT
@@ -134,58 +163,49 @@ class Simulator:
             price = row["close"]
             trade = self.current_trade
 
-            # pyramiding
-            new_level = self.pyramiding_engine.check_pyramiding(
-                price=price,
-                entry_price=trade.entry_price,
-                R=trade.R,
-                current_level=self.level
-            )
+            # TrendSniffer is the primary soft-exit signal.
+            # ExitEngine remains reserved for hard exits such as the stop.
+            trend_ok = self.trend_sniffer.is_trend_alive(row)
+            hard_exit_signal = self.exit_engine.should_exit(row, trade.stop)
+            soft_exit_signal = not trend_ok
 
-            if new_level != self.level:
-                add_size = self.pyramiding_engine.get_pyramid_size(
-                    self.base_size,
-                    new_level
+            if hard_exit_signal:
+                self._close_current_trade(row, reason="hard exit")
+
+            elif soft_exit_signal:
+                self._close_current_trade(row, reason="trend weakness")
+
+            else:
+                # Pyramiding is allowed only while the trade remains valid.
+                new_level = self.pyramiding_engine.check_pyramiding(
+                    price=price,
+                    entry_price=trade.entry_price,
+                    R=trade.R,
+                    current_level=self.level,
+                    trend_ok=trend_ok,
+                    previous_price=row.get("prev_close")
                 )
 
-                if add_size > 0:
-                    current_risk = trade.total_risk_to_stop()
-                    add_size = self.pyramiding_engine.cap_add_size_by_risk(
-                        add_size=add_size,
-                        add_price=price,
-                        stop_price=trade.stop,
-                        current_total_risk=current_risk,
-                        equity=self.account.equity,
-                        risk_per_trade=self.risk_per_trade
+                if new_level != self.level:
+                    add_size = self.pyramiding_engine.get_pyramid_size(
+                        self.base_size,
+                        new_level
                     )
 
                     if add_size > 0:
-                        trade.add_entry(price, add_size)
-                        self.level = new_level
+                        current_risk = trade.total_risk_to_stop()
+                        add_size = self.pyramiding_engine.cap_add_size_by_risk(
+                            add_size=add_size,
+                            add_price=price,
+                            stop_price=trade.stop,
+                            current_total_risk=current_risk,
+                            equity=self.account.equity,
+                            risk_per_trade=self.risk_per_trade
+                        )
 
-            # sniffing (trend continuation)
-            trend_ok = self.trend_sniffer.is_trend_alive(row)
-
-            # exit logic
-            exit_signal = self.exit_engine.should_exit(row, trade.stop)
-
-            # combine exit logic
-            if exit_signal or not trend_ok:
-
-                print("\nEXITING TRADE")
-
-                trade.close(row)
-
-                # update account
-                self.account.update(trade)
-
-                if self.trade_logger:
-                    self.trade_logger.log_trade(trade)
-
-                # reset
-                self.current_trade = None
-                self.base_size = 0
-                self.level = 0
+                        if add_size > 0:
+                            trade.add_entry(price, add_size)
+                            self.level = new_level
 
         if self.equity_logger:
             self.equity_logger.log(row.name, self.account.equity)

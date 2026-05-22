@@ -2,18 +2,25 @@
 
 import time
 
+from common.debug import debug_print as print
 from config import AppConfig
 
 
 def _compute_slope(series, lookback):
     """
-    Simple slope calculation for EMA direction.
+    Relative slope calculation for EMA direction.
     """
 
     if len(series) < lookback + 1:
-        return 0
+        return 0.0
 
-    return series.iloc[-1] - series.iloc[-lookback]
+    current_value = series.iloc[-1]
+    past_value = series.iloc[-(lookback + 1)]
+
+    if past_value == 0:
+        return 0.0
+
+    return (current_value - past_value) / past_value
 
 
 class BiasDetector:
@@ -25,6 +32,12 @@ class BiasDetector:
         self.config = config or AppConfig.load()
         self.ema_column = self.config.require("strategy", "bias", "ema_column")
         self.slope_lookback = self.config.require("strategy", "bias", "slope_lookback")
+        self.slope_threshold = self.config.get(
+            "strategy",
+            "bias",
+            "slope_threshold",
+            default=0.0
+        )
 
     def get_bias(self, df_1h):
         start = time.time()
@@ -40,13 +53,19 @@ class BiasDetector:
         # BIAS LOGIC
         # ------------------------------
 
-        if close > ema_value and slope > 0:
+        if close > ema_value and slope > self.slope_threshold:
             bias = "bullish"
-            print(f"Bullish bias: price > {self.ema_column} and slope > 0")
+            print(
+                f"Bullish bias: price > {self.ema_column} and "
+                f"slope > {self.slope_threshold:.6f}"
+            )
 
-        elif close < ema_value and slope < 0:
+        elif close < ema_value and slope < -self.slope_threshold:
             bias = "bearish"
-            print(f"Bearish bias: price < {self.ema_column} and slope < 0")
+            print(
+                f"Bearish bias: price < {self.ema_column} and "
+                f"slope < -{self.slope_threshold:.6f}"
+            )
 
         else:
             bias = "neutral"
@@ -59,6 +78,7 @@ class BiasDetector:
         print(f"  Close: {close:.2f}")
         print(f"  {self.ema_column}: {ema_value:.2f}")
         print(f"  EMA slope: {slope:.4f}")
+        print(f"  Slope threshold: {self.slope_threshold:.6f}")
 
         elapsed = time.time() - start
 
