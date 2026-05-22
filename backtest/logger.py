@@ -20,7 +20,7 @@ class TradeLogger:
     - all conditions (WHY trade was taken)
     """
 
-    def __init__(self, filepath=None, config=None):
+    def __init__(self, filepath=None, config=None, reset=True):
 
         print("\nInitializing Trade Logger...")
 
@@ -33,10 +33,10 @@ class TradeLogger:
         if directory:
             os.makedirs(directory, exist_ok=True)
 
-        # create file with header
-        with open(self.filepath, "w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(TRADE_LOG_FIELDS)
+        if reset or not os.path.exists(self.filepath):
+            with open(self.filepath, "w", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(TRADE_LOG_FIELDS)
 
         print(f"Logger ready -> {self.filepath}")
 

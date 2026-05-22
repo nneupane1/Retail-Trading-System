@@ -62,6 +62,35 @@ class TradeMetricsTests(unittest.TestCase):
         self.assertEqual(trade.exit_reason, "trend weakness")
         self.assertEqual(trade.pyramid_level, 1)
 
+    def test_trade_can_close_at_explicit_execution_price(self):
+        entry_row = pd.Series(
+            {
+                "close": 100.0,
+                "ll2": 95.0,
+                "body_strength": 1.5,
+                "close_position": 0.8,
+                "upper_wick_ratio": 0.3,
+                "compression": True,
+                "breakout": True,
+            },
+            name=pd.Timestamp("2026-01-01 00:00:00"),
+        )
+        exit_row = pd.Series(
+            {
+                "close": 92.0,
+            },
+            name=pd.Timestamp("2026-01-01 01:00:00"),
+        )
+
+        trade = Trade(entry_row, score=5, config=DummyConfig())
+        trade.add_entry(100.0, 1.0)
+        trade.annotate_exit(reason="hard exit")
+        trade.close(exit_row, exit_price=95.0)
+
+        self.assertEqual(trade.exit_price, 95.0)
+        self.assertEqual(trade.pnl, -5.0)
+        self.assertEqual(trade.pnl_R_initial, -1.0)
+
 
 if __name__ == "__main__":
     unittest.main()

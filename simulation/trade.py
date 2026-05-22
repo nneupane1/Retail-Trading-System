@@ -1,6 +1,7 @@
 """Represents the full lifecycle of one trade, including entries, exits, and PnL."""
 
 import time
+from datetime import datetime
 
 from common.debug import debug_print as print
 from config import AppConfig
@@ -66,6 +67,26 @@ def trade_to_log_record(trade):
         "compression": conditions.get("compression"),
         "breakout": conditions.get("breakout"),
     }
+
+
+def _serialize_time(value):
+    if value is None:
+        return None
+
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+
+    return str(value)
+
+
+def _restore_time(value):
+    if value is None or value == "":
+        return None
+
+    try:
+        return datetime.fromisoformat(value)
+    except (TypeError, ValueError):
+        return value
 
 
 class Trade:
@@ -158,14 +179,14 @@ class Trade:
     # Close trade
     # ------------------------------------------
 
-    def close(self, row):
+    def close(self, row, exit_price=None):
 
         print("\nClosing trade...")
 
         start = time.time()
 
         self.exit_time = row.name
-        self.exit_price = row["close"]
+        self.exit_price = row["close"] if exit_price is None else exit_price
 
         print(f"Exit time: {self.exit_time}")
         print(f"Exit price: {self.exit_price:.2f}")
@@ -251,3 +272,67 @@ class Trade:
     def annotate_exit(self, reason=None):
         self.exit_reason = reason
         self.conditions["exit_reason"] = reason
+
+    def snapshot(self):
+        return {
+            "stop_column": self.stop_column,
+            "entry_time": _serialize_time(self.entry_time),
+            "entry_price": self.entry_price,
+            "score": self.score,
+            "stop": self.stop,
+            "R": self.R,
+            "entries": [
+                {
+                    "price": entry_price,
+                    "size": size,
+                }
+                for entry_price, size in self.entries
+            ],
+            "pyramid_level": self.pyramid_level,
+            "exit_time": _serialize_time(self.exit_time),
+            "exit_price": self.exit_price,
+            "exit_reason": self.exit_reason,
+            "pnl": self.pnl,
+            "pnl_R": self.pnl_R,
+            "pnl_R_total": self.pnl_R_total,
+            "pnl_R_initial": self.pnl_R_initial,
+            "initial_risk_amount": self.initial_risk_amount,
+            "total_risk_amount": self.total_risk_amount,
+            "bias": self.bias,
+            "regime_score": self.regime_score,
+            "regime_class": self.regime_class,
+            "entry_threshold": self.entry_threshold,
+            "conditions": dict(self.conditions),
+        }
+
+    @classmethod
+    def from_snapshot(cls, snapshot, config=None):
+        trade = cls.__new__(cls)
+        trade.config = config or AppConfig.load()
+        low_period = trade.config.require("features", "structure", "low_period")
+        trade.stop_column = snapshot.get("stop_column") or f"ll{low_period}"
+        trade.entry_time = _restore_time(snapshot.get("entry_time"))
+        trade.entry_price = snapshot.get("entry_price")
+        trade.score = snapshot.get("score")
+        trade.stop = snapshot.get("stop")
+        trade.R = snapshot.get("R")
+        trade.entries = [
+            (entry.get("price"), entry.get("size"))
+            for entry in snapshot.get("entries", [])
+        ]
+        trade.pyramid_level = snapshot.get("pyramid_level", 0)
+        trade.exit_time = _restore_time(snapshot.get("exit_time"))
+        trade.exit_price = snapshot.get("exit_price")
+        trade.exit_reason = snapshot.get("exit_reason")
+        trade.pnl = snapshot.get("pnl", 0)
+        trade.pnl_R = snapshot.get("pnl_R", 0)
+        trade.pnl_R_total = snapshot.get("pnl_R_total", 0)
+        trade.pnl_R_initial = snapshot.get("pnl_R_initial", 0)
+        trade.initial_risk_amount = snapshot.get("initial_risk_amount", 0)
+        trade.total_risk_amount = snapshot.get("total_risk_amount", 0)
+        trade.bias = snapshot.get("bias")
+        trade.regime_score = snapshot.get("regime_score")
+        trade.regime_class = snapshot.get("regime_class")
+        trade.entry_threshold = snapshot.get("entry_threshold")
+        trade.conditions = dict(snapshot.get("conditions", {}))
+        return trade

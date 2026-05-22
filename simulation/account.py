@@ -99,3 +99,22 @@ class Account:
         if self.trade_count > 0:
             win_rate = (self.win_count / self.trade_count) * 100
             print(f"  Win rate: {win_rate:.2f}%")
+
+    def snapshot(self):
+        return {
+            "initial_equity": self.initial_equity,
+            "equity": self.equity,
+            "trade_count": self.trade_count,
+            "win_count": self.win_count,
+            "loss_count": self.loss_count,
+        }
+
+    def restore(self, snapshot):
+        if not snapshot:
+            return
+
+        self.initial_equity = snapshot.get("initial_equity", self.initial_equity)
+        self.equity = snapshot.get("equity", self.equity)
+        self.trade_count = snapshot.get("trade_count", 0)
+        self.win_count = snapshot.get("win_count", 0)
+        self.loss_count = snapshot.get("loss_count", 0)

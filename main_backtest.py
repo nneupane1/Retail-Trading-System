@@ -20,6 +20,7 @@ def main():
 
     # Run full pipeline
     sim = run_backtest(config=config)
+    completed = getattr(sim, "backtest_completed", True)
 
     # Final summary already printed inside runner
     # But you can optionally print again:
@@ -28,7 +29,11 @@ def main():
 
     total_time = time.time() - start
 
-    print("\nBACKTEST FINISHED")
+    if completed:
+        print("\nBACKTEST FINISHED")
+    else:
+        print("\nBACKTEST PAUSED")
+        print("Checkpoint saved. Re-run the same command to resume.")
     print(f"Total runtime: {total_time/60:.2f} minutes")
 
 

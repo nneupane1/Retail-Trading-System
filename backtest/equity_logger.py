@@ -13,7 +13,7 @@ class EquityLogger:
     Tracks equity curve over time.
     """
 
-    def __init__(self, filepath=None, config=None):
+    def __init__(self, filepath=None, config=None, reset=True):
 
         print("\nInitializing Equity Logger...")
 
@@ -25,12 +25,13 @@ class EquityLogger:
         if directory:
             os.makedirs(directory, exist_ok=True)
 
-        with open(self.filepath, "w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow([
-                "timestamp",
-                "equity"
-            ])
+        if reset or not os.path.exists(self.filepath):
+            with open(self.filepath, "w", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow([
+                    "timestamp",
+                    "equity"
+                ])
 
         print(f"Equity logger ready -> {self.filepath}")
 

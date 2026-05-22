@@ -2,9 +2,10 @@
 
 import time
 
-from common.debug import configure_debug, debug_print as print
+from common.debug import debug_print as print
 from config import AppConfig
 from simulation.account import Account
+from simulation.trade import Trade
 
 from bias.bias_detector import BiasDetector
 from regime.regime_detector import RegimeDetector
@@ -47,7 +48,6 @@ class Simulator:
         print("\nInitializing Simulator...")
 
         self.config = config or AppConfig.load()
-        configure_debug(config=self.config)
         self.risk_per_trade = (
             risk_per_trade
             if risk_per_trade is not None
@@ -73,7 +73,7 @@ class Simulator:
         self.exit_engine = exit_engine or ExitEngine()
         self.position_sizer = position_sizer or PositionSizer()
 
-    def _close_current_trade(self, row, reason=None):
+    def _close_current_trade(self, row, reason=None, exit_price=None):
         trade = self.current_trade
 
         if reason:
@@ -84,7 +84,7 @@ class Simulator:
         else:
             trade.exit_reason = reason
 
-        trade.close(row)
+        trade.close(row, exit_price=exit_price)
         self.account.update(trade)
 
         if self.trade_logger:
@@ -195,7 +195,11 @@ class Simulator:
             soft_exit_signal = not trend_ok
 
             if hard_exit_signal:
-                self._close_current_trade(row, reason="hard exit")
+                self._close_current_trade(
+                    row,
+                    reason="hard exit",
+                    exit_price=trade.stop,
+                )
 
             elif soft_exit_signal:
                 self._close_current_trade(row, reason="trend weakness")
@@ -244,3 +248,35 @@ class Simulator:
 
     def summary(self):
         self.account.summary()
+
+    def snapshot_state(self):
+        return {
+            "account": self.account.snapshot(),
+            "current_trade": (
+                self.current_trade.snapshot()
+                if self.current_trade is not None
+                else None
+            ),
+            "base_size": self.base_size,
+            "level": self.level,
+        }
+
+    def restore_state(self, snapshot):
+        if not snapshot:
+            return
+
+        account_snapshot = snapshot.get("account")
+        if account_snapshot:
+            self.account.restore(account_snapshot)
+
+        trade_snapshot = snapshot.get("current_trade")
+        if trade_snapshot:
+            self.current_trade = Trade.from_snapshot(
+                trade_snapshot,
+                config=self.config,
+            )
+        else:
+            self.current_trade = None
+
+        self.base_size = snapshot.get("base_size", 0)
+        self.level = snapshot.get("level", 0)

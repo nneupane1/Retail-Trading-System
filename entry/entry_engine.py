@@ -15,6 +15,25 @@ class EntryEngine:
     def __init__(self, config=None):
         self.config = config or AppConfig.load()
         self.entry_threshold = self.config.require("entry", "score_threshold")
+        getter = getattr(self.config, "get", None)
+        if callable(getter):
+            self.block_compression = bool(
+                getter("entry", "block_compression", default=False)
+            )
+            blocked_scores = getter("entry", "blocked_scores", default=[])
+        else:
+            try:
+                self.block_compression = bool(
+                    self.config.require("entry", "block_compression")
+                )
+            except Exception:
+                self.block_compression = False
+            try:
+                blocked_scores = self.config.require("entry", "blocked_scores")
+            except Exception:
+                blocked_scores = []
+
+        self.blocked_scores = {int(score) for score in blocked_scores}
 
     def generate_entry(self, row, score, bias):
         start = time.time()
@@ -31,9 +50,17 @@ class EntryEngine:
             print(f"No entry: score too low ({score} < {self.entry_threshold})")
             return None
 
+        if score in self.blocked_scores:
+            print(f"No entry: score {score} blocked by configuration")
+            return None
+
         # Breakout event must be present (core rule)
         if not row["breakout"]:
             print("No entry: breakout event not confirmed")
+            return None
+
+        if self.block_compression and bool(row.get("compression", False)):
+            print("No entry: compressed setup blocked by configuration")
             return None
 
         # Optional: allow retest as alternative (if you want later)

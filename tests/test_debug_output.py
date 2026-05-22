@@ -2,7 +2,7 @@ import io
 import unittest
 from contextlib import redirect_stdout
 
-from common.debug import configure_debug, debug_print
+from common.debug import configure_debug, debug_print, override_debug
 
 
 class DummyConfig:
@@ -36,6 +36,16 @@ class DebugOutputTests(unittest.TestCase):
             debug_print("visible")
 
         self.assertEqual(buffer.getvalue(), "visible\n")
+
+    def test_override_debug_suppresses_output_even_when_enabled_in_config(self):
+        configure_debug(config=DummyConfig(enabled=True))
+        buffer = io.StringIO()
+
+        with override_debug(False):
+            with redirect_stdout(buffer):
+                debug_print("hidden")
+
+        self.assertEqual(buffer.getvalue(), "")
 
 
 if __name__ == "__main__":

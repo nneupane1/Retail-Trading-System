@@ -240,6 +240,10 @@ class BacktestProgressDisplay:
             level_style = {
                 "START": "green",
                 "PHASE": "cyan",
+                "PAUSE": "yellow",
+                "ERROR": "bold red",
+                "RESUME": "magenta",
+                "CHECKPOINT": "yellow",
                 "DONE": "bold green",
             }.get(level, "white")
             table.add_row(timestamp, f"[{level_style}]{level}[/{level_style}]", message)

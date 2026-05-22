@@ -125,6 +125,8 @@ class DummyTrade:
         self.pnl = 0.0
         self.closed = False
         self.added_entries = []
+        self.exit_price = None
+        self.exit_time = None
 
     def total_risk_to_stop(self):
         return 0.0
@@ -132,10 +134,10 @@ class DummyTrade:
     def add_entry(self, price, size):
         self.added_entries.append((price, size))
 
-    def close(self, row):
+    def close(self, row, exit_price=None):
         self.closed = True
         self.exit_time = row.name
-        self.exit_price = row["close"]
+        self.exit_price = row["close"] if exit_price is None else exit_price
 
 
 class SimulatorManagementTests(unittest.TestCase):
@@ -164,9 +166,9 @@ class SimulatorManagementTests(unittest.TestCase):
 
         return simulator, calls
 
-    def _make_row(self, close=101.0):
+    def _make_row(self, close=101.0, low=None):
         return pd.Series(
-            {"close": close},
+            {"close": close, "low": close if low is None else low},
             name=pd.Timestamp("2026-01-01 00:00:00"),
         )
 
@@ -208,13 +210,15 @@ class SimulatorManagementTests(unittest.TestCase):
             next_level=1,
         )
 
-        row = self._make_row(close=94.0)
+        trade = simulator.current_trade
+        row = self._make_row(close=96.0, low=94.0)
         empty_df = pd.DataFrame()
 
         simulator.step(row, empty_df, empty_df, empty_df)
 
         self.assertEqual(calls, ["trend", "hard_exit"])
         self.assertIsNone(simulator.current_trade)
+        self.assertEqual(trade.exit_price, trade.stop)
 
     def test_zero_position_size_skips_opening_dummy_trade(self):
         entry_engine = FixedEntryEngine()

@@ -15,12 +15,15 @@ class ExitEngine:
 
         print("\nChecking exit conditions...")
 
-        price = row["close"]
+        close_price = row["close"]
+        low_price = row.get("low", close_price)
 
-        # STOP LOSSCHECK
-        if price < stop_price:
-            print("STOP LOSSHIT -> EXIT")
-            print(f"  Price: {price:.2f}")
+        # Stop exits are intrabar-aware: if price touched the stop anywhere
+        # inside the candle, the trade is treated as stopped out at the stop.
+        if low_price <= stop_price:
+            print("STOP TOUCHED INTRABAR -> EXIT")
+            print(f"  Low:   {low_price:.2f}")
+            print(f"  Close: {close_price:.2f}")
             print(f"  Stop:  {stop_price:.2f}")
 
             elapsed = time.time() - start
@@ -28,9 +31,9 @@ class ExitEngine:
 
             return True
 
-        # OTHERWISE HOLD
-        print("No exit signal (price above stop)")
-        print(f"  Price: {price:.2f}")
+        print("No exit signal (intrabar low above stop)")
+        print(f"  Low:   {low_price:.2f}")
+        print(f"  Close: {close_price:.2f}")
         print(f"  Stop:  {stop_price:.2f}")
 
         elapsed = time.time() - start

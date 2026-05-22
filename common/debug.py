@@ -1,11 +1,13 @@
 """Config-driven debug output helpers."""
 
 import builtins
+from contextlib import contextmanager
 
 from config import AppConfig
 
 
 _DEBUG_ENABLED = None
+_DEBUG_OVERRIDE_STACK = []
 
 
 def _read_debug_flag(config):
@@ -43,10 +45,26 @@ def is_debug_enabled():
 
     global _DEBUG_ENABLED
 
+    if _DEBUG_OVERRIDE_STACK:
+        return _DEBUG_OVERRIDE_STACK[-1]
+
     if _DEBUG_ENABLED is None:
         configure_debug()
 
     return _DEBUG_ENABLED
+
+
+@contextmanager
+def override_debug(enabled):
+    """
+    Temporarily override the global debug-output state.
+    """
+
+    _DEBUG_OVERRIDE_STACK.append(bool(enabled))
+    try:
+        yield
+    finally:
+        _DEBUG_OVERRIDE_STACK.pop()
 
 
 def debug_print(*args, **kwargs):

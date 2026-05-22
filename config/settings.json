@@ -8,7 +8,11 @@
     "risk_per_trade": 0.01
   },
   "backtest": {
-    "output_dir": "backtest/output"
+    "output_dir": "backtest/output",
+    "checkpoint_dir": "_checkpoints",
+    "checkpoint_suffix": ".checkpoint.json",
+    "resume_enabled": true,
+    "save_every_steps": 250
   },
   "binance": {
     "base_url": "https://api.binance.com",
@@ -38,7 +42,9 @@
     }
   },
   "entry": {
-    "score_threshold": 4
+    "score_threshold": 4,
+    "block_compression": true,
+    "blocked_scores": [7]
   },
   "features": {
     "ema_periods": {

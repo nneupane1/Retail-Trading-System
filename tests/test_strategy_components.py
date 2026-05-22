@@ -3,6 +3,8 @@ import unittest
 import pandas as pd
 
 from entry.breakout import BreakoutDetector
+from entry.entry_engine import EntryEngine
+from exit.exit_engine import ExitEngine
 from features.feature_pipeline import FeaturePipeline
 from pyramiding.pyramiding_engine import PyramidingEngine
 from sniffing.trend_sniffer import TrendSniffer
@@ -11,6 +13,16 @@ from sniffing.trend_sniffer import TrendSniffer
 class DummyConfig:
     def __init__(self, data):
         self.data = data
+
+    def get(self, *keys, default=None):
+        value = self.data
+
+        for key in keys:
+            if not isinstance(value, dict) or key not in value:
+                return default
+            value = value[key]
+
+        return value
 
     def require(self, *keys):
         value = self.data
@@ -23,6 +35,10 @@ class DummyConfig:
 
 def make_config():
     return DummyConfig({
+        "entry": {
+            "score_threshold": 4,
+            "block_compression": False,
+        },
         "features": {
             "ema_periods": {
                 "fast": 2,
@@ -139,6 +155,44 @@ class BreakoutDetectorTests(unittest.TestCase):
             detector.is_breakout(row)
 
 
+class EntryEngineTests(unittest.TestCase):
+    def test_entry_engine_can_block_compressed_setups(self):
+        config = make_config()
+        config.data["entry"]["block_compression"] = True
+        engine = EntryEngine(config=config)
+        row = pd.Series(
+            {
+                "close": 101.0,
+                "compression": True,
+                "breakout": True,
+                "ll2": 95.0,
+            },
+            name=pd.Timestamp("2026-01-01 00:00:00"),
+        )
+
+        trade = engine.generate_entry(row, score=6, bias="bullish")
+
+        self.assertIsNone(trade)
+
+    def test_entry_engine_can_block_specific_score_buckets(self):
+        config = make_config()
+        config.data["entry"]["blocked_scores"] = [7]
+        engine = EntryEngine(config=config)
+        row = pd.Series(
+            {
+                "close": 101.0,
+                "compression": False,
+                "breakout": True,
+                "ll2": 95.0,
+            },
+            name=pd.Timestamp("2026-01-01 00:00:00"),
+        )
+
+        trade = engine.generate_entry(row, score=7, bias="bullish")
+
+        self.assertIsNone(trade)
+
+
 class TrendSnifferTests(unittest.TestCase):
     def test_trend_can_stay_alive_with_partial_strength(self):
         row = pd.Series(
@@ -169,6 +223,40 @@ class TrendSnifferTests(unittest.TestCase):
         sniffer = TrendSniffer(config=make_config())
 
         self.assertFalse(sniffer.is_trend_alive(row))
+
+
+class ExitEngineTests(unittest.TestCase):
+    def test_intrabar_stop_touch_triggers_exit_even_if_close_recovers(self):
+        engine = ExitEngine()
+        row = pd.Series(
+            {
+                "low": 89.0,
+                "close": 95.0,
+            }
+        )
+
+        self.assertTrue(engine.should_exit(row, stop_price=90.0))
+
+    def test_close_price_fallback_preserves_compatibility_when_low_is_missing(self):
+        engine = ExitEngine()
+        row = pd.Series(
+            {
+                "close": 89.0,
+            }
+        )
+
+        self.assertTrue(engine.should_exit(row, stop_price=90.0))
+
+    def test_no_exit_when_intrabar_low_stays_above_stop(self):
+        engine = ExitEngine()
+        row = pd.Series(
+            {
+                "low": 91.0,
+                "close": 95.0,
+            }
+        )
+
+        self.assertFalse(engine.should_exit(row, stop_price=90.0))
 
 
 class PyramidingEngineTests(unittest.TestCase):
