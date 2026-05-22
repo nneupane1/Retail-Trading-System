@@ -33,8 +33,9 @@ class BacktestLoggerTests(unittest.TestCase):
             self.assertEqual(
                 header,
                 "entry_time,exit_time,entry_price,exit_price,pnl,pnl_R,pnl_R_total,"
-                "pnl_R_initial,initial_risk_amount,total_risk_amount,score,"
-                "body_strength,close_position,upper_wick_ratio,compression,breakout",
+                "pnl_R_initial,initial_risk_amount,total_risk_amount,bias,regime_score,"
+                "regime_class,entry_threshold,exit_reason,entry_layer_count,pyramid_level,"
+                "score,body_strength,close_position,upper_wick_ratio,compression,breakout",
             )
 
     def test_trade_logger_appends_completed_trade_row(self):
@@ -52,6 +53,13 @@ class BacktestLoggerTests(unittest.TestCase):
                 pnl_R_initial=2.5,
                 initial_risk_amount=5.0,
                 total_risk_amount=10.0,
+                bias="bullish",
+                regime_score=3,
+                regime_class="strong",
+                entry_threshold=4,
+                exit_reason="trend weakness",
+                entry_layer_count=2,
+                pyramid_level=1,
                 conditions={
                     "score": 6,
                     "body_strength": 1.2,
@@ -75,6 +83,13 @@ class BacktestLoggerTests(unittest.TestCase):
             self.assertEqual(float(rows[0]["pnl_R_initial"]), 2.5)
             self.assertEqual(float(rows[0]["initial_risk_amount"]), 5.0)
             self.assertEqual(float(rows[0]["total_risk_amount"]), 10.0)
+            self.assertEqual(rows[0]["bias"], "bullish")
+            self.assertEqual(rows[0]["regime_score"], "3")
+            self.assertEqual(rows[0]["regime_class"], "strong")
+            self.assertEqual(rows[0]["entry_threshold"], "4")
+            self.assertEqual(rows[0]["exit_reason"], "trend weakness")
+            self.assertEqual(rows[0]["entry_layer_count"], "2")
+            self.assertEqual(rows[0]["pyramid_level"], "1")
             self.assertEqual(rows[0]["compression"], "True")
             self.assertEqual(rows[0]["breakout"], "True")
 

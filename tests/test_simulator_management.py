@@ -7,6 +7,8 @@ from simulation.simulator import Simulator
 
 class DummyConfig:
     def require(self, *keys):
+        if keys == ("entry", "score_threshold"):
+            return 4
         raise KeyError(f"Unexpected config lookup: {keys}")
 
 
@@ -18,6 +20,14 @@ class StaticBiasDetector:
 class StaticRegimeDetector:
     def compute_regime(self, df_5h, df_12h):
         return None
+
+
+class ContextRegimeDetector:
+    def compute_regime(self, df_5h, df_12h):
+        return 3
+
+    def classify(self, regime_score):
+        return "strong"
 
 
 class BlockingRegimeDetector:
@@ -262,6 +272,50 @@ class SimulatorManagementTests(unittest.TestCase):
         self.assertIsNone(simulator.current_trade)
         self.assertEqual(entry_engine.calls, 0)
         self.assertEqual(equity_logger.calls, [(row.name, 1000.0)])
+
+    def test_entry_trade_captures_forensic_context(self):
+        entry_engine = FixedEntryEngine()
+        simulator = Simulator(
+            initial_equity=1000.0,
+            risk_per_trade=0.01,
+            trade_logger=None,
+            equity_logger=None,
+            entry_engine=entry_engine,
+            score_engine=PositiveScoreEngine(),
+            bias_detector=StaticBiasDetector(),
+            regime_detector=ContextRegimeDetector(),
+            pyramiding_engine=RecordingPyramidingEngine(0, []),
+            trend_sniffer=RecordingTrendSniffer(True, []),
+            exit_engine=RecordingExitEngine(False, []),
+            position_sizer=DummyPositionSizer(),
+            config=DummyConfig(),
+        )
+
+        row = self._make_row(close=101.0)
+        empty_df = pd.DataFrame()
+
+        simulator.step(row, empty_df, empty_df, empty_df)
+
+        trade = simulator.current_trade
+        self.assertIsNotNone(trade)
+        self.assertEqual(trade.bias, "bullish")
+        self.assertEqual(trade.regime_score, 3)
+        self.assertEqual(trade.regime_class, "strong")
+        self.assertEqual(trade.entry_threshold, 4)
+
+    def test_exit_reason_is_attached_before_trade_is_closed(self):
+        simulator, _calls = self._make_simulator(
+            trend_ok=False,
+            hard_exit=False,
+        )
+
+        trade = simulator.current_trade
+        row = self._make_row()
+        empty_df = pd.DataFrame()
+
+        simulator.step(row, empty_df, empty_df, empty_df)
+
+        self.assertEqual(trade.exit_reason, "trend weakness")
 
 
 if __name__ == "__main__":

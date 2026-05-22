@@ -37,8 +37,16 @@ class TradeMetricsTests(unittest.TestCase):
         )
 
         trade = Trade(entry_row, score=5, config=DummyConfig())
+        trade.annotate_entry_context(
+            bias="bullish",
+            regime_score=3,
+            regime_class="strong",
+            entry_threshold=4,
+        )
         trade.add_entry(100.0, 1.0)
         trade.add_entry(105.0, 0.5)
+        trade.pyramid_level = 1
+        trade.annotate_exit(reason="trend weakness")
         trade.close(exit_row)
 
         self.assertEqual(trade.initial_risk_amount, 5.0)
@@ -47,6 +55,12 @@ class TradeMetricsTests(unittest.TestCase):
         self.assertEqual(trade.pnl_R, 1.25)
         self.assertEqual(trade.pnl_R_total, 1.25)
         self.assertEqual(trade.pnl_R_initial, 2.5)
+        self.assertEqual(trade.bias, "bullish")
+        self.assertEqual(trade.regime_score, 3)
+        self.assertEqual(trade.regime_class, "strong")
+        self.assertEqual(trade.entry_threshold, 4)
+        self.assertEqual(trade.exit_reason, "trend weakness")
+        self.assertEqual(trade.pyramid_level, 1)
 
 
 if __name__ == "__main__":

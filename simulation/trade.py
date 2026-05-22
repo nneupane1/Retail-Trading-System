@@ -6,6 +6,68 @@ from common.debug import debug_print as print
 from config import AppConfig
 
 
+TRADE_LOG_FIELDS = [
+    "entry_time",
+    "exit_time",
+    "entry_price",
+    "exit_price",
+    "pnl",
+    "pnl_R",
+    "pnl_R_total",
+    "pnl_R_initial",
+    "initial_risk_amount",
+    "total_risk_amount",
+    "bias",
+    "regime_score",
+    "regime_class",
+    "entry_threshold",
+    "exit_reason",
+    "entry_layer_count",
+    "pyramid_level",
+    "score",
+    "body_strength",
+    "close_position",
+    "upper_wick_ratio",
+    "compression",
+    "breakout",
+]
+
+
+def trade_to_log_record(trade):
+    conditions = getattr(trade, "conditions", {}) or {}
+    entries = getattr(trade, "entries", None)
+    if entries is not None:
+        entry_layer_count = len(entries)
+    else:
+        entry_layer_count = getattr(trade, "entry_layer_count", 0)
+
+    return {
+        "entry_time": getattr(trade, "entry_time", None),
+        "exit_time": getattr(trade, "exit_time", None),
+        "entry_price": getattr(trade, "entry_price", None),
+        "exit_price": getattr(trade, "exit_price", None),
+        "pnl": getattr(trade, "pnl", None),
+        "pnl_R": getattr(trade, "pnl_R", None),
+        "pnl_R_total": getattr(trade, "pnl_R_total", None),
+        "pnl_R_initial": getattr(trade, "pnl_R_initial", None),
+        "initial_risk_amount": getattr(trade, "initial_risk_amount", None),
+        "total_risk_amount": getattr(trade, "total_risk_amount", None),
+        "bias": getattr(trade, "bias", conditions.get("bias")),
+        "regime_score": getattr(trade, "regime_score", conditions.get("regime_score")),
+        "regime_class": getattr(trade, "regime_class", conditions.get("regime_class")),
+        "entry_threshold": getattr(trade, "entry_threshold", conditions.get("entry_threshold")),
+        "exit_reason": getattr(trade, "exit_reason", conditions.get("exit_reason")),
+        "entry_layer_count": entry_layer_count,
+        "pyramid_level": getattr(trade, "pyramid_level", conditions.get("pyramid_level", 0)),
+        "score": conditions.get("score"),
+        "body_strength": conditions.get("body_strength"),
+        "close_position": conditions.get("close_position"),
+        "upper_wick_ratio": conditions.get("upper_wick_ratio"),
+        "compression": conditions.get("compression"),
+        "breakout": conditions.get("breakout"),
+    }
+
+
 class Trade:
     """
     Represents a single trade lifecycle.
@@ -41,6 +103,7 @@ class Trade:
         # Exit info
         self.exit_time = None
         self.exit_price = None
+        self.exit_reason = None
 
         # Results
         self.pnl = 0
@@ -49,6 +112,10 @@ class Trade:
         self.pnl_R_initial = 0
         self.initial_risk_amount = 0
         self.total_risk_amount = 0
+        self.bias = None
+        self.regime_score = None
+        self.regime_class = None
+        self.entry_threshold = None
 
         # Store WHY trade happened (very important)
         self.conditions = {
@@ -161,3 +228,26 @@ class Trade:
         print(f"PnL (R multiple, initial risk): {self.pnl_R_initial:.2f}")
 
         print(f"Elapsed: {time.time() - start:.4f}s")
+
+    def annotate_entry_context(
+        self,
+        *,
+        bias=None,
+        regime_score=None,
+        regime_class=None,
+        entry_threshold=None
+    ):
+        self.bias = bias
+        self.regime_score = regime_score
+        self.regime_class = regime_class
+        self.entry_threshold = entry_threshold
+        self.conditions.update({
+            "bias": bias,
+            "regime_score": regime_score,
+            "regime_class": regime_class,
+            "entry_threshold": entry_threshold,
+        })
+
+    def annotate_exit(self, reason=None):
+        self.exit_reason = reason
+        self.conditions["exit_reason"] = reason

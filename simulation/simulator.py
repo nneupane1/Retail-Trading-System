@@ -79,6 +79,11 @@ class Simulator:
         if reason:
             print(f"\nEXITING TRADE ({reason})")
 
+        if hasattr(trade, "annotate_exit") and callable(trade.annotate_exit):
+            trade.annotate_exit(reason=reason)
+        else:
+            trade.exit_reason = reason
+
         trade.close(row)
         self.account.update(trade)
 
@@ -94,6 +99,12 @@ class Simulator:
         if callable(allows_entries):
             return allows_entries(regime_score)
         return True
+
+    def _regime_classification(self, regime_score):
+        classify = getattr(self.regime_detector, "classify", None)
+        if callable(classify):
+            return classify(regime_score)
+        return None
 
     # --------------------------------------------------
     # Main step function (called each 15m candle)
@@ -118,6 +129,8 @@ class Simulator:
 
         bias = self.bias_detector.get_bias(df_1h)
         regime = self.regime_detector.compute_regime(df_5h, df_12h)
+        regime_class = self._regime_classification(regime)
+        entry_threshold = self.config.require("entry", "score_threshold")
 
         # --------------------------
         # 2. ENTRY LOGIC
@@ -132,6 +145,18 @@ class Simulator:
                 trade = self.entry_engine.generate_entry(row, score, bias)
 
                 if trade:
+                    if hasattr(trade, "annotate_entry_context") and callable(trade.annotate_entry_context):
+                        trade.annotate_entry_context(
+                            bias=bias,
+                            regime_score=regime,
+                            regime_class=regime_class,
+                            entry_threshold=entry_threshold,
+                        )
+                    else:
+                        trade.bias = bias
+                        trade.regime_score = regime
+                        trade.regime_class = regime_class
+                        trade.entry_threshold = entry_threshold
 
                     print("\nEXECUTING NEW TRADE")
 
@@ -206,6 +231,7 @@ class Simulator:
                         if add_size > 0:
                             trade.add_entry(price, add_size)
                             self.level = new_level
+                            trade.pyramid_level = new_level
 
         if self.equity_logger:
             self.equity_logger.log(row.name, self.account.equity)
