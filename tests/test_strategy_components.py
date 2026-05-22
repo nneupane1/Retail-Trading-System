@@ -38,6 +38,9 @@ def make_config():
         "entry": {
             "score_threshold": 4,
             "block_compression": False,
+            "blocked_scores": [],
+            "min_body_strength_by_score": {},
+            "blocked_upper_wick_ranges_by_score": {},
         },
         "features": {
             "ema_periods": {
@@ -189,6 +192,47 @@ class EntryEngineTests(unittest.TestCase):
         )
 
         trade = engine.generate_entry(row, score=7, bias="bullish")
+
+        self.assertIsNone(trade)
+
+    def test_entry_engine_can_require_stronger_body_for_specific_scores(self):
+        config = make_config()
+        config.data["entry"]["min_body_strength_by_score"] = {"8": 2.0}
+        engine = EntryEngine(config=config)
+        row = pd.Series(
+            {
+                "close": 101.0,
+                "compression": False,
+                "breakout": True,
+                "body_strength": 1.7,
+                "ll2": 95.0,
+            },
+            name=pd.Timestamp("2026-01-01 00:00:00"),
+        )
+
+        trade = engine.generate_entry(row, score=8, bias="bullish")
+
+        self.assertIsNone(trade)
+
+    def test_entry_engine_can_block_upper_wick_ranges_for_specific_scores(self):
+        config = make_config()
+        config.data["entry"]["blocked_upper_wick_ranges_by_score"] = {
+            "8": [{"min": 0.1, "max": 0.3}],
+        }
+        engine = EntryEngine(config=config)
+        row = pd.Series(
+            {
+                "close": 101.0,
+                "compression": False,
+                "breakout": True,
+                "body_strength": 2.3,
+                "upper_wick_ratio": 0.2,
+                "ll2": 95.0,
+            },
+            name=pd.Timestamp("2026-01-01 00:00:00"),
+        )
+
+        trade = engine.generate_entry(row, score=8, bias="bullish")
 
         self.assertIsNone(trade)
 

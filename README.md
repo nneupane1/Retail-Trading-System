@@ -22,8 +22,10 @@ trade PnL.
 - [Architectural Philosophy](#architectural-philosophy)
 - [Repository Map](#repository-map)
 - [High-Level Operating Model](#high-level-operating-model)
+- [Operational Workflow](#operational-workflow)
 - [Timeframe Hierarchy](#timeframe-hierarchy)
 - [Configuration Model](#configuration-model)
+- [Console Experience](#console-experience)
 - [Data Layer](#data-layer)
 - [Feature Layer](#feature-layer)
 - [Context Layer](#context-layer)
@@ -74,7 +76,7 @@ decision engine and changes only the data source and execution loop.
 | Sizing model | Risk per trade as a fraction of equity |
 | Scaling model | Add to winners at configured `+R` levels |
 | Soft exit | Trend health deterioration |
-| Hard exit | Price below structural stop |
+| Hard exit | Intrabar touch of structural stop, executed at stop price |
 | Audit trail | Trade CSVs and equity CSVs |
 | Debug control | Global `app.debug` flag in config |
 
@@ -118,6 +120,8 @@ This event-driven style reduces late entries and repeated signals.
 | `backtest/` | Historical runner, engine, and CSV loggers |
 | `live_sim/` | Near-live runner, candle clock, and live trade logger |
 | `tests/` | Focused unit and regression tests for the system's critical behavior |
+| `main_download.py` | CLI entry point for resumable historical `1m` downloads |
+| `main_resample.py` | CLI entry point for rebuilding and saving higher timeframes |
 | `main_backtest.py` | CLI entry point for full historical runs |
 | `main_live.py` | CLI entry point for near-live polling and execution |
 
@@ -162,6 +166,25 @@ means iterating through historical `15m` candles. In live simulation, that
 means polling recent `1m` data until a new closed `15m` candle appears. In both
 modes, the internal strategy logic is identical once the current execution row
 and higher-timeframe slices are available.
+
+## Operational Workflow
+
+The project now supports a practical end-to-end command-line workflow rather
+than assuming everything starts from `main_backtest.py`.
+
+| Step | Command | Purpose |
+| --- | --- | --- |
+| `1` | `python main_download.py` | Download and checkpoint local `1m` history from Binance |
+| `2` | `python main_resample.py` | Optional: materialize `15m`, `1h`, `5h`, and `12h` CSVs for inspection |
+| `3` | `python main_backtest.py` | Run the full historical strategy pipeline with Rich progress UI and resume support |
+| `4` | `python main_live.py` | Run near-live simulation using local warmup history plus fresh Binance `1m` candles |
+
+Two practical clarifications matter:
+
+- `main_backtest.py` already resamples and computes features internally, so
+  `main_resample.py` is optional for strategy correctness.
+- `main_live.py` now bootstraps from local `1m` history first, then merges
+  recent Binance candles into that in-memory state before resampling.
 
 ## Timeframe Hierarchy
 
@@ -255,6 +278,34 @@ When `app.debug` is `false`, the internal print-heavy modules route their output
 through `common/debug.py` and remain silent. This is a practical middle ground
 between development verbosity and a fully structured logging framework.
 
+## Console Experience
+
+The repository now exposes a much cleaner terminal UX than a traditional
+print-spam research script.
+
+### Historical download dashboard
+
+`main_download.py` uses a Rich live dashboard that shows:
+
+- colored progress bar
+- batch number and current time window
+- rows saved and estimated completion
+- TLS mode and checkpoint path
+- recent events such as retries, saves, resumes, and completion
+
+### Backtest dashboard
+
+`main_backtest.py` uses a separate Rich live dashboard that shows:
+
+- processed execution candles and percent complete
+- elapsed time and ETA
+- current equity and net PnL
+- trade count, wins, losses, and win rate
+- recent pipeline events such as load, resample, feature build, resume, and completion
+
+During a dashboard-driven backtest, the framework force-suppresses module debug
+spam so the screen stays readable.
+
 ## Data Layer
 
 The data layer transforms external market data into a local, validated, and
@@ -264,8 +315,10 @@ resampled dataset that the strategy can trust.
 
 `data/binance_client.py` is the lowest-level network module. It encapsulates the
 Binance REST request, timeout behavior, retry logic, throttle spacing, and
-response handling. It is deliberately small, because its job is not strategy
-logic. Its job is to return raw klines reliably.
+response handling. It also supports `ssl_verify` and `ca_bundle_path`, which is
+useful in corporate environments with custom certificate chains. It is
+deliberately small, because its job is not strategy logic. Its job is to return
+raw klines reliably.
 
 ### MarketDataDownloader
 
@@ -292,6 +345,9 @@ Historical downloads are resumable. During a long run, the system keeps:
 
 This means a multi-hour download can survive network interruption or terminal
 closure without restarting from the first candle.
+
+The checkpoint writer also retries Windows file-replace operations to reduce
+crashes caused by transient OneDrive or indexing locks.
 
 ### TimeframeBuilder
 
@@ -490,6 +546,22 @@ a looser fallback.
 If those rules pass, the engine converts the row into a `Trade` object. It does
 not size the trade. Position sizing remains a separate responsibility.
 
+### Current refinement filters
+
+The entry engine now supports additional config-driven filtering beyond the base
+score threshold:
+
+| Filter | Purpose |
+| --- | --- |
+| `entry.block_compression` | Reject setups formed during compressed conditions |
+| `entry.blocked_scores` | Exclude known weak score buckets without changing the score engine |
+| `entry.min_body_strength_by_score` | Require stronger momentum for specific score cohorts |
+| `entry.blocked_upper_wick_ranges_by_score` | Exclude score-specific wick structures that backtest poorly |
+
+These are intentionally placed in the entry-conversion layer rather than inside
+the scoring engine. That keeps the score model interpretable while allowing
+surgical filtering of weak subpopulations discovered during research.
+
 ### RetestDetector
 
 `entry/retest.py` exists in the repository but is not part of the active entry
@@ -578,9 +650,13 @@ pullbacks inside larger trends.
 intentionally separate from trend-health logic:
 
 ```text
-exit if close < stop_price
+exit if low <= stop_price
 hold otherwise
 ```
+
+When a hard stop is triggered, the simulator now executes the exit at
+`stop_price`, not at the candle close. That keeps realized loss aligned with
+the stop-based sizing model and makes the backtest materially more honest.
 
 The separation between `TrendSniffer` and `ExitEngine` is intentional:
 
@@ -711,9 +787,25 @@ python main_backtest.py
 `backtest/engine.py` iterates through `15m` candles and slices the higher
 timeframes to the current execution timestamp on every step.
 
-One important implementation detail is that the loop begins at index `50`.
-That acts as a simple warm-up buffer so the strategy does not start on the very
-first few rows after feature construction.
+The engine no longer starts from a fixed warm-up index. It now begins at the
+first execution timestamp where the required `15m`, `1h`, `5h`, and `12h`
+contexts all exist. That preserves realism and prevents invalid early-candle
+evaluation.
+
+### Backtest checkpointing
+
+Historical backtests are resumable. If the process is interrupted, the engine
+stores:
+
+| Artifact | Purpose |
+| --- | --- |
+| `backtest/output/_checkpoints/*.checkpoint.json` | Next execution index and simulator state snapshot |
+| `backtest/output/trades.csv` | Trade log continued safely on resume |
+| `backtest/output/equity.csv` | Equity log continued safely on resume |
+
+On a fresh run, the output CSVs are recreated from scratch. On a resume, the
+current checkpoint and output files are reused so the run can continue from the
+last saved execution step.
 
 ### Backtest outputs
 
@@ -722,6 +814,7 @@ By default:
 ```text
 backtest/output/trades.csv
 backtest/output/equity.csv
+backtest/output/_checkpoints/<symbol>_backtest_<start>_to_<end>.checkpoint.json
 ```
 
 ## Live Simulation Mode
@@ -739,18 +832,27 @@ python main_live.py
 
 `live_sim/runner.py` continuously:
 
-1. fetches the latest recent `1m` candles from Binance
-2. rebuilds all strategy timeframes
-3. recomputes features on every timeframe
-4. checks whether a new `15m` candle has appeared
-5. if so, slices the higher timeframes to that candle time
-6. runs the same simulator step used by backtesting
-7. sleeps for `live_sim.poll_seconds`
+1. loads local `1m` bootstrap history from the completed CSV, or falls back to the partial CSV
+2. trims that state to the required warmup window for the current feature and context stack
+3. fetches the latest recent `1m` candles from Binance
+4. merges, deduplicates, and sorts the in-memory `1m` state
+5. rebuilds all strategy timeframes
+6. recomputes features on every timeframe
+7. checks whether a new `15m` candle has appeared
+8. if so, slices the higher timeframes to that candle time
+9. runs the same simulator step used by backtesting
+10. sleeps for `live_sim.poll_seconds`
 
 ### Candle clock
 
 `live_sim/candle_clock.py` prevents repeated execution on the same `15m`
 candle. It also safely handles the case where the `15m` DataFrame is empty.
+
+Because the live loop now depends on local bootstrap history, the intended order
+is:
+
+1. `python main_download.py`
+2. `python main_live.py`
 
 ### Live outputs
 
@@ -784,6 +886,13 @@ They are designed to explain not just what happened, but why it happened.
 | `pnl_R_initial` | PnL divided by initial entry risk |
 | `initial_risk_amount` | Risk of the first layer |
 | `total_risk_amount` | Total risk of all layers to stop |
+| `bias` | Directional bias at entry |
+| `regime_score` | Higher-timeframe regime score at entry |
+| `regime_class` | Regime label such as `strong` or `moderate` |
+| `entry_threshold` | Entry threshold active when the trade was taken |
+| `exit_reason` | Why the trade was closed, such as hard exit or trend weakness |
+| `entry_layer_count` | Number of filled entry layers across the trade lifecycle |
+| `pyramid_level` | Final pyramid depth reached by the trade |
 | `score` | Entry score |
 | `body_strength` | Candle metric at entry |
 | `close_position` | Candle metric at entry |
@@ -822,6 +931,10 @@ The repository includes a focused `unittest` suite under `tests/`.
 | Trade metrics | Verify total-risk and initial-risk `R` calculations |
 | Loggers | Verify file creation, headers, and appended rows |
 | Debug control | Verify `app.debug` actually suppresses output |
+| Download checkpointing | Verify resumable writes and transient replace retries |
+| TLS configuration | Verify `ssl_verify` and custom CA bundle behavior |
+| Live bootstrap | Verify local warmup loading and recent-candle merge behavior |
+| Backtest resume | Verify checkpoint save/restore and valid dynamic start index |
 
 ### Test command
 
@@ -867,14 +980,17 @@ deliberate incompleteness.
 
 ### Backtest behavior
 
-- The backtest engine begins from candle index `50`.
+- The backtest currently rebuilds higher timeframes from canonical `1m` history
+  on every run, even if prebuilt higher-timeframe CSVs already exist.
 - The current engine does not explicitly force-close an open trade at the final
   candle of the dataset.
 
 ### Logging
 
-- Debug output is still print-based under a shared switch, not a full structured
-  logging framework.
+- Module logging is still print-based under a shared switch rather than a full
+  structured logging framework.
+- The Rich dashboards currently exist for historical download and backtest, not
+  for the live simulation loop.
 
 ## Extension Guide
 
@@ -945,23 +1061,56 @@ Minimum values to understand before running:
 
 ### 4. Obtain or download `1m` history
 
-The backtest expects a base `1m` CSV under:
+Use the dedicated downloader:
+
+```bash
+python main_download.py
+```
+
+The downloader writes a resumable `1m` history under:
 
 ```text
 data_storage/<symbol>/1m/<symbol>_1m_<start>_to_<end>.csv
 ```
 
-### 5. Run the backtest
+If you want to override the range or symbol:
+
+```bash
+python main_download.py --symbol BTCUSDT --start-date 2024-01-01 --end-date 2024-12-31
+```
+
+### 5. Optionally materialize higher timeframe CSVs
+
+```bash
+python main_resample.py
+```
+
+This is useful for inspection and debugging, but it is not required for
+backtesting because `main_backtest.py` already resamples internally.
+
+### 6. Run the backtest
 
 ```bash
 python main_backtest.py
 ```
 
-### 6. Run live simulation
+The backtest:
+
+- rebuilds `15m`, `1h`, `5h`, and `12h` candles from the local `1m` history
+- computes features on all strategy timeframes
+- runs the shared simulator
+- writes trade and equity CSVs
+- shows a Rich progress dashboard
+- saves checkpoints so interrupted runs can resume
+
+### 7. Run live simulation
 
 ```bash
 python main_live.py
 ```
+
+The live simulation now bootstraps from local `1m` history first, then appends
+fresh Binance `1m` data before each resample-and-decision cycle.
 
 ## Dependencies
 
@@ -973,6 +1122,7 @@ The current `requirements.txt` contains:
 | `numpy` | Numerical helpers |
 | `requests` | Binance HTTP requests |
 | `matplotlib` | Available for analysis/visualization workflows |
+| `rich` | Live terminal dashboards for download and backtest progress |
 
 ## Closing Note
 

@@ -21,6 +21,16 @@ class EntryEngine:
                 getter("entry", "block_compression", default=False)
             )
             blocked_scores = getter("entry", "blocked_scores", default=[])
+            min_body_strength_by_score = getter(
+                "entry",
+                "min_body_strength_by_score",
+                default={},
+            )
+            blocked_upper_wick_ranges_by_score = getter(
+                "entry",
+                "blocked_upper_wick_ranges_by_score",
+                default={},
+            )
         else:
             try:
                 self.block_compression = bool(
@@ -32,8 +42,38 @@ class EntryEngine:
                 blocked_scores = self.config.require("entry", "blocked_scores")
             except Exception:
                 blocked_scores = []
+            try:
+                min_body_strength_by_score = self.config.require(
+                    "entry",
+                    "min_body_strength_by_score",
+                )
+            except Exception:
+                min_body_strength_by_score = {}
+            try:
+                blocked_upper_wick_ranges_by_score = self.config.require(
+                    "entry",
+                    "blocked_upper_wick_ranges_by_score",
+                )
+            except Exception:
+                blocked_upper_wick_ranges_by_score = {}
 
         self.blocked_scores = {int(score) for score in blocked_scores}
+        self.min_body_strength_by_score = {
+            int(score): float(value)
+            for score, value in (min_body_strength_by_score or {}).items()
+        }
+        self.blocked_upper_wick_ranges_by_score = {
+            int(score): [
+                (
+                    float(range_config["min"]),
+                    float(range_config["max"]),
+                )
+                for range_config in (ranges or [])
+            ]
+            for score, ranges in (
+                blocked_upper_wick_ranges_by_score or {}
+            ).items()
+        }
 
     def generate_entry(self, row, score, bias):
         start = time.time()
@@ -53,6 +93,32 @@ class EntryEngine:
         if score in self.blocked_scores:
             print(f"No entry: score {score} blocked by configuration")
             return None
+
+        min_body_strength = self.min_body_strength_by_score.get(score)
+        if min_body_strength is not None:
+            body_strength = float(row.get("body_strength", 0.0))
+            if body_strength < min_body_strength:
+                print(
+                    "No entry: body strength below score-specific minimum "
+                    f"({body_strength:.4f} < {min_body_strength:.4f})"
+                )
+                return None
+
+        blocked_upper_wick_ranges = self.blocked_upper_wick_ranges_by_score.get(
+            score,
+            [],
+        )
+        if blocked_upper_wick_ranges:
+            upper_wick_ratio = float(row.get("upper_wick_ratio", 0.0))
+            for min_upper_wick, max_upper_wick in blocked_upper_wick_ranges:
+                if min_upper_wick <= upper_wick_ratio < max_upper_wick:
+                    print(
+                        "No entry: upper wick ratio falls inside blocked "
+                        "score-specific band "
+                        f"({upper_wick_ratio:.4f} in "
+                        f"[{min_upper_wick:.4f}, {max_upper_wick:.4f}))"
+                    )
+                    return None
 
         # Breakout event must be present (core rule)
         if not row["breakout"]:

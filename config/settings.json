@@ -44,7 +44,18 @@
   "entry": {
     "score_threshold": 4,
     "block_compression": true,
-    "blocked_scores": [7]
+    "blocked_scores": [7],
+    "min_body_strength_by_score": {
+      "8": 2.0
+    },
+    "blocked_upper_wick_ranges_by_score": {
+      "8": [
+        {
+          "min": 0.1,
+          "max": 0.3
+        }
+      ]
+    }
   },
   "features": {
     "ema_periods": {
