@@ -13,6 +13,11 @@ class PyramidingEngine:
     def __init__(self, config=None):
         self.config = config or AppConfig.load()
         self.levels = self.config.require("strategy", "pyramiding", "levels")
+        self.max_total_risk_multiple = self.config.require(
+            "strategy",
+            "pyramiding",
+            "max_total_risk_multiple"
+        )
 
     def check_pyramiding(self, price, entry_price, R, current_level):
         start = time.time()
@@ -58,6 +63,47 @@ class PyramidingEngine:
 
         print("No additional position")
         return 0
+
+    def cap_add_size_by_risk(
+        self,
+        add_size,
+        add_price,
+        stop_price,
+        current_total_risk,
+        equity,
+        risk_per_trade
+    ):
+        """
+        Risk-budgeted pyramiding.
+
+        Caps the requested add size so the total worst-case loss to the shared
+        stop does not exceed:
+
+            equity * risk_per_trade * max_total_risk_multiple
+        """
+
+        max_total_risk = equity * risk_per_trade * self.max_total_risk_multiple
+        remaining = max_total_risk - current_total_risk
+
+        if remaining <= 0:
+            print("Pyramiding blocked: risk budget exhausted")
+            return 0
+
+        risk_per_unit = abs(add_price - stop_price)
+        if risk_per_unit == 0:
+            print("Pyramiding blocked: invalid stop distance")
+            return 0
+
+        max_add_size = remaining / risk_per_unit
+        capped = min(add_size, max_add_size)
+
+        if capped < add_size:
+            print(
+                "Pyramiding capped by risk budget "
+                f"({capped:.4f} <= {add_size:.4f})"
+            )
+
+        return max(0, capped)
 
 
 def check_pyramiding(price, entry_price, R, current_level, config=None):

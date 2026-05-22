@@ -103,6 +103,24 @@ class Trade:
     # Compute PnL
     # ------------------------------------------
 
+    def total_risk_to_stop(self):
+        """
+        Compute current total stop-risk in quote currency terms.
+
+        For each entry layer, the risk contribution is the distance from entry
+        to the structural stop multiplied by the layer size. Summing across
+        layers yields the total worst-case loss if price hits the stop.
+        """
+
+        if self.stop is None:
+            return 0
+
+        total = 0
+        for entry_price, size in self.entries:
+            total += abs(entry_price - self.stop) * size
+
+        return total
+
     def compute_pnl(self):
 
         print("\nComputing PnL...")
@@ -120,8 +138,9 @@ class Trade:
 
         self.pnl = total
 
-        if self.R != 0:
-            self.pnl_R = total / self.R
+        risk = self.total_risk_to_stop()
+        if risk:
+            self.pnl_R = total / risk
 
         print(f"\nTotal PnL: {self.pnl:.2f}")
         print(f"PnL (R multiple): {self.pnl_R:.2f}")

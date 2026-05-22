@@ -149,8 +149,19 @@ class Simulator:
                 )
 
                 if add_size > 0:
-                    trade.add_entry(price, add_size)
-                    self.level = new_level
+                    current_risk = trade.total_risk_to_stop()
+                    add_size = self.pyramiding_engine.cap_add_size_by_risk(
+                        add_size=add_size,
+                        add_price=price,
+                        stop_price=trade.stop,
+                        current_total_risk=current_risk,
+                        equity=self.account.equity,
+                        risk_per_trade=self.risk_per_trade
+                    )
+
+                    if add_size > 0:
+                        trade.add_entry(price, add_size)
+                        self.level = new_level
 
             # sniffing (trend continuation)
             trend_ok = self.trend_sniffer.is_trend_alive(row)
