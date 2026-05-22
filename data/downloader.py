@@ -7,6 +7,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
+from common.download_progress import DownloadProgressDisplay
 from common.debug import debug_print as print
 from config import AppConfig
 from .binance_client import BinanceClient
@@ -141,10 +142,27 @@ class MarketDataDownloader:
         checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
 
         temp_path = checkpoint_path.with_suffix(f"{checkpoint_path.suffix}.tmp")
-        with temp_path.open("w") as f:
+        with temp_path.open("w", encoding="utf-8") as f:
             json.dump(payload, f, indent=2)
 
-        temp_path.replace(checkpoint_path)
+        last_error = None
+        for attempt in range(1, 9):
+            try:
+                temp_path.replace(checkpoint_path)
+                return
+            except PermissionError as exc:
+                last_error = exc
+
+                if attempt == 8:
+                    break
+
+                time.sleep(0.15 * attempt)
+
+        raise PermissionError(
+            "Unable to update checkpoint file after multiple attempts. "
+            "This is usually caused by a transient Windows/OneDrive file lock: "
+            f"{checkpoint_path}"
+        ) from last_error
 
     def _partial_summary(self, partial_path):
         if not partial_path.exists() or partial_path.stat().st_size == 0:
@@ -248,161 +266,237 @@ class MarketDataDownloader:
             100,
             max(0, ((current_start - start_ts) / total_range_ms) * 100)
         )
+        verify_mode = self.client.describe_verify_mode()
+        resume_detected = current_start > start_ts
+        display = DownloadProgressDisplay(enabled=True)
+        original_retry_callback = self.client.retry_callback
+        self.client.retry_callback = display.update_retry if display.enabled else original_retry_callback
 
-        print(f"\nStarting download: {symbol} | {interval}")
-        print(f"Range: {start_date} -> {end_date}\n")
-        print(f"Final CSV: {paths['final']}")
-        print(f"Checkpoint: {paths['checkpoint']}")
-
-        if current_start > start_ts:
-            print("\nResume checkpoint detected")
-            print(f"  Resuming from: {_fmt(current_start)}")
-            print(f"  Existing rows: {total_rows}")
-            print("  Previous batches will not be downloaded again.\n")
+        if display.enabled:
+            display.start(
+                symbol=symbol,
+                interval=interval,
+                start_date=start_date,
+                end_date=end_date,
+                final_path=paths["final"],
+                checkpoint_path=paths["checkpoint"],
+                resumed=resume_detected,
+                resume_point=_fmt(current_start) if resume_detected else None,
+                total_rows=total_rows,
+                initial_progress_pct=initial_progress_pct,
+                verify_mode=verify_mode,
+            )
         else:
-            print("No usable checkpoint found. Starting from the beginning.\n")
+            print(f"\nStarting download: {symbol} | {interval}")
+            print(f"Range: {start_date} -> {end_date}\n")
+            print(f"Final CSV: {paths['final']}")
+            print(f"Checkpoint: {paths['checkpoint']}")
+            print(f"TLS verify: {verify_mode}")
 
-        while current_start < end_ts:
-            batch_start_time = time.time()
-            request_batch_number = total_batches + 1
+            if resume_detected:
+                print("\nResume checkpoint detected")
+                print(f"  Resuming from: {_fmt(current_start)}")
+                print(f"  Existing rows: {total_rows}")
+                print("  Previous batches will not be downloaded again.\n")
+            else:
+                print("No usable checkpoint found. Starting from the beginning.\n")
 
-            print(
-                f" Requesting batch {request_batch_number} | "
-                f"from {_fmt(current_start)} | limit={limit}"
-            )
+        try:
+            while current_start < end_ts:
+                batch_start_time = time.time()
+                request_batch_number = total_batches + 1
 
-            try:
-                raw = self.client.get_klines(
-                    symbol=symbol,
-                    interval=interval,
-                    startTime=current_start,
-                    endTime=end_ts,
-                    limit=limit,
-                    verbose=False
+                if display.enabled:
+                    display.update_request(
+                        batch_number=request_batch_number,
+                        request_from=_fmt(current_start),
+                        limit=limit,
+                    )
+                else:
+                    print(
+                        f" Requesting batch {request_batch_number} | "
+                        f"from {_fmt(current_start)} | limit={limit}"
+                    )
+
+                try:
+                    raw = self.client.get_klines(
+                        symbol=symbol,
+                        interval=interval,
+                        startTime=current_start,
+                        endTime=end_ts,
+                        limit=limit,
+                        verbose=False
+                    )
+                except (Exception, KeyboardInterrupt) as exc:
+                    self._write_checkpoint(paths["checkpoint"], {
+                        "symbol": symbol,
+                        "interval": interval,
+                        "start_date": start_date,
+                        "end_date": end_date,
+                        "next_start_ms": current_start,
+                        "next_start_time": _fmt(current_start),
+                        "batches_downloaded": total_batches,
+                        "rows_downloaded": total_rows,
+                        "completed": False,
+                        "last_error": str(exc),
+                        "updated_at": datetime.utcnow().isoformat()
+                    })
+
+                    if display.enabled:
+                        display.update_interrupted(
+                            reason=exc,
+                            checkpoint_path=paths["checkpoint"],
+                        )
+                    else:
+                        reason = str(exc) or "Interrupted by user"
+                        print("\nDownload interrupted.")
+                        print(f"  Reason: {reason}")
+                        print(f"  Checkpoint saved: {paths['checkpoint']}")
+                        print("  Re-run the same command and it will continue from the saved point.")
+                    raise
+
+                if not raw:
+                    if display.enabled:
+                        display.add_event("stop", "No more data returned from Binance")
+                    else:
+                        print("WARNING: No more data returned. Stopping.")
+                    break
+
+                batch_df = self.klines_to_df(
+                    raw,
+                    closed_only=self.config.require("binance", "closed_klines_only")
                 )
-            except (Exception, KeyboardInterrupt) as exc:
-                self._write_checkpoint(paths["checkpoint"], {
-                    "symbol": symbol,
-                    "interval": interval,
-                    "start_date": start_date,
-                    "end_date": end_date,
-                    "next_start_ms": current_start,
-                    "next_start_time": _fmt(current_start),
-                    "batches_downloaded": total_batches,
-                    "rows_downloaded": total_rows,
-                    "completed": False,
-                    "last_error": str(exc),
-                    "updated_at": datetime.utcnow().isoformat()
-                })
+                self._append_batch(paths["partial"], batch_df)
 
-                print("\nDownload interrupted.")
-                print(f"  Reason: {exc}")
-                print(f"  Checkpoint saved: {paths['checkpoint']}")
-                print("  Re-run the same command and it will continue from the saved point.")
-                raise
+                first_ts = self._to_utc_ms(batch_df.index[0])
+                last_ts = self._to_utc_ms(batch_df.index[-1])
+                current_start = last_ts + 1
 
-            if not raw:
-                print("WARNING: No more data returned. Stopping.")
-                break
+                total_batches += 1
+                total_rows += len(batch_df)
 
-            batch_df = self.klines_to_df(
-                raw,
-                closed_only=self.config.require("binance", "closed_klines_only")
-            )
-            self._append_batch(paths["partial"], batch_df)
+                batch_time = time.time() - batch_start_time
+                total_time = time.time() - start_clock
 
-            first_ts = self._to_utc_ms(batch_df.index[0])
-            last_ts = self._to_utc_ms(batch_df.index[-1])
-            current_start = last_ts + 1
+                progress_pct = min(100, ((last_ts - start_ts) / total_range_ms) * 100)
+                remaining_pct = max(0.01, 100 - progress_pct)
+                session_progress_pct = max(0.0001, progress_pct - initial_progress_pct)
+                eta_seconds = total_time * (remaining_pct / session_progress_pct)
 
-            total_batches += 1
-            total_rows += len(batch_df)
+                if total_batches % save_every == 0:
+                    self._write_checkpoint(paths["checkpoint"], {
+                        "symbol": symbol,
+                        "interval": interval,
+                        "start_date": start_date,
+                        "end_date": end_date,
+                        "next_start_ms": current_start,
+                        "next_start_time": _fmt(current_start),
+                        "last_timestamp_ms": last_ts,
+                        "last_timestamp": _fmt(last_ts),
+                        "batches_downloaded": total_batches,
+                        "rows_downloaded": total_rows,
+                        "partial_csv": str(paths["partial"]),
+                        "final_csv": str(paths["final"]),
+                        "completed": False,
+                        "updated_at": datetime.utcnow().isoformat()
+                    })
 
-            batch_time = time.time() - batch_start_time
+                if display.enabled:
+                    display.update_batch_result(
+                        batch_number=total_batches,
+                        window_start=_fmt(first_ts),
+                        window_end=_fmt(last_ts),
+                        batch_rows=len(batch_df),
+                        total_rows=total_rows,
+                        progress_pct=progress_pct,
+                        remaining_pct=remaining_pct,
+                        elapsed_seconds=total_time,
+                        eta_seconds=eta_seconds,
+                        resume_point=_fmt(current_start),
+                    )
+                elif total_batches % status_every == 0:
+                    print(f"Batch {total_batches} saved")
+                    print(f"  Window: {_fmt(first_ts)} -> {_fmt(last_ts)}")
+                    print(f"  Rows this batch: {len(batch_df)} | Total rows: {total_rows}")
+                    print(f"  Progress: {progress_pct:.2f}% | Remaining: {remaining_pct:.2f}%")
+                    print(
+                        f"   Timing: batch {_fmt_duration(batch_time)} | "
+                        f"elapsed {_fmt_duration(total_time)} | "
+                        f"ETA {_fmt_duration(eta_seconds)}"
+                    )
+                    print(f"  Resume point: {_fmt(current_start)}")
+                    print(f"  Checkpoint saved: {paths['checkpoint']}")
+
+                if throttle > 0:
+                    if display.enabled:
+                        display.update_waiting(throttle)
+                    else:
+                        print(f"  Waiting {throttle:.2f}s before the next Binance request...\n")
+                    time.sleep(throttle)
+
+            if not paths["partial"].exists():
+                raise FileNotFoundError(f"No partial download file found: {paths['partial']}")
+
+            if display.enabled:
+                display.update_finalizing()
+            else:
+                print("\nDownload loop complete. Finalizing CSV...\n")
+
+            df = self._load_partial(paths["partial"])
+            before_dedupe = len(df)
+            df = df[~df.index.duplicated(keep="last")].sort_index()
+            df = df.loc[start_date:end_date]
+
+            save_start = time.time()
+            df.to_csv(paths["final"])
+            save_time = time.time() - save_start
+            duplicates_removed = before_dedupe - len(df)
+
+            self._write_checkpoint(paths["checkpoint"], {
+                "symbol": symbol,
+                "interval": interval,
+                "start_date": start_date,
+                "end_date": end_date,
+                "next_start_ms": end_ts,
+                "next_start_time": _fmt(end_ts),
+                "batches_downloaded": total_batches,
+                "rows_downloaded": len(df),
+                "partial_csv": str(paths["partial"]),
+                "final_csv": str(paths["final"]),
+                "completed": True,
+                "updated_at": datetime.utcnow().isoformat()
+            })
+
+            if download_config["cleanup_partial_on_complete"] and paths["partial"].exists():
+                paths["partial"].unlink()
+                if display.enabled:
+                    display.add_event("finalize", f"Removed partial file {paths['partial']}")
+                else:
+                    print(f"Removed completed partial file: {paths['partial']}")
+
             total_time = time.time() - start_clock
 
-            progress_pct = min(100, ((last_ts - start_ts) / total_range_ms) * 100)
-            remaining_pct = max(0.01, 100 - progress_pct)
-            session_progress_pct = max(0.0001, progress_pct - initial_progress_pct)
-            eta_seconds = total_time * (remaining_pct / session_progress_pct)
-
-            if total_batches % save_every == 0:
-                self._write_checkpoint(paths["checkpoint"], {
-                    "symbol": symbol,
-                    "interval": interval,
-                    "start_date": start_date,
-                    "end_date": end_date,
-                    "next_start_ms": current_start,
-                    "next_start_time": _fmt(current_start),
-                    "last_timestamp_ms": last_ts,
-                    "last_timestamp": _fmt(last_ts),
-                    "batches_downloaded": total_batches,
-                    "rows_downloaded": total_rows,
-                    "partial_csv": str(paths["partial"]),
-                    "final_csv": str(paths["final"]),
-                    "completed": False,
-                    "updated_at": datetime.utcnow().isoformat()
-                })
-
-            if total_batches % status_every == 0:
-                print(f"Batch {total_batches} saved")
-                print(f"  Window: {_fmt(first_ts)} -> {_fmt(last_ts)}")
-                print(f"  Rows this batch: {len(batch_df)} | Total rows: {total_rows}")
-                print(f"  Progress: {progress_pct:.2f}% | Remaining: {remaining_pct:.2f}%")
-                print(
-                    f"   Timing: batch {_fmt_duration(batch_time)} | "
-                    f"elapsed {_fmt_duration(total_time)} | "
-                    f"ETA {_fmt_duration(eta_seconds)}"
+            if display.enabled:
+                display.add_event("finalize", f"Duplicate rows removed: {duplicates_removed}")
+                display.add_event("finalize", f"Final CSV write time: {save_time:.2f}s")
+                display.update_completed(
+                    total_rows=len(df),
+                    total_time_seconds=total_time,
+                    final_path=paths["final"],
                 )
-                print(f"  Resume point: {_fmt(current_start)}")
-                print(f"  Checkpoint saved: {paths['checkpoint']}")
+            else:
+                print(f"Saved final CSV: {paths['final']}")
+                print(f"Save time: {save_time:.2f}s")
+                print(f"Duplicate rows removed: {duplicates_removed}")
+                print(f"\nTOTAL TIME: {total_time/60:.2f} minutes")
+                print(f"Total candles: {len(df)}")
+                print(f"Final checkpoint: {paths['checkpoint']}")
 
-            if throttle > 0:
-                print(f"  Waiting {throttle:.2f}s before the next Binance request...\n")
-                time.sleep(throttle)
-
-        if not paths["partial"].exists():
-            raise FileNotFoundError(f"No partial download file found: {paths['partial']}")
-
-        print("\nDownload loop complete. Finalizing CSV...\n")
-
-        df = self._load_partial(paths["partial"])
-        before_dedupe = len(df)
-        df = df[~df.index.duplicated(keep="last")].sort_index()
-        df = df.loc[start_date:end_date]
-
-        save_start = time.time()
-        df.to_csv(paths["final"])
-
-        print(f"Saved final CSV: {paths['final']}")
-        print(f"Save time: {time.time() - save_start:.2f}s")
-        print(f"Duplicate rows removed: {before_dedupe - len(df)}")
-
-        self._write_checkpoint(paths["checkpoint"], {
-            "symbol": symbol,
-            "interval": interval,
-            "start_date": start_date,
-            "end_date": end_date,
-            "next_start_ms": end_ts,
-            "next_start_time": _fmt(end_ts),
-            "batches_downloaded": total_batches,
-            "rows_downloaded": len(df),
-            "partial_csv": str(paths["partial"]),
-            "final_csv": str(paths["final"]),
-            "completed": True,
-            "updated_at": datetime.utcnow().isoformat()
-        })
-
-        if download_config["cleanup_partial_on_complete"] and paths["partial"].exists():
-            paths["partial"].unlink()
-            print(f"Removed completed partial file: {paths['partial']}")
-
-        total_time = time.time() - start_clock
-        print(f"\nTOTAL TIME: {total_time/60:.2f} minutes")
-        print(f"Total candles: {len(df)}")
-        print(f"Final checkpoint: {paths['checkpoint']}")
-
-        return df
+            return df
+        finally:
+            self.client.retry_callback = original_retry_callback
+            if display.enabled:
+                display.stop()
 
     def fetch_recent(self, symbol=None, interval=None, limit=None):
         symbol = symbol or self.config.require("app", "default_symbol")

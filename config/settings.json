@@ -21,6 +21,8 @@
     "retry_backoff_seconds": 1,
     "retry_status_codes": [418, 429, 500, 502, 503, 504],
     "retry_logging_enabled": true,
+    "ssl_verify": false,
+    "ca_bundle_path": null,
     "closed_klines_only": true,
     "throttle_seconds": 0.2
   },
@@ -57,7 +59,7 @@
     }
   },
   "history": {
-    "start_date": "2017-01-01",
+    "start_date": "2018-01-01",
     "end_date": "2026-05-12"
   },
   "live_sim": {

@@ -4,7 +4,10 @@ import requests
 import time
 import os
 from datetime import datetime
+from pathlib import Path
 from urllib.parse import urljoin
+from urllib3 import disable_warnings
+from urllib3.exceptions import InsecureRequestWarning
 
 from common.debug import debug_print as print
 from config import AppConfig, EnvLoader
@@ -20,7 +23,7 @@ class BinanceClient:
     long-running data jobs can recover from transient Binance/API issues.
     """
 
-    def __init__(self, config=None):
+    def __init__(self, config=None, retry_callback=None):
         EnvLoader().load()
 
         self.config = config or AppConfig.load()
@@ -41,11 +44,72 @@ class BinanceClient:
             "binance",
             "retry_logging_enabled"
         )
+        self.ssl_verify = self.config.get(
+            "binance",
+            "ssl_verify",
+            default=True
+        )
+        self.ca_bundle_path = self.config.get(
+            "binance",
+            "ca_bundle_path",
+            default=None
+        )
+        self._warnings_configured = False
+        self.retry_callback = retry_callback
+
+    def _verify_setting(self):
+        if self.ca_bundle_path:
+            bundle_path = Path(self.ca_bundle_path)
+            if not bundle_path.is_absolute():
+                bundle_path = self.config.root_dir / bundle_path
+
+            if not bundle_path.exists():
+                raise FileNotFoundError(
+                    f"Configured CA bundle not found: {bundle_path}"
+                )
+
+            return str(bundle_path)
+
+        return bool(self.ssl_verify)
+
+    def _configure_tls_warning_behavior(self, verify_setting):
+        if self._warnings_configured:
+            return
+
+        if verify_setting is False:
+            disable_warnings(InsecureRequestWarning)
+
+        self._warnings_configured = True
+
+    def describe_verify_mode(self):
+        verify_setting = self._verify_setting()
+
+        if isinstance(verify_setting, str):
+            return f"custom CA bundle ({verify_setting})"
+        if verify_setting:
+            return "enabled"
+        return "disabled"
 
     def _retry_delay(self, attempt):
         return self.retry_backoff * attempt
 
+    def _emit_retry_event(self, attempt, delay, reason):
+        if not callable(self.retry_callback):
+            return
+
+        self.retry_callback(
+            attempt=attempt,
+            total_attempts=self.retry_attempts,
+            delay=delay,
+            reason=reason,
+        )
+
     def _log_retry(self, attempt, delay, reason):
+        self._emit_retry_event(attempt, delay, reason)
+
+        if self.retry_callback is not None:
+            return
+
         if not self.retry_logging_enabled:
             return
 
@@ -84,6 +148,8 @@ class BinanceClient:
             headers["X-MBX-APIKEY"] = self.api_key
 
         start_clock = time.time()
+        verify_setting = self._verify_setting()
+        self._configure_tls_warning_behavior(verify_setting)
 
         if verbose:
             print(f"\nFetching {symbol} | {interval}")
@@ -91,6 +157,12 @@ class BinanceClient:
                 print(f"  From: {_format_time(startTime)}")
             if endTime is not None:
                 print(f"  To:   {_format_time(endTime)}")
+            if isinstance(verify_setting, str):
+                print(f"  TLS verify: custom CA bundle -> {verify_setting}")
+            elif verify_setting:
+                print("  TLS verify: enabled")
+            else:
+                print("  TLS verify: DISABLED")
 
         last_error = None
 
@@ -100,7 +172,8 @@ class BinanceClient:
                     self.klines_url,
                     params=params,
                     headers=headers,
-                    timeout=self.timeout
+                    timeout=self.timeout,
+                    verify=verify_setting
                 )
 
                 if response.status_code == 200:
