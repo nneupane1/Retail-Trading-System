@@ -86,7 +86,7 @@ class RecordingTrendSniffer:
         self.result = result
         self.calls = calls
 
-    def is_trend_alive(self, row):
+    def is_trend_alive(self, row, trade=None):
         self.calls.append("trend")
         return self.result
 
@@ -106,11 +106,15 @@ class RecordingPyramidingEngine:
         self.next_level = next_level
         self.calls = calls
 
+    def qualifies_for_pyramiding(self, row, trade):
+        self.calls.append("pyramid_quality")
+        return True
+
     def check_pyramiding(self, **kwargs):
         self.calls.append("pyramid")
         return self.next_level
 
-    def get_pyramid_size(self, base_size, level):
+    def get_pyramid_size(self, base_size, level, quality_gate_passed=False):
         return 0.5
 
     def cap_add_size_by_risk(self, **kwargs):
@@ -198,7 +202,7 @@ class SimulatorManagementTests(unittest.TestCase):
 
         simulator.step(row, empty_df, empty_df, empty_df)
 
-        self.assertEqual(calls, ["trend", "hard_exit", "pyramid"])
+        self.assertEqual(calls, ["trend", "hard_exit", "pyramid_quality", "pyramid"])
         self.assertIsNotNone(simulator.current_trade)
         self.assertEqual(simulator.level, 1)
         self.assertEqual(simulator.current_trade.added_entries, [(110.0, 0.5)])

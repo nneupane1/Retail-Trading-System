@@ -4,6 +4,7 @@ import pandas as pd
 import time
 import os
 import json
+import shutil
 from datetime import datetime
 from pathlib import Path
 
@@ -193,6 +194,76 @@ class MarketDataDownloader:
         df.set_index("timestamp", inplace=True)
         return self._validate_ohlcv(df)
 
+    def _find_bootstrap_source(
+        self,
+        symbol,
+        interval,
+        start_date,
+        end_date,
+        base_path
+    ):
+        folder = self._storage_folder(base_path, symbol, interval)
+        if not folder.exists():
+            return None
+
+        target_end_ts = pd.Timestamp(end_date)
+        partial_suffix = self.config.require("downloads", "history")["partial_suffix"]
+        prefix = f"{symbol}_{interval}_{start_date}_to_"
+
+        best_candidate = None
+        best_end_ts = None
+
+        for candidate in folder.glob(f"{prefix}*.csv"):
+            if candidate.name.endswith(partial_suffix):
+                continue
+
+            if not candidate.name.startswith(prefix):
+                continue
+
+            candidate_end_text = candidate.name[len(prefix):-4]
+
+            try:
+                candidate_end_ts = pd.Timestamp(candidate_end_text)
+            except ValueError:
+                continue
+
+            if candidate_end_ts >= target_end_ts:
+                continue
+
+            if best_end_ts is None or candidate_end_ts > best_end_ts:
+                best_candidate = candidate
+                best_end_ts = candidate_end_ts
+
+        return best_candidate
+
+    def _bootstrap_partial_from_completed_history(
+        self,
+        paths,
+        symbol,
+        interval,
+        start_date,
+        end_date,
+        base_path
+    ):
+        if paths["partial"].exists() or paths["checkpoint"].exists():
+            return None
+
+        source_path = self._find_bootstrap_source(
+            symbol=symbol,
+            interval=interval,
+            start_date=start_date,
+            end_date=end_date,
+            base_path=base_path
+        )
+
+        if source_path is None:
+            return None
+
+        paths["partial"].parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source_path, paths["partial"])
+
+        return source_path
+
     def fetch_full_history(
         self,
         symbol=None,
@@ -206,8 +277,12 @@ class MarketDataDownloader:
 
         If a final CSV already exists, it is loaded directly. If a partial CSV
         or checkpoint exists, the next request starts after the last persisted
-        candle. On completion, the partial file is deduplicated, promoted to the
-        final CSV, and the checkpoint is marked complete.
+        candle. If the requested range extends an older completed CSV for the
+        same symbol/interval/start date, that completed file is copied into the
+        new partial path so the downloader can continue from its last candle
+        instead of restarting from the first candle. On completion, the partial
+        file is deduplicated, promoted to the final CSV, and the checkpoint is
+        marked complete.
         """
         symbol = symbol or self.config.require("app", "default_symbol")
         interval = interval or self.config.require("binance", "default_interval")
@@ -235,6 +310,17 @@ class MarketDataDownloader:
             print("\nCompleted historical file already exists.")
             print(f"Using cached file: {paths['final']}")
             return self.load_from_csv(paths["final"])
+
+        bootstrap_source = None
+        if resume_enabled:
+            bootstrap_source = self._bootstrap_partial_from_completed_history(
+                paths=paths,
+                symbol=symbol,
+                interval=interval,
+                start_date=start_date,
+                end_date=end_date,
+                base_path=base_path
+            )
 
         checkpoint = self._read_checkpoint(paths["checkpoint"]) if resume_enabled else None
         partial_summary = (
@@ -286,6 +372,11 @@ class MarketDataDownloader:
                 initial_progress_pct=initial_progress_pct,
                 verify_mode=verify_mode,
             )
+            if bootstrap_source is not None:
+                display.add_event(
+                    "resume",
+                    f"Bootstrapped from cached history {bootstrap_source.name}"
+                )
         else:
             print(f"\nStarting download: {symbol} | {interval}")
             print(f"Range: {start_date} -> {end_date}\n")
@@ -297,6 +388,8 @@ class MarketDataDownloader:
                 print("\nResume checkpoint detected")
                 print(f"  Resuming from: {_fmt(current_start)}")
                 print(f"  Existing rows: {total_rows}")
+                if bootstrap_source is not None:
+                    print(f"  Bootstrapped from: {bootstrap_source}")
                 print("  Previous batches will not be downloaded again.\n")
             else:
                 print("No usable checkpoint found. Starting from the beginning.\n")

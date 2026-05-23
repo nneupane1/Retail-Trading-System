@@ -77,7 +77,7 @@
   },
   "history": {
     "start_date": "2018-01-01",
-    "end_date": "2026-05-12"
+    "end_date": "2026-05-22"
   },
   "live_sim": {
     "output_dir": "live_sim/output",
@@ -100,6 +100,18 @@
     },
     "pyramiding": {
       "max_total_risk_multiple": 1.0,
+      "quality_gate": {
+        "enabled": true,
+        "body_strength_min": 1.5,
+        "upper_wick_max": 0.6,
+        "close_position_min": 0.75,
+        "min_confirmations": 2,
+        "min_open_r_multiple": 1.0,
+        "max_total_risk_multiple": 2.5,
+        "size_fraction_multipliers_by_level": {
+          "2": 1.5
+        }
+      },
       "levels": [
         {
           "level": 1,
@@ -139,7 +151,10 @@
       "body_strength_min": 0.8,
       "close_position_min": 0.4,
       "upper_wick_max": 1.5,
-      "min_confirmations": 1
+      "min_confirmations": 1,
+      "relax_after_r": 1.0,
+      "relaxed_min_confirmations": 0,
+      "slow_anchor_after_r": 1.5
     }
   },
   "timeframes": {

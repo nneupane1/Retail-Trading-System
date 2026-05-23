@@ -111,7 +111,12 @@ class BacktestProgressDisplay:
             return
 
         if self.live is not None:
-            self.live.stop()
+            try:
+                self.live.stop()
+            except Exception:
+                # Preserve the original startup/runtime error if the Rich live
+                # renderer itself cannot flush cleanly on this terminal.
+                pass
             self.live = None
 
     def add_event(self, level, message):

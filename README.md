@@ -25,6 +25,7 @@ trade PnL.
 - [Operational Workflow](#operational-workflow)
 - [Timeframe Hierarchy](#timeframe-hierarchy)
 - [Configuration Model](#configuration-model)
+- [Current Research Baseline](#current-research-baseline)
 - [Console Experience](#console-experience)
 - [Data Layer](#data-layer)
 - [Feature Layer](#feature-layer)
@@ -278,6 +279,93 @@ When `app.debug` is `false`, the internal print-heavy modules route their output
 through `common/debug.py` and remain silent. This is a practical middle ground
 between development verbosity and a fully structured logging framework.
 
+## Current Research Baseline
+
+The repository now contains a materially refined research baseline rather than
+only the original breakout skeleton. The active configuration is still fully
+rule-based and inspectable, but it now includes targeted entry filtering,
+profit-aware winner retention, and selective pyramiding for elite trades.
+
+### Active entry refinements
+
+The current baseline keeps the additive score model, then applies narrow
+config-driven filters in the entry-conversion layer:
+
+| Refinement | Active behavior |
+| --- | --- |
+| Score threshold | `entry.score_threshold = 4` |
+| Compression filter | `entry.block_compression = true` |
+| Score bucket exclusion | `entry.blocked_scores = [7]` |
+| Score-specific body filter | Score `8` requires `body_strength >= 2.0` |
+| Score-specific wick filter | Score `8` rejects `0.1 <= upper_wick_ratio < 0.3` |
+
+### Active winner-retention behavior
+
+The current baseline uses profit-aware soft-exit relaxation:
+
+| Stage | Active behavior |
+| --- | --- |
+| Base hold logic | Price must hold above the fast EMA and pass candle-quality confirmation rules |
+| Proven winner | After `+1R`, candle-quality confirmations can relax to `0` |
+| Elite winner | After `+1.5R`, the anchor can switch from the fast EMA to the slow EMA |
+
+### Active selective pyramiding behavior
+
+Pyramiding is no longer a blanket add-to-winner rule. It is now quality-gated.
+
+For a trade to qualify for elite pyramiding, the open position must already be
+at least `+1R`, and the current execution candle must satisfy enough of these
+conditions:
+
+- `body_strength >= 1.5`
+- `upper_wick_ratio <= 0.6`
+- `close_position >= 0.75`
+- at least `2` confirmations across those conditions
+
+Current configured add structure:
+
+| Level | Trigger | Base size fraction | Elite behavior |
+| --- | --- | --- | --- |
+| `1` | `+1R` cross | `0.5` | Standard |
+| `2` | `+2R` cross | `0.5` | Multiplied by `1.5`, so effective add size is `0.75` |
+
+Risk budgets are also split:
+
+| Case | Max total stop-risk budget |
+| --- | --- |
+| Normal trade | `1.0x` configured trade risk |
+| Elite pyramiding trade | `2.5x` configured trade risk |
+
+### Active hard-stop model
+
+The stop model is now internally consistent and materially more realistic than
+the original implementation:
+
+```text
+trigger: low <= stop_price
+execution: exit at stop_price
+```
+
+### Latest validated backtest snapshot
+
+Using the current research baseline on the configured historical range
+`2018-01-01 -> 2026-05-22`, the latest full rerun produced:
+
+| Metric | Latest result |
+| --- | --- |
+| Initial equity | `20000.00` |
+| Final equity | `43678.91` |
+| Net PnL | `+23678.91` |
+| Trades | `741` |
+| Win rate | `42.24%` |
+| Profit factor | `1.454` |
+| Average `pnl_R_initial` | `0.1124` |
+| Max drawdown | `-12.17%` |
+
+This is a research snapshot, not a live-performance claim. Its importance is
+that the current system is now behaving like a concentrated profit-distribution
+engine rather than a flat, overtrading breakout script.
+
 ## Console Experience
 
 The repository now exposes a much cleaner terminal UX than a traditional
@@ -348,6 +436,12 @@ closure without restarting from the first candle.
 
 The checkpoint writer also retries Windows file-replace operations to reduce
 crashes caused by transient OneDrive or indexing locks.
+
+If you extend the configured end date, the downloader can also bootstrap the
+new target range from the newest compatible completed CSV for the same symbol,
+interval, and start date. That means extending a file such as
+`..._to_2026-05-12.csv` to `..._to_2026-05-22.csv` does not require a full
+redownload from `2018-01-01`.
 
 ### TimeframeBuilder
 
@@ -562,6 +656,8 @@ These are intentionally placed in the entry-conversion layer rather than inside
 the scoring engine. That keeps the score model interpretable while allowing
 surgical filtering of weak subpopulations discovered during research.
 
+The currently active research baseline uses all four of these refinement hooks.
+
 ### RetestDetector
 
 `entry/retest.py` exists in the repository but is not part of the active entry
@@ -607,6 +703,7 @@ Its current behavior is:
 | Trigger on event cross of configured `+R` level | Avoid repeated adds while price stays above a level |
 | Require `trend_ok` | Do not scale into weakening structure |
 | Enforce sequential levels | Level 2 cannot fire before level 1 |
+| Require a quality gate for elite adds | Only the strongest open trades unlock larger add budgets |
 | Cap additions by total stop-risk budget | Prevent runaway exposure |
 
 Default configured levels:
@@ -620,6 +717,15 @@ Pyramiding uses the original entry price and original `R` as the reference for
 future levels. That keeps scaling tied to the original trade structure rather
 than to a floating average entry.
 
+When the quality gate passes, the active baseline also:
+
+- allows a larger total pyramid risk budget (`2.5x` configured trade risk)
+- scales the level-2 add size by `1.5`, making the effective level-2 add
+  fraction `0.75` of the base entry size
+
+This creates a deliberate distinction between ordinary winning trades and elite
+trades that have earned additional capital concentration.
+
 ### TrendSniffer
 
 `sniffing/trend_sniffer.py` is the system's soft-exit intelligence. It asks:
@@ -630,19 +736,23 @@ Current logic:
 
 ```text
 trend_alive =
-    (close > ema20)
-    and
-    count(
-        body_strength > threshold,
-        upper_wick_ratio < threshold,
-        close_position > threshold
-    ) >= min_confirmations
+    base:
+        (close > fast_ema)
+        and confirmations >= min_confirmations
+
+    after +1R:
+        (close > fast_ema)
+        and confirmations >= relaxed_min_confirmations
+
+    after +1.5R:
+        (close > slow_ema)
+        and confirmations >= relaxed_min_confirmations
 ```
 
-This is deliberately tolerant. Price above the fast EMA is the hard anchor. The
-other candle-quality signals are confirmations, not mandatory simultaneous
-requirements. That allows the system to survive through normal pauses and
-pullbacks inside larger trends.
+This is deliberately profit-aware. Ordinary trades still need the fast EMA
+anchor. Proven winners get more tolerance, and elite winners can be held
+against the slower EMA anchor. That lets the system keep trend exposure longer
+without weakening hard-stop discipline.
 
 ### ExitEngine
 
@@ -782,6 +892,11 @@ python main_backtest.py
 4. instantiate the simulator and CSV loggers
 5. hand everything to `BacktestEngine`
 
+The backtest always uses the configured `1m` history as the canonical source,
+then rebuilds the higher timeframes from that source during the run. Prebuilt
+`15m`, `1h`, `5h`, and `12h` CSVs are useful for inspection, but they are not
+the historical execution source of truth.
+
 ### Backtest engine behavior
 
 `backtest/engine.py` iterates through `15m` candles and slices the higher
@@ -816,6 +931,9 @@ backtest/output/trades.csv
 backtest/output/equity.csv
 backtest/output/_checkpoints/<symbol>_backtest_<start>_to_<end>.checkpoint.json
 ```
+
+Because output filenames embed the configured start and end dates, changing the
+configured historical range produces a different output and checkpoint family.
 
 ## Live Simulation Mode
 
@@ -984,6 +1102,8 @@ deliberate incompleteness.
   on every run, even if prebuilt higher-timeframe CSVs already exist.
 - The current engine does not explicitly force-close an open trade at the final
   candle of the dataset.
+- Output files are not versioned automatically per run; a fresh completed run
+  rewrites `backtest/output/trades.csv` and `backtest/output/equity.csv`.
 
 ### Logging
 
@@ -1079,6 +1199,10 @@ If you want to override the range or symbol:
 python main_download.py --symbol BTCUSDT --start-date 2024-01-01 --end-date 2024-12-31
 ```
 
+If you extend the configured end date later, rerunning `main_download.py` will
+reuse the latest compatible completed CSV as a bootstrap source before
+requesting only the missing candles.
+
 ### 5. Optionally materialize higher timeframe CSVs
 
 ```bash
@@ -1098,6 +1222,7 @@ The backtest:
 
 - rebuilds `15m`, `1h`, `5h`, and `12h` candles from the local `1m` history
 - computes features on all strategy timeframes
+- applies the active entry refinements, winner-retention rules, and selective pyramiding logic
 - runs the shared simulator
 - writes trade and equity CSVs
 - shows a Rich progress dashboard

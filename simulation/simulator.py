@@ -190,7 +190,7 @@ class Simulator:
 
             # TrendSniffer is the primary soft-exit signal.
             # ExitEngine remains reserved for hard exits such as the stop.
-            trend_ok = self.trend_sniffer.is_trend_alive(row)
+            trend_ok = self.trend_sniffer.is_trend_alive(row, trade=trade)
             hard_exit_signal = self.exit_engine.should_exit(row, trade.stop)
             soft_exit_signal = not trend_ok
 
@@ -206,19 +206,24 @@ class Simulator:
 
             else:
                 # Pyramiding is allowed only while the trade remains valid.
+                pyramid_quality_ok = self.pyramiding_engine.qualifies_for_pyramiding(
+                    row=row,
+                    trade=trade,
+                )
                 new_level = self.pyramiding_engine.check_pyramiding(
                     price=price,
                     entry_price=trade.entry_price,
                     R=trade.R,
                     current_level=self.level,
-                    trend_ok=trend_ok,
+                    trend_ok=trend_ok and pyramid_quality_ok,
                     previous_price=row.get("prev_close")
                 )
 
                 if new_level != self.level:
                     add_size = self.pyramiding_engine.get_pyramid_size(
                         self.base_size,
-                        new_level
+                        new_level,
+                        quality_gate_passed=pyramid_quality_ok,
                     )
 
                     if add_size > 0:
@@ -229,7 +234,8 @@ class Simulator:
                             stop_price=trade.stop,
                             current_total_risk=current_risk,
                             equity=self.account.equity,
-                            risk_per_trade=self.risk_per_trade
+                            risk_per_trade=self.risk_per_trade,
+                            quality_gate_passed=pyramid_quality_ok,
                         )
 
                         if add_size > 0:

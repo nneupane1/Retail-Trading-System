@@ -66,9 +66,13 @@ def make_config():
                 "close_position_min": 0.4,
                 "upper_wick_max": 1.5,
                 "min_confirmations": 1,
+                "relax_after_r": 1.0,
+                "relaxed_min_confirmations": 0,
+                "slow_anchor_after_r": 2.0,
             },
             "pyramiding": {
                 "max_total_risk_multiple": 1.0,
+                "quality_gate": {},
                 "levels": [
                     {
                         "level": 1,
@@ -79,6 +83,11 @@ def make_config():
                         "level": 2,
                         "r_multiple": 2,
                         "size_fraction": 0.5,
+                    },
+                    {
+                        "level": 3,
+                        "r_multiple": 3,
+                        "size_fraction": 0.25,
                     },
                 ],
             },
@@ -253,6 +262,39 @@ class TrendSnifferTests(unittest.TestCase):
 
         self.assertTrue(sniffer.is_trend_alive(row))
 
+    def test_profitable_trade_can_relax_candle_quality_if_price_holds_ema(self):
+        row = pd.Series(
+            {
+                "close": 110.0,
+                "ema2": 100.0,
+                "body_strength": 0.3,
+                "upper_wick_ratio": 2.0,
+                "close_position": 0.2,
+            }
+        )
+        trade = type("TradeStub", (), {"entry_price": 100.0, "R": 5.0})()
+
+        sniffer = TrendSniffer(config=make_config())
+
+        self.assertTrue(sniffer.is_trend_alive(row, trade=trade))
+
+    def test_elite_trade_can_switch_to_slower_ema_anchor(self):
+        row = pd.Series(
+            {
+                "close": 108.0,
+                "ema2": 109.0,
+                "ema3": 100.0,
+                "body_strength": 0.3,
+                "upper_wick_ratio": 2.0,
+                "close_position": 0.2,
+            }
+        )
+        trade = type("TradeStub", (), {"entry_price": 100.0, "R": 4.0})()
+
+        sniffer = TrendSniffer(config=make_config())
+
+        self.assertTrue(sniffer.is_trend_alive(row, trade=trade))
+
     def test_trend_dies_when_price_loses_ema_anchor(self):
         row = pd.Series(
             {
@@ -340,6 +382,98 @@ class PyramidingEngineTests(unittest.TestCase):
         )
 
         self.assertEqual(no_cross_level, 0)
+
+    def test_pyramiding_can_trigger_third_level_after_second_level(self):
+        engine = PyramidingEngine(config=make_config())
+
+        third_level = engine.check_pyramiding(
+            price=116.0,
+            entry_price=100.0,
+            R=5.0,
+            current_level=2,
+            trend_ok=True,
+            previous_price=114.0,
+        )
+
+        self.assertEqual(third_level, 3)
+
+    def test_pyramiding_quality_gate_blocks_weak_trade(self):
+        config = make_config()
+        config.data["strategy"]["pyramiding"]["quality_gate"] = {
+            "enabled": True,
+            "body_strength_min": 1.5,
+            "upper_wick_max": 0.6,
+            "close_position_min": 0.75,
+            "min_confirmations": 2,
+            "min_open_r_multiple": 1.0,
+            "max_total_risk_multiple": 2.5,
+        }
+        engine = PyramidingEngine(config=config)
+        row = pd.Series(
+            {
+                "close": 110.0,
+                "body_strength": 1.0,
+                "upper_wick_ratio": 0.7,
+                "close_position": 0.7,
+            }
+        )
+        trade = type("TradeStub", (), {"entry_price": 100.0, "R": 5.0})()
+
+        self.assertFalse(engine.qualifies_for_pyramiding(row, trade))
+
+    def test_quality_gate_can_unlock_larger_pyramid_risk_budget(self):
+        config = make_config()
+        config.data["strategy"]["pyramiding"]["quality_gate"] = {
+            "enabled": True,
+            "max_total_risk_multiple": 2.5,
+        }
+        engine = PyramidingEngine(config=config)
+
+        blocked_size = engine.cap_add_size_by_risk(
+            add_size=0.5,
+            add_price=110.0,
+            stop_price=100.0,
+            current_total_risk=10.0,
+            equity=1000.0,
+            risk_per_trade=0.01,
+            quality_gate_passed=False,
+        )
+        unlocked_size = engine.cap_add_size_by_risk(
+            add_size=0.5,
+            add_price=110.0,
+            stop_price=100.0,
+            current_total_risk=10.0,
+            equity=1000.0,
+            risk_per_trade=0.01,
+            quality_gate_passed=True,
+        )
+
+        self.assertEqual(blocked_size, 0)
+        self.assertGreater(unlocked_size, 0)
+
+    def test_quality_gate_can_scale_level_two_add_size(self):
+        config = make_config()
+        config.data["strategy"]["pyramiding"]["quality_gate"] = {
+            "enabled": True,
+            "size_fraction_multipliers_by_level": {
+                "2": 1.5,
+            },
+        }
+        engine = PyramidingEngine(config=config)
+
+        normal_size = engine.get_pyramid_size(
+            base_size=1.0,
+            level=2,
+            quality_gate_passed=False,
+        )
+        elite_size = engine.get_pyramid_size(
+            base_size=1.0,
+            level=2,
+            quality_gate_passed=True,
+        )
+
+        self.assertEqual(normal_size, 0.5)
+        self.assertEqual(elite_size, 0.75)
 
 
 if __name__ == "__main__":
