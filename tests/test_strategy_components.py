@@ -37,13 +37,16 @@ def make_config():
     return DummyConfig({
         "entry": {
             "score_threshold": 4,
+            "score_threshold_by_side": {},
             "block_compression": False,
             "block_compression_sides": ["long"],
             "blocked_scores": [],
+            "blocked_scores_by_side": {},
             "min_body_strength_by_score": {},
             "blocked_upper_wick_ranges_by_score": {},
             "blocked_lower_wick_ranges_by_score": {},
             "conditional_filters_by_score": {},
+            "directional_filters": {},
         },
         "features": {
             "ema_periods": {
@@ -103,6 +106,7 @@ def make_config():
                 "relaxed_min_confirmations": 0,
                 "slow_anchor_after_r": 2.0,
                 "require_short_vwap_alignment": True,
+                "by_side": {},
             },
             "pyramiding": {
                 "max_total_risk_multiple": 1.0,
@@ -338,6 +342,59 @@ class EntryEngineTests(unittest.TestCase):
 
         self.assertIsNone(trade)
 
+    def test_entry_engine_can_use_higher_short_threshold(self):
+        config = make_config()
+        config.data["entry"]["score_threshold_by_side"] = {"short": 9}
+        engine = EntryEngine(config=config)
+        row = pd.Series(
+            {
+                "close": 99.0,
+                "compression": False,
+                "breakdown": True,
+                "hh2": 105.0,
+                "body_strength": 1.8,
+                "lower_wick_ratio": 0.2,
+                "close_position": 0.2,
+            },
+            name=pd.Timestamp("2026-01-01 00:00:00"),
+        )
+
+        trade = engine.generate_entry(row, score=8, bias="bearish", side="short")
+
+        self.assertIsNone(trade)
+
+    def test_entry_engine_can_apply_directional_short_filters(self):
+        config = make_config()
+        config.data["entry"]["directional_filters"] = {
+            "short": {
+                "min_metric_values": {
+                    "macd_hist": -40.0,
+                },
+                "max_metric_values": {
+                    "vwap_distance_ratio": -0.002,
+                },
+            }
+        }
+        engine = EntryEngine(config=config)
+        row = pd.Series(
+            {
+                "close": 99.0,
+                "compression": False,
+                "breakdown": True,
+                "hh2": 105.0,
+                "body_strength": 1.8,
+                "lower_wick_ratio": 0.2,
+                "close_position": 0.2,
+                "macd_hist": -60.0,
+                "vwap_distance_ratio": -0.001,
+            },
+            name=pd.Timestamp("2026-01-01 00:00:00"),
+        )
+
+        trade = engine.generate_entry(row, score=9, bias="bearish", side="short")
+
+        self.assertIsNone(trade)
+
 
 class TrendSnifferTests(unittest.TestCase):
     def test_trend_can_stay_alive_with_partial_strength(self):
@@ -419,6 +476,30 @@ class TrendSnifferTests(unittest.TestCase):
         sniffer = TrendSniffer(config=make_config())
 
         self.assertTrue(sniffer.is_trend_alive(row, trade=trade))
+
+    def test_short_trend_can_use_stricter_side_specific_confirmation_count(self):
+        config = make_config()
+        config.data["strategy"]["sniffing"]["by_side"] = {
+            "short": {
+                "min_confirmations": 3,
+                "relax_after_r": 2.0,
+            }
+        }
+        row = pd.Series(
+            {
+                "close": 97.0,
+                "ema2": 100.0,
+                "session_vwap": 99.0,
+                "body_strength": 1.0,
+                "lower_wick_ratio": 0.2,
+                "close_position": 0.7,
+            }
+        )
+        trade = type("TradeStub", (), {"entry_price": 100.0, "R": 5.0, "side": "short"})()
+
+        sniffer = TrendSniffer(config=config)
+
+        self.assertFalse(sniffer.is_trend_alive(row, trade=trade))
 
 
 class ExitEngineTests(unittest.TestCase):

@@ -64,6 +64,18 @@ class Simulator:
             if risk_per_trade is not None
             else self.config.require("account", "risk_per_trade")
         )
+        if callable(getter):
+            risk_per_trade_by_side = getter(
+                "account",
+                "risk_per_trade_by_side",
+                default={},
+            ) or {}
+        else:
+            risk_per_trade_by_side = {}
+        self.risk_per_trade_by_side = {
+            str(side).lower(): float(value)
+            for side, value in risk_per_trade_by_side.items()
+        }
 
         self.account = Account(
             initial_equity=initial_equity,
@@ -129,6 +141,9 @@ class Simulator:
         if callable(classify):
             return classify(regime_score)
         return None
+
+    def _risk_for_side(self, side):
+        return self.risk_per_trade_by_side.get(str(side).lower(), self.risk_per_trade)
 
     # --------------------------------------------------
     # Main step function (called each 15m candle)
@@ -239,10 +254,11 @@ class Simulator:
                         trade.entry_threshold = entry_threshold
 
                     print("\nEXECUTING NEW TRADE")
+                    side_risk_per_trade = self._risk_for_side(selected_side)
 
                     size = self.position_sizer.calculate(
                         equity=self.account.equity,
-                        risk_per_trade=self.risk_per_trade,
+                        risk_per_trade=side_risk_per_trade,
                         entry_price=row["close"],
                         stop_price=trade.stop
                     )
@@ -250,6 +266,18 @@ class Simulator:
                     if size <= 0:
                         print("Entry skipped: position size invalid")
                     else:
+                        initial_risk_amount = abs(row["close"] - trade.stop) * size
+                        effective_risk_fraction = (
+                            initial_risk_amount / self.account.equity
+                            if self.account.equity
+                            else 0.0
+                        )
+                        if hasattr(trade, "annotate_risk_context") and callable(trade.annotate_risk_context):
+                            trade.annotate_risk_context(
+                                equity_at_entry=self.account.equity,
+                                intended_risk_per_trade=side_risk_per_trade,
+                                effective_risk_fraction=effective_risk_fraction,
+                            )
                         trade.add_entry(row["close"], size)
 
                         self.current_trade = trade
@@ -307,13 +335,14 @@ class Simulator:
 
                     if add_size > 0:
                         current_risk = trade.total_risk_to_stop()
+                        side_risk_per_trade = self._risk_for_side(side)
                         add_size = self.pyramiding_engine.cap_add_size_by_risk(
                             add_size=add_size,
                             add_price=price,
                             stop_price=trade.stop,
                             current_total_risk=current_risk,
                             equity=self.account.equity,
-                            risk_per_trade=self.risk_per_trade,
+                            risk_per_trade=side_risk_per_trade,
                             quality_gate_passed=pyramid_quality_ok,
                         )
 

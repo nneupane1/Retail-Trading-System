@@ -1,40 +1,15 @@
 {
   "branches": [
     {
-      "name": "long_short_competitive",
-      "overrides": {
-        "strategy.directional.enabled_sides": ["long", "short"]
-      }
+      "name": "baseline_v3_compound_strong"
     },
     {
-      "name": "long_short_score5_conditional",
+      "name": "long_short_elite_shorts_scaled",
       "overrides": {
         "strategy.directional.enabled_sides": ["long", "short"],
-        "entry.conditional_filters_by_score": {
-          "5": {
-            "long": {
-              "min_body_strength": 1.5,
-              "max_upper_wick_ratio": 0.8,
-              "min_close_position": 0.65,
-              "min_abs_fast_ema_slope_ratio": 0.0006,
-              "require_vwap_alignment": true
-            },
-            "short": {
-              "min_body_strength": 1.5,
-              "max_lower_wick_ratio": 0.8,
-              "max_close_position": 0.35,
-              "min_abs_fast_ema_slope_ratio": 0.0006,
-              "require_vwap_alignment": true,
-              "require_atr_rising": true
-            }
-          }
-        }
-      }
-    },
-    {
-      "name": "long_short_elite_shorts",
-      "overrides": {
-        "strategy.directional.enabled_sides": ["long", "short"],
+        "account.risk_per_trade_by_side": {
+          "short": 0.005
+        },
         "entry.score_threshold_by_side": {
           "short": 9
         },
@@ -70,7 +45,7 @@
       }
     },
     {
-      "name": "long_short_elite_shorts_scaled",
+      "name": "score5_conditional_plus_elite_shorts_scaled",
       "overrides": {
         "strategy.directional.enabled_sides": ["long", "short"],
         "account.risk_per_trade_by_side": {
@@ -78,6 +53,17 @@
         },
         "entry.score_threshold_by_side": {
           "short": 9
+        },
+        "entry.conditional_filters_by_score": {
+          "5": {
+            "long": {
+              "min_body_strength": 1.5,
+              "max_upper_wick_ratio": 0.8,
+              "min_close_position": 0.65,
+              "min_abs_fast_ema_slope_ratio": 0.0006,
+              "require_vwap_alignment": true
+            }
+          }
         },
         "entry.directional_filters": {
           "short": {

@@ -14,7 +14,16 @@ class DummyConfig:
     def require(self, *keys):
         if keys == ("entry", "score_threshold"):
             return 4
+        if keys == ("account", "risk_per_trade"):
+            return 0.01
         raise KeyError(f"Unexpected config lookup: {keys}")
+
+
+class SideRiskConfig(DummyConfig):
+    def get(self, *keys, default=None):
+        if keys == ("account", "risk_per_trade_by_side"):
+            return {"short": 0.005}
+        return super().get(*keys, default=default)
 
 
 class StaticBiasDetector:
@@ -60,6 +69,15 @@ class NullEntryEngine:
 
 class DummyPositionSizer:
     def calculate(self, **kwargs):
+        return 1.0
+
+
+class RecordingPositionSizer:
+    def __init__(self):
+        self.calls = []
+
+    def calculate(self, **kwargs):
+        self.calls.append(kwargs)
         return 1.0
 
 
@@ -351,6 +369,40 @@ class SimulatorManagementTests(unittest.TestCase):
 
         self.assertIsNotNone(simulator.current_trade)
         self.assertEqual(simulator.current_trade.side, "short")
+
+    def test_short_entries_can_use_side_specific_risk_budget(self):
+        class ShortBiasDetector:
+            def get_bias(self, df_1h):
+                return "bearish"
+
+        class ShortScoreEngine:
+            def compute_score(self, row, bias, side="long"):
+                return 2 if side == "long" else 6
+
+        position_sizer = RecordingPositionSizer()
+        simulator = Simulator(
+            initial_equity=1000.0,
+            risk_per_trade=None,
+            trade_logger=None,
+            equity_logger=None,
+            entry_engine=FixedEntryEngine(),
+            score_engine=ShortScoreEngine(),
+            bias_detector=ShortBiasDetector(),
+            regime_detector=ContextRegimeDetector(),
+            pyramiding_engine=RecordingPyramidingEngine(0, []),
+            trend_sniffer=RecordingTrendSniffer(True, []),
+            exit_engine=RecordingExitEngine(False, []),
+            position_sizer=position_sizer,
+            config=SideRiskConfig(),
+        )
+
+        row = self._make_row(close=99.0)
+        empty_df = pd.DataFrame()
+
+        simulator.step(row, empty_df, empty_df, empty_df)
+
+        self.assertEqual(len(position_sizer.calls), 1)
+        self.assertAlmostEqual(position_sizer.calls[0]["risk_per_trade"], 0.005)
 
     def test_exit_reason_is_attached_before_trade_is_closed(self):
         simulator, _calls = self._make_simulator(

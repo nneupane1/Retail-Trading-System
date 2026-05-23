@@ -33,7 +33,8 @@ class BacktestLoggerTests(unittest.TestCase):
             self.assertEqual(
                 header,
                 "side,entry_time,exit_time,entry_price,exit_price,stop_price,pnl,pnl_R,"
-                "pnl_R_total,pnl_R_initial,initial_risk_amount,total_risk_amount,bias,"
+                "pnl_R_total,pnl_R_initial,initial_risk_amount,total_risk_amount,"
+                "equity_at_entry,intended_risk_per_trade,effective_risk_fraction,bias,"
                 "regime_score,regime_class,entry_threshold,exit_reason,entry_layer_count,"
                 "pyramid_level,score,body_strength,close_position,upper_wick_ratio,"
                 "lower_wick_ratio,compression,breakout,breakdown,session_vwap,"
@@ -57,6 +58,9 @@ class BacktestLoggerTests(unittest.TestCase):
                 pnl_R_initial=2.5,
                 initial_risk_amount=5.0,
                 total_risk_amount=10.0,
+                equity_at_entry=1000.0,
+                intended_risk_per_trade=0.01,
+                effective_risk_fraction=0.005,
                 bias="bullish",
                 regime_score=3,
                 regime_class="strong",
@@ -95,6 +99,9 @@ class BacktestLoggerTests(unittest.TestCase):
             self.assertEqual(float(rows[0]["pnl_R_initial"]), 2.5)
             self.assertEqual(float(rows[0]["initial_risk_amount"]), 5.0)
             self.assertEqual(float(rows[0]["total_risk_amount"]), 10.0)
+            self.assertEqual(float(rows[0]["equity_at_entry"]), 1000.0)
+            self.assertEqual(float(rows[0]["intended_risk_per_trade"]), 0.01)
+            self.assertEqual(float(rows[0]["effective_risk_fraction"]), 0.005)
             self.assertEqual(rows[0]["bias"], "bullish")
             self.assertEqual(rows[0]["regime_score"], "3")
             self.assertEqual(rows[0]["regime_class"], "strong")

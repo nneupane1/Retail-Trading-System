@@ -25,7 +25,7 @@ def main():
     )
     parser.add_argument(
         "--scheme",
-        choices=["single_split", "multifold"],
+        choices=["single_split", "multifold", "full_range"],
         default="multifold",
         help="Validation window scheme.",
     )

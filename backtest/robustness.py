@@ -19,13 +19,81 @@ def _trade_duration_years(trades_df):
     return max(duration_days / 365.25, 1 / 365.25)
 
 
+def _ordered_trades_for_path_analysis(trades_df):
+    ordered = trades_df.copy()
+    sort_columns = []
+    for column in ["entry_time", "exit_time"]:
+        if column in ordered.columns:
+            ordered[column] = pd.to_datetime(ordered[column], errors="coerce")
+            sort_columns.append(column)
+
+    if sort_columns:
+        ordered = ordered.sort_values(sort_columns, kind="stable")
+
+    return ordered.reset_index(drop=True)
+
+
+def _resolve_risk_fractions(trades_df, initial_equity, fallback_risk_per_trade):
+    if trades_df.empty:
+        return np.array([], dtype=float)
+
+    if "effective_risk_fraction" in trades_df.columns:
+        explicit = pd.to_numeric(
+            trades_df["effective_risk_fraction"],
+            errors="coerce",
+        ).to_numpy(dtype=float)
+        if np.isfinite(explicit).all() and (explicit >= 0).all():
+            return explicit
+
+    risks = []
+    equity = float(initial_equity)
+    initial_risk_amounts = (
+        pd.to_numeric(trades_df.get("initial_risk_amount"), errors="coerce")
+        if "initial_risk_amount" in trades_df.columns
+        else pd.Series([np.nan] * len(trades_df))
+    )
+    pnls = (
+        pd.to_numeric(trades_df.get("pnl"), errors="coerce")
+        if "pnl" in trades_df.columns
+        else pd.Series([np.nan] * len(trades_df))
+    )
+    r_values = pd.to_numeric(trades_df["pnl_R_initial"], errors="coerce")
+
+    for idx in range(len(trades_df)):
+        if equity <= 0:
+            risk_fraction = 0.0
+        else:
+            initial_risk_amount = initial_risk_amounts.iloc[idx]
+            if pd.notna(initial_risk_amount) and initial_risk_amount >= 0:
+                risk_fraction = float(initial_risk_amount) / equity
+            else:
+                risk_fraction = float(fallback_risk_per_trade)
+
+        risks.append(risk_fraction)
+
+        pnl_value = pnls.iloc[idx]
+        if pd.notna(pnl_value):
+            equity += float(pnl_value)
+        else:
+            equity *= (1.0 + (risk_fraction * float(r_values.iloc[idx])))
+
+    return np.asarray(risks, dtype=float)
+
+
 def simulate_compounded_equity(r_multiples, initial_equity, risk_per_trade, duration_years=1.0):
     equity = float(initial_equity)
     peak_equity = equity
     max_drawdown_pct = 0.0
 
-    for r_multiple in r_multiples:
-        equity *= (1.0 + (risk_per_trade * float(r_multiple)))
+    if np.isscalar(risk_per_trade):
+        risk_schedule = np.full(len(r_multiples), float(risk_per_trade), dtype=float)
+    else:
+        risk_schedule = np.asarray(risk_per_trade, dtype=float)
+        if len(risk_schedule) != len(r_multiples):
+            raise ValueError("risk_per_trade schedule length must match r_multiples length")
+
+    for r_multiple, risk_fraction in zip(r_multiples, risk_schedule):
+        equity *= (1.0 + (float(risk_fraction) * float(r_multiple)))
         peak_equity = max(peak_equity, equity)
         drawdown_pct = ((equity - peak_equity) / peak_equity) * 100
         max_drawdown_pct = min(max_drawdown_pct, drawdown_pct)
@@ -108,9 +176,15 @@ def run_monte_carlo_analysis(
     if trades_df.empty:
         raise ValueError(f"No trades found at {trades_path}")
 
-    r_multiples = trades_df["pnl_R_initial"].astype(float).to_numpy()
+    ordered_trades = _ordered_trades_for_path_analysis(trades_df)
+    r_multiples = ordered_trades["pnl_R_initial"].astype(float).to_numpy()
     initial_equity = float(config.require("account", "initial_equity"))
     risk_per_trade = float(config.require("account", "risk_per_trade"))
+    risk_fractions = _resolve_risk_fractions(
+        ordered_trades,
+        initial_equity=initial_equity,
+        fallback_risk_per_trade=risk_per_trade,
+    )
     duration_years = _trade_duration_years(trades_df)
     rng = np.random.default_rng(seed)
 
@@ -124,7 +198,7 @@ def run_monte_carlo_analysis(
     actual_result = simulate_compounded_equity(
         r_multiples=r_multiples,
         initial_equity=initial_equity,
-        risk_per_trade=risk_per_trade,
+        risk_per_trade=risk_fractions,
         duration_years=duration_years,
     )
     actual_result.update({
@@ -135,17 +209,19 @@ def run_monte_carlo_analysis(
     sample_sets.append(actual_result)
 
     random_methods = {
-        "shuffle": lambda values: rng.permutation(values),
-        "bootstrap": lambda values: rng.choice(values, size=len(values), replace=True),
+        "shuffle": lambda values: rng.permutation(len(values)),
+        "bootstrap": lambda values: rng.choice(len(values), size=len(values), replace=True),
     }
 
     for method, generator in random_methods.items():
         for iteration in range(1, iterations + 1):
-            sampled_r = generator(r_multiples)
+            sample_index = generator(r_multiples)
+            sampled_r = r_multiples[sample_index]
+            sampled_risk = risk_fractions[sample_index]
             result = simulate_compounded_equity(
                 r_multiples=sampled_r,
                 initial_equity=initial_equity,
-                risk_per_trade=risk_per_trade,
+                risk_per_trade=sampled_risk,
                 duration_years=duration_years,
             )
             result.update({

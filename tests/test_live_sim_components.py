@@ -44,7 +44,8 @@ class LiveTradeLoggerTests(unittest.TestCase):
             self.assertEqual(
                 header,
                 "side,entry_time,exit_time,entry_price,exit_price,stop_price,pnl,pnl_R,"
-                "pnl_R_total,pnl_R_initial,initial_risk_amount,total_risk_amount,bias,"
+                "pnl_R_total,pnl_R_initial,initial_risk_amount,total_risk_amount,"
+                "equity_at_entry,intended_risk_per_trade,effective_risk_fraction,bias,"
                 "regime_score,regime_class,entry_threshold,exit_reason,entry_layer_count,"
                 "pyramid_level,score,body_strength,close_position,upper_wick_ratio,"
                 "lower_wick_ratio,compression,breakout,breakdown,session_vwap,"

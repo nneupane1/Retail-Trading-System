@@ -89,6 +89,50 @@ def build_expanding_yearly_windows(
     return windows
 
 
+def build_default_validation_windows(
+    start_date,
+    end_date,
+    scheme="single_split",
+    min_train_years=4,
+    test_years=1,
+):
+    if scheme == "multifold":
+        return build_expanding_yearly_windows(
+            start_date=start_date,
+            end_date=end_date,
+            min_train_years=min_train_years,
+            test_years=test_years,
+        )
+
+    if scheme == "full_range":
+        return [
+            {
+                "label": "full_range",
+                "train_start": start_date,
+                "train_end": end_date,
+                "start_date": start_date,
+                "end_date": end_date,
+            }
+        ]
+
+    return [
+        {
+            "label": "train_2018_2021",
+            "train_start": start_date,
+            "train_end": "2021-12-31",
+            "start_date": start_date,
+            "end_date": "2021-12-31",
+        },
+        {
+            "label": "test_2022_2026",
+            "train_start": start_date,
+            "train_end": "2021-12-31",
+            "start_date": "2022-01-01",
+            "end_date": end_date,
+        },
+    ]
+
+
 def load_branch_specs(branch_spec_path):
     branch_spec_path = Path(branch_spec_path)
     with branch_spec_path.open(encoding="utf-8") as file_handle:
@@ -495,30 +539,13 @@ def run_walkforward_validation(
     history_start = config.require("history", "start_date")
     history_end = config.require("history", "end_date")
     if windows is None:
-        if scheme == "multifold":
-            windows = build_expanding_yearly_windows(
-                start_date=history_start,
-                end_date=history_end,
-                min_train_years=min_train_years,
-                test_years=test_years,
-            )
-        else:
-            windows = [
-                {
-                    "label": "train_2018_2021",
-                    "train_start": history_start,
-                    "train_end": "2021-12-31",
-                    "start_date": history_start,
-                    "end_date": "2021-12-31",
-                },
-                {
-                    "label": "test_2022_2026",
-                    "train_start": history_start,
-                    "train_end": "2021-12-31",
-                    "start_date": "2022-01-01",
-                    "end_date": history_end,
-                },
-            ]
+        windows = build_default_validation_windows(
+            start_date=history_start,
+            end_date=history_end,
+            scheme=scheme,
+            min_train_years=min_train_years,
+            test_years=test_years,
+        )
 
     result = _run_walkforward_validation_for_config(
         config=config,
@@ -568,9 +595,10 @@ def run_branch_walkforward_validation(
             comparison_tag = Path(branch_spec_path).stem
 
     if windows is None:
-        windows = build_expanding_yearly_windows(
+        windows = build_default_validation_windows(
             start_date=history_start,
             end_date=history_end,
+            scheme=scheme,
             min_train_years=min_train_years,
             test_years=test_years,
         )

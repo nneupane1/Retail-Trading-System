@@ -20,6 +20,9 @@ TRADE_LOG_FIELDS = [
     "pnl_R_initial",
     "initial_risk_amount",
     "total_risk_amount",
+    "equity_at_entry",
+    "intended_risk_per_trade",
+    "effective_risk_fraction",
     "bias",
     "regime_score",
     "regime_class",
@@ -64,6 +67,9 @@ def trade_to_log_record(trade):
         "pnl_R_initial": getattr(trade, "pnl_R_initial", None),
         "initial_risk_amount": getattr(trade, "initial_risk_amount", None),
         "total_risk_amount": getattr(trade, "total_risk_amount", None),
+        "equity_at_entry": getattr(trade, "equity_at_entry", None),
+        "intended_risk_per_trade": getattr(trade, "intended_risk_per_trade", None),
+        "effective_risk_fraction": getattr(trade, "effective_risk_fraction", None),
         "bias": getattr(trade, "bias", conditions.get("bias")),
         "regime_score": getattr(trade, "regime_score", conditions.get("regime_score")),
         "regime_class": getattr(trade, "regime_class", conditions.get("regime_class")),
@@ -157,6 +163,9 @@ class Trade:
         self.pnl_R_initial = 0
         self.initial_risk_amount = 0
         self.total_risk_amount = 0
+        self.equity_at_entry = None
+        self.intended_risk_per_trade = None
+        self.effective_risk_fraction = None
         self.bias = None
         self.regime_score = None
         self.regime_class = None
@@ -309,6 +318,22 @@ class Trade:
         self.exit_reason = reason
         self.conditions["exit_reason"] = reason
 
+    def annotate_risk_context(
+        self,
+        *,
+        equity_at_entry=None,
+        intended_risk_per_trade=None,
+        effective_risk_fraction=None,
+    ):
+        self.equity_at_entry = equity_at_entry
+        self.intended_risk_per_trade = intended_risk_per_trade
+        self.effective_risk_fraction = effective_risk_fraction
+        self.conditions.update({
+            "equity_at_entry": equity_at_entry,
+            "intended_risk_per_trade": intended_risk_per_trade,
+            "effective_risk_fraction": effective_risk_fraction,
+        })
+
     def snapshot(self):
         return {
             "stop_column": self.stop_column,
@@ -335,6 +360,9 @@ class Trade:
             "pnl_R_initial": self.pnl_R_initial,
             "initial_risk_amount": self.initial_risk_amount,
             "total_risk_amount": self.total_risk_amount,
+            "equity_at_entry": self.equity_at_entry,
+            "intended_risk_per_trade": self.intended_risk_per_trade,
+            "effective_risk_fraction": self.effective_risk_fraction,
             "bias": self.bias,
             "regime_score": self.regime_score,
             "regime_class": self.regime_class,
@@ -374,6 +402,9 @@ class Trade:
         trade.pnl_R_initial = snapshot.get("pnl_R_initial", 0)
         trade.initial_risk_amount = snapshot.get("initial_risk_amount", 0)
         trade.total_risk_amount = snapshot.get("total_risk_amount", 0)
+        trade.equity_at_entry = snapshot.get("equity_at_entry")
+        trade.intended_risk_per_trade = snapshot.get("intended_risk_per_trade")
+        trade.effective_risk_fraction = snapshot.get("effective_risk_fraction")
         trade.bias = snapshot.get("bias")
         trade.regime_score = snapshot.get("regime_score")
         trade.regime_class = snapshot.get("regime_class")

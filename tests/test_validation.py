@@ -5,10 +5,26 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from backtest.validation import build_expanding_yearly_windows, load_branch_specs
+from backtest.validation import (
+    build_default_validation_windows,
+    build_expanding_yearly_windows,
+    load_branch_specs,
+)
 
 
 class ValidationHelpersTests(unittest.TestCase):
+    def test_build_default_validation_windows_supports_full_range_scheme(self):
+        windows = build_default_validation_windows(
+            start_date="2018-01-01",
+            end_date="2026-05-22",
+            scheme="full_range",
+        )
+
+        self.assertEqual(len(windows), 1)
+        self.assertEqual(windows[0]["label"], "full_range")
+        self.assertEqual(windows[0]["start_date"], "2018-01-01")
+        self.assertEqual(windows[0]["end_date"], "2026-05-22")
+
     def test_build_expanding_yearly_windows_generates_expected_folds(self):
         windows = build_expanding_yearly_windows(
             start_date="2018-01-01",

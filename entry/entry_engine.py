@@ -17,10 +17,20 @@ class EntryEngine:
         self.entry_threshold = self.config.require("entry", "score_threshold")
         getter = getattr(self.config, "get", None)
         if callable(getter):
+            score_threshold_by_side = getter(
+                "entry",
+                "score_threshold_by_side",
+                default={},
+            )
             self.block_compression = bool(
                 getter("entry", "block_compression", default=False)
             )
             blocked_scores = getter("entry", "blocked_scores", default=[])
+            blocked_scores_by_side = getter(
+                "entry",
+                "blocked_scores_by_side",
+                default={},
+            )
             min_body_strength_by_score = getter(
                 "entry",
                 "min_body_strength_by_score",
@@ -41,12 +51,24 @@ class EntryEngine:
                 "conditional_filters_by_score",
                 default={},
             )
+            directional_filters = getter(
+                "entry",
+                "directional_filters",
+                default={},
+            )
             block_compression_sides = getter(
                 "entry",
                 "block_compression_sides",
                 default=None,
             )
         else:
+            try:
+                score_threshold_by_side = self.config.require(
+                    "entry",
+                    "score_threshold_by_side",
+                )
+            except Exception:
+                score_threshold_by_side = {}
             try:
                 self.block_compression = bool(
                     self.config.require("entry", "block_compression")
@@ -57,6 +79,13 @@ class EntryEngine:
                 blocked_scores = self.config.require("entry", "blocked_scores")
             except Exception:
                 blocked_scores = []
+            try:
+                blocked_scores_by_side = self.config.require(
+                    "entry",
+                    "blocked_scores_by_side",
+                )
+            except Exception:
+                blocked_scores_by_side = {}
             try:
                 min_body_strength_by_score = self.config.require(
                     "entry",
@@ -86,6 +115,13 @@ class EntryEngine:
             except Exception:
                 conditional_filters_by_score = {}
             try:
+                directional_filters = self.config.require(
+                    "entry",
+                    "directional_filters",
+                )
+            except Exception:
+                directional_filters = {}
+            try:
                 block_compression_sides = self.config.require(
                     "entry",
                     "block_compression_sides",
@@ -93,7 +129,15 @@ class EntryEngine:
             except Exception:
                 block_compression_sides = None
 
+        self.score_threshold_by_side = {
+            str(side).lower(): int(value)
+            for side, value in (score_threshold_by_side or {}).items()
+        }
         self.blocked_scores = {int(score) for score in blocked_scores}
+        self.blocked_scores_by_side = {
+            str(side).lower(): {int(score) for score in (scores or [])}
+            for side, scores in (blocked_scores_by_side or {}).items()
+        }
         self.min_body_strength_by_score = {
             int(score): float(value)
             for score, value in (min_body_strength_by_score or {}).items()
@@ -131,6 +175,10 @@ class EntryEngine:
         self.conditional_filters_by_score = self._parse_conditional_filters(
             conditional_filters_by_score or {}
         )
+        self.directional_filters = {
+            str(side).lower(): dict(filters or {})
+            for side, filters in (directional_filters or {}).items()
+        }
 
     @staticmethod
     def _parse_conditional_filters(raw_filters):
@@ -146,13 +194,13 @@ class EntryEngine:
     def _metric_debug_label(metric_name):
         return metric_name.replace("_", " ")
 
-    def _passes_conditional_filters(self, row, score, side):
-        filters = self.conditional_filters_by_score.get(score, {}).get(side, {})
+    def _passes_filter_set(self, row, filters, score, side, label):
         if not filters:
             return True
 
         comparisons = [
             ("min_body_strength", "body_strength", ">="),
+            ("max_body_strength", "body_strength", "<="),
             ("max_upper_wick_ratio", "upper_wick_ratio", "<="),
             ("max_lower_wick_ratio", "lower_wick_ratio", "<="),
             ("min_close_position", "close_position", ">="),
@@ -179,16 +227,36 @@ class EntryEngine:
 
             if not passes:
                 print(
-                    "No entry: conditional score filter failed for "
+                    f"No entry: {label} filter failed for "
                     f"{side} score {score} "
                     f"({self._metric_debug_label(row_key)}={value:.4f}, "
                     f"required {operator} {threshold:.4f})"
                 )
                 return False
 
+        for row_key, threshold in (filters.get("min_metric_values", {}) or {}).items():
+            value = float(row.get(row_key, 0.0))
+            threshold = float(threshold)
+            if value < threshold:
+                print(
+                    f"No entry: {label} filter failed for {side} score {score} "
+                    f"({self._metric_debug_label(row_key)}={value:.4f}, required >= {threshold:.4f})"
+                )
+                return False
+
+        for row_key, threshold in (filters.get("max_metric_values", {}) or {}).items():
+            value = float(row.get(row_key, 0.0))
+            threshold = float(threshold)
+            if value > threshold:
+                print(
+                    f"No entry: {label} filter failed for {side} score {score} "
+                    f"({self._metric_debug_label(row_key)}={value:.4f}, required <= {threshold:.4f})"
+                )
+                return False
+
         if filters.get("require_atr_rising") and not bool(row.get("atr_rising", False)):
             print(
-                f"No entry: conditional score filter requires ATR expansion for {side} score {score}"
+                f"No entry: {label} filter requires ATR expansion for {side} score {score}"
             )
             return False
 
@@ -198,7 +266,7 @@ class EntryEngine:
             aligned = price >= vwap if side == "long" else price <= vwap
             if not aligned:
                 print(
-                    f"No entry: conditional score filter requires VWAP alignment for {side} score {score}"
+                    f"No entry: {label} filter requires VWAP alignment for {side} score {score}"
                 )
                 return False
 
@@ -212,16 +280,18 @@ class EntryEngine:
 
         required_bias = "bullish" if side == "long" else "bearish"
         event_column = "breakout" if side == "long" else "breakdown"
+        entry_threshold = self.score_threshold_by_side.get(side, self.entry_threshold)
 
         if bias != required_bias:
             print(f"No entry: bias not {required_bias}")
             return None
 
-        if score < self.entry_threshold:
-            print(f"No entry: score too low ({score} < {self.entry_threshold})")
+        if score < entry_threshold:
+            print(f"No entry: score too low ({score} < {entry_threshold})")
             return None
 
-        if score in self.blocked_scores:
+        side_blocked_scores = self.blocked_scores_by_side.get(side, set())
+        if score in self.blocked_scores or score in side_blocked_scores:
             print(f"No entry: score {score} blocked by configuration")
             return None
 
@@ -253,7 +323,24 @@ class EntryEngine:
                     )
                     return None
 
-        if not self._passes_conditional_filters(row, score, side):
+        directional_filters = self.directional_filters.get(side, {})
+        if not self._passes_filter_set(
+            row,
+            directional_filters,
+            score,
+            side,
+            label="directional",
+        ):
+            return None
+
+        score_filters = self.conditional_filters_by_score.get(score, {}).get(side, {})
+        if not self._passes_filter_set(
+            row,
+            score_filters,
+            score,
+            side,
+            label="conditional score",
+        ):
             return None
 
         if not row[event_column]:

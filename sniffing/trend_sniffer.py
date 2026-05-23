@@ -29,6 +29,13 @@ class TrendSniffer:
         self.require_short_vwap_alignment = bool(
             self.thresholds.get("require_short_vwap_alignment", True)
         )
+        self.side_overrides = {
+            str(side).lower(): dict(values or {})
+            for side, values in (self.thresholds.get("by_side", {}) or {}).items()
+        }
+
+    def _side_value(self, side, key, default):
+        return self.side_overrides.get(side, {}).get(key, default)
 
     def is_trend_alive(self, row, trade=None):
         start = time.time()
@@ -42,18 +49,27 @@ class TrendSniffer:
         wick_metric = "upper_wick_ratio" if side == "long" else "lower_wick_ratio"
         wick_value = row[wick_metric]
         wick_threshold = (
-            self.thresholds["upper_wick_max"]
+            self._side_value(side, "upper_wick_max", self.thresholds["upper_wick_max"])
             if side == "long"
-            else self.lower_wick_max
+            else self._side_value(side, "lower_wick_max", self.lower_wick_max)
         )
-        min_confirmations = self.thresholds.get("min_confirmations", 1)
+        min_confirmations = self._side_value(
+            side,
+            "min_confirmations",
+            self.thresholds.get("min_confirmations", 1),
+        )
 
         open_r_multiple = None
         anchor_column = self.fast_ema_column
-        relax_after_r = self.thresholds.get("relax_after_r")
-        relaxed_min_confirmations = self.thresholds.get(
+        relax_after_r = self._side_value(
+            side,
+            "relax_after_r",
+            self.thresholds.get("relax_after_r"),
+        )
+        relaxed_min_confirmations = self._side_value(
+            side,
             "relaxed_min_confirmations",
-            min_confirmations,
+            self.thresholds.get("relaxed_min_confirmations", min_confirmations),
         )
 
         if trade is not None and getattr(trade, "R", 0):
@@ -65,7 +81,11 @@ class TrendSniffer:
             if relax_after_r is not None and open_r_multiple >= relax_after_r:
                 min_confirmations = relaxed_min_confirmations
 
-            slow_anchor_after_r = self.thresholds.get("slow_anchor_after_r")
+            slow_anchor_after_r = self._side_value(
+                side,
+                "slow_anchor_after_r",
+                self.thresholds.get("slow_anchor_after_r"),
+            )
             if (
                 slow_anchor_after_r is not None
                 and open_r_multiple >= slow_anchor_after_r
@@ -77,16 +97,34 @@ class TrendSniffer:
 
         if side == "short":
             anchor_aligned = price < ema_value
-            strong_close = close_pos < self.lower_close_position_max
+            short_close_position_max = self._side_value(
+                side,
+                "close_position_max",
+                self.lower_close_position_max,
+            )
+            strong_close = close_pos < short_close_position_max
             vwap_value = row.get("session_vwap", price)
-            vwap_aligned = (price < vwap_value) if self.require_short_vwap_alignment else True
+            require_short_vwap_alignment = self._side_value(
+                side,
+                "require_short_vwap_alignment",
+                self.require_short_vwap_alignment,
+            )
+            vwap_aligned = (price < vwap_value) if require_short_vwap_alignment else True
         else:
             anchor_aligned = price > ema_value
-            strong_close = close_pos > self.thresholds["close_position_min"]
+            strong_close = close_pos > self._side_value(
+                side,
+                "close_position_min",
+                self.thresholds["close_position_min"],
+            )
             vwap_aligned = True
             vwap_value = row.get("session_vwap", price)
 
-        strong_body = body_strength > self.thresholds["body_strength_min"]
+        strong_body = body_strength > self._side_value(
+            side,
+            "body_strength_min",
+            self.thresholds["body_strength_min"],
+        )
         clean_wick = wick_value < wick_threshold
 
         confirmation_count = sum([
@@ -109,7 +147,7 @@ class TrendSniffer:
         print(
             f"\n  Anchor aligned: {'PASS' if anchor_aligned else 'FAIL'}"
         )
-        if side == "short" and self.require_short_vwap_alignment:
+        if side == "short" and require_short_vwap_alignment:
             print(f"  Below session VWAP: {'PASS' if vwap_aligned else 'FAIL'}")
         print(f"  Body strength: {body_strength:.2f} {'PASS' if strong_body else 'FAIL'}")
         print(f"  {wick_metric}: {wick_value:.2f} {'PASS' if clean_wick else 'FAIL'}")
