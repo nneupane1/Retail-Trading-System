@@ -1,0 +1,153 @@
+{
+  "branches": [
+    {
+      "name": "long_short_elite_shorts_scaled",
+      "overrides": {
+        "strategy.directional.enabled_sides": ["long", "short"],
+        "account.risk_per_trade_by_side": {
+          "short": 0.005
+        },
+        "entry.score_threshold_by_side": {
+          "short": 9
+        },
+        "entry.directional_filters": {
+          "short": {
+            "min_body_strength": 1.75,
+            "max_close_position": 0.40,
+            "min_metric_values": {
+              "vwap_distance_ratio": -0.020,
+              "ema_gap_ratio": -0.020,
+              "macd_hist": -50.0
+            },
+            "max_metric_values": {
+              "vwap_distance_ratio": -0.0025,
+              "ema_gap_ratio": -0.0010,
+              "macd_hist": -1.0
+            },
+            "require_vwap_alignment": true
+          }
+        },
+        "strategy.sniffing.by_side": {
+          "short": {
+            "body_strength_min": 1.0,
+            "close_position_max": 0.45,
+            "lower_wick_max": 1.2,
+            "min_confirmations": 2,
+            "relax_after_r": 2.0,
+            "relaxed_min_confirmations": 1,
+            "slow_anchor_after_r": null,
+            "require_short_vwap_alignment": true
+          }
+        }
+      }
+    },
+    {
+      "name": "score5_regime_tail_loose_plus_elite_shorts_scaled",
+      "overrides": {
+        "strategy.directional.enabled_sides": ["long", "short"],
+        "account.risk_per_trade_by_side": {
+          "short": 0.005
+        },
+        "entry.score_threshold_by_side": {
+          "short": 9
+        },
+        "entry.conditional_filters_by_score": {
+          "5": {
+            "long": {
+              "allowed_regime_classes": ["strong"],
+              "min_metric_values": {
+                "regime_score": 4,
+                "upper_wick_ratio": 3.0,
+                "vwap_distance_ratio": 0.002
+              },
+              "max_close_position": 0.45
+            }
+          }
+        },
+        "entry.directional_filters": {
+          "short": {
+            "min_body_strength": 1.75,
+            "max_close_position": 0.40,
+            "min_metric_values": {
+              "vwap_distance_ratio": -0.020,
+              "ema_gap_ratio": -0.020,
+              "macd_hist": -50.0
+            },
+            "max_metric_values": {
+              "vwap_distance_ratio": -0.0025,
+              "ema_gap_ratio": -0.0010,
+              "macd_hist": -1.0
+            },
+            "require_vwap_alignment": true
+          }
+        },
+        "strategy.sniffing.by_side": {
+          "short": {
+            "body_strength_min": 1.0,
+            "close_position_max": 0.45,
+            "lower_wick_max": 1.2,
+            "min_confirmations": 2,
+            "relax_after_r": 2.0,
+            "relaxed_min_confirmations": 1,
+            "slow_anchor_after_r": null,
+            "require_short_vwap_alignment": true
+          }
+        }
+      }
+    },
+    {
+      "name": "score5_regime_tail_tight_plus_elite_shorts_scaled",
+      "overrides": {
+        "strategy.directional.enabled_sides": ["long", "short"],
+        "account.risk_per_trade_by_side": {
+          "short": 0.005
+        },
+        "entry.score_threshold_by_side": {
+          "short": 9
+        },
+        "entry.conditional_filters_by_score": {
+          "5": {
+            "long": {
+              "allowed_regime_classes": ["strong"],
+              "min_metric_values": {
+                "regime_score": 4,
+                "upper_wick_ratio": 3.3,
+                "vwap_distance_ratio": 0.002
+              },
+              "max_close_position": 0.35
+            }
+          }
+        },
+        "entry.directional_filters": {
+          "short": {
+            "min_body_strength": 1.75,
+            "max_close_position": 0.40,
+            "min_metric_values": {
+              "vwap_distance_ratio": -0.020,
+              "ema_gap_ratio": -0.020,
+              "macd_hist": -50.0
+            },
+            "max_metric_values": {
+              "vwap_distance_ratio": -0.0025,
+              "ema_gap_ratio": -0.0010,
+              "macd_hist": -1.0
+            },
+            "require_vwap_alignment": true
+          }
+        },
+        "strategy.sniffing.by_side": {
+          "short": {
+            "body_strength_min": 1.0,
+            "close_position_max": 0.45,
+            "lower_wick_max": 1.2,
+            "min_confirmations": 2,
+            "relax_after_r": 2.0,
+            "relaxed_min_confirmations": 1,
+            "slow_anchor_after_r": null,
+            "require_short_vwap_alignment": true
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,261 @@
+{
+  "branches": [
+    {
+      "name": "portfolio_core_only",
+      "channels": [
+        {
+          "name": "core",
+          "allocation_fraction": 1.0,
+          "overrides": {
+            "strategy.directional.enabled_sides": ["long", "short"],
+            "account.risk_per_trade_by_side": {
+              "short": 0.005
+            },
+            "entry.allowed_entry_roles": ["core"],
+            "entry.score_threshold_by_side": {
+              "short": 9
+            },
+            "entry.directional_filters": {
+              "short": {
+                "min_body_strength": 1.75,
+                "max_close_position": 0.40,
+                "min_metric_values": {
+                  "vwap_distance_ratio": -0.020,
+                  "ema_gap_ratio": -0.020,
+                  "macd_hist": -50.0
+                },
+                "max_metric_values": {
+                  "vwap_distance_ratio": -0.0025,
+                  "ema_gap_ratio": -0.0010,
+                  "macd_hist": -1.0
+                },
+                "require_vwap_alignment": true
+              }
+            },
+            "strategy.sniffing.by_side": {
+              "short": {
+                "body_strength_min": 1.0,
+                "close_position_max": 0.45,
+                "lower_wick_max": 1.2,
+                "min_confirmations": 2,
+                "relax_after_r": 2.0,
+                "relaxed_min_confirmations": 1,
+                "slow_anchor_after_r": null,
+                "require_short_vwap_alignment": true
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "portfolio_support_only",
+      "channels": [
+        {
+          "name": "support",
+          "allocation_fraction": 1.0,
+          "overrides": {
+            "strategy.directional.enabled_sides": ["long"],
+            "entry.allowed_entry_roles": ["support"],
+            "entry.conditional_filters_by_score": {
+              "5": {
+                "long": {
+                  "allowed_regime_classes": ["strong"],
+                  "min_metric_values": {
+                    "regime_score": 4,
+                    "upper_wick_ratio": 3.0,
+                    "vwap_distance_ratio": 0.002
+                  },
+                  "max_close_position": 0.45
+                }
+              }
+            },
+            "entry.risk_multipliers_by_score": {
+              "5": {
+                "long": 0.5
+              }
+            },
+            "strategy.pyramiding.allow_support_alpha": false,
+            "strategy.sniffing.support_alpha": {
+              "by_side": {
+                "long": {
+                  "min_confirmations": 2,
+                  "relax_after_r": null,
+                  "slow_anchor_after_r": null
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "portfolio_core90_support10",
+      "channels": [
+        {
+          "name": "core",
+          "allocation_fraction": 0.9,
+          "overrides": {
+            "strategy.directional.enabled_sides": ["long", "short"],
+            "account.risk_per_trade_by_side": {
+              "short": 0.005
+            },
+            "entry.allowed_entry_roles": ["core"],
+            "entry.score_threshold_by_side": {
+              "short": 9
+            },
+            "entry.directional_filters": {
+              "short": {
+                "min_body_strength": 1.75,
+                "max_close_position": 0.40,
+                "min_metric_values": {
+                  "vwap_distance_ratio": -0.020,
+                  "ema_gap_ratio": -0.020,
+                  "macd_hist": -50.0
+                },
+                "max_metric_values": {
+                  "vwap_distance_ratio": -0.0025,
+                  "ema_gap_ratio": -0.0010,
+                  "macd_hist": -1.0
+                },
+                "require_vwap_alignment": true
+              }
+            },
+            "strategy.sniffing.by_side": {
+              "short": {
+                "body_strength_min": 1.0,
+                "close_position_max": 0.45,
+                "lower_wick_max": 1.2,
+                "min_confirmations": 2,
+                "relax_after_r": 2.0,
+                "relaxed_min_confirmations": 1,
+                "slow_anchor_after_r": null,
+                "require_short_vwap_alignment": true
+              }
+            }
+          }
+        },
+        {
+          "name": "support",
+          "allocation_fraction": 0.1,
+          "overrides": {
+            "strategy.directional.enabled_sides": ["long"],
+            "entry.allowed_entry_roles": ["support"],
+            "entry.conditional_filters_by_score": {
+              "5": {
+                "long": {
+                  "allowed_regime_classes": ["strong"],
+                  "min_metric_values": {
+                    "regime_score": 4,
+                    "upper_wick_ratio": 3.0,
+                    "vwap_distance_ratio": 0.002
+                  },
+                  "max_close_position": 0.45
+                }
+              }
+            },
+            "entry.risk_multipliers_by_score": {
+              "5": {
+                "long": 0.5
+              }
+            },
+            "strategy.pyramiding.allow_support_alpha": false,
+            "strategy.sniffing.support_alpha": {
+              "by_side": {
+                "long": {
+                  "min_confirmations": 2,
+                  "relax_after_r": null,
+                  "slow_anchor_after_r": null
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "portfolio_core85_support15",
+      "channels": [
+        {
+          "name": "core",
+          "allocation_fraction": 0.85,
+          "overrides": {
+            "strategy.directional.enabled_sides": ["long", "short"],
+            "account.risk_per_trade_by_side": {
+              "short": 0.005
+            },
+            "entry.allowed_entry_roles": ["core"],
+            "entry.score_threshold_by_side": {
+              "short": 9
+            },
+            "entry.directional_filters": {
+              "short": {
+                "min_body_strength": 1.75,
+                "max_close_position": 0.40,
+                "min_metric_values": {
+                  "vwap_distance_ratio": -0.020,
+                  "ema_gap_ratio": -0.020,
+                  "macd_hist": -50.0
+                },
+                "max_metric_values": {
+                  "vwap_distance_ratio": -0.0025,
+                  "ema_gap_ratio": -0.0010,
+                  "macd_hist": -1.0
+                },
+                "require_vwap_alignment": true
+              }
+            },
+            "strategy.sniffing.by_side": {
+              "short": {
+                "body_strength_min": 1.0,
+                "close_position_max": 0.45,
+                "lower_wick_max": 1.2,
+                "min_confirmations": 2,
+                "relax_after_r": 2.0,
+                "relaxed_min_confirmations": 1,
+                "slow_anchor_after_r": null,
+                "require_short_vwap_alignment": true
+              }
+            }
+          }
+        },
+        {
+          "name": "support",
+          "allocation_fraction": 0.15,
+          "overrides": {
+            "strategy.directional.enabled_sides": ["long"],
+            "entry.allowed_entry_roles": ["support"],
+            "entry.conditional_filters_by_score": {
+              "5": {
+                "long": {
+                  "allowed_regime_classes": ["strong"],
+                  "min_metric_values": {
+                    "regime_score": 4,
+                    "upper_wick_ratio": 3.0,
+                    "vwap_distance_ratio": 0.002
+                  },
+                  "max_close_position": 0.45
+                }
+              }
+            },
+            "entry.risk_multipliers_by_score": {
+              "5": {
+                "long": 0.5
+              }
+            },
+            "strategy.pyramiding.allow_support_alpha": false,
+            "strategy.sniffing.support_alpha": {
+              "by_side": {
+                "long": {
+                  "min_confirmations": 2,
+                  "relax_after_r": null,
+                  "slow_anchor_after_r": null
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

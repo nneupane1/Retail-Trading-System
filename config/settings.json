@@ -74,6 +74,20 @@
       "slow_range_period": 30,
       "ratio": 0.7
     },
+    "pressure": {
+      "atr_baseline_period": 20,
+      "cluster_lookback": 12,
+      "failed_event_lookback": 12,
+      "rejection_tolerance_atr": 0.35,
+      "high_rejection_close_position_max": 0.45,
+      "low_rejection_close_position_min": 0.55,
+      "near_level_atr_multiple": 0.25,
+      "ignition_body_strength_min": 1.8,
+      "ignition_close_position_min": 0.75,
+      "ignition_close_position_max": 0.25,
+      "atr_compression_ratio_max": 0.85,
+      "range_compression_ratio_max": 0.72
+    },
     "candle_metrics": {
       "average_body_period": 10
     },
@@ -106,6 +120,27 @@
   "strategy": {
     "directional": {
       "enabled_sides": ["long"]
+    },
+    "exploration": {
+      "enabled": false,
+      "enabled_sides": ["long", "short"],
+      "allow_neutral_bias": true,
+      "block_opposite_bias": true,
+      "require_atr_rising": true,
+      "require_vwap_alignment": false,
+      "require_macd_alignment": false,
+      "minimum_regime_score": 2,
+      "allowed_regime_classes": ["moderate", "strong"],
+      "pressure_score_threshold": 4,
+      "pressure_score_threshold_by_side": {
+        "short": 4
+      },
+      "entry_risk_multiplier": 0.25,
+      "entry_risk_multiplier_by_side": {
+        "short": 0.20
+      },
+      "entry_priority": 0,
+      "entry_role": "support"
     },
     "bias": {
       "ema_column": "ema50",
@@ -180,7 +215,50 @@
       "relax_after_r": 1.0,
       "relaxed_min_confirmations": 0,
       "slow_anchor_after_r": 1.5,
-      "require_short_vwap_alignment": true
+      "require_short_vwap_alignment": true,
+      "trailing": {
+        "strong_body_min": 1.0,
+        "clean_wick_max": 1.0,
+        "min_vwap_distance": 0.0,
+        "min_ema_gap": 0.0,
+        "vwap_decay_threshold": 0.0015,
+        "ema_gap_decay_threshold": 0.0010,
+        "macd_decay_threshold": 0.0,
+        "body_decay_max": 0.8,
+        "wick_decay_min": 1.5,
+        "decay_close_position_max": 0.45,
+        "strong_close_position_min": 0.65,
+        "init_max_r": 0.5,
+        "confirmation_max_r": 1.5,
+        "expansion_min_momentum_signals": 4,
+        "decay_signal_threshold": 2,
+        "force_exit_decay_signal_threshold": 4,
+        "init_atr_buffer": 1.2,
+        "confirmation_atr_buffer": 0.9,
+        "expansion_atr_buffer": 1.8,
+        "decay_atr_buffer": 0.35,
+        "exit_atr_buffer": 0.15,
+        "expansion_anchor": "slow_ema",
+        "decay_anchor": "fast_ema",
+        "confirmation_anchor": "fast_ema",
+        "by_side": {
+          "short": {
+            "strong_close_position_max": 0.35,
+            "decay_close_position_min": 0.55,
+            "init_max_r": 0.35,
+            "confirmation_max_r": 1.0,
+            "expansion_min_momentum_signals": 3,
+            "force_exit_decay_signal_threshold": 3,
+            "init_atr_buffer": 1.0,
+            "confirmation_atr_buffer": 0.7,
+            "expansion_atr_buffer": 1.0,
+            "decay_atr_buffer": 0.25,
+            "exit_atr_buffer": 0.10,
+            "expansion_anchor": "fast_ema",
+            "decay_anchor": "fast_ema"
+          }
+        }
+      }
     }
   },
   "timeframes": {

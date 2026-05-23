@@ -8,12 +8,15 @@ from config import AppConfig
 
 
 TRADE_LOG_FIELDS = [
+    "trade_id",
     "side",
+    "signal_family",
     "entry_time",
     "exit_time",
     "entry_price",
     "exit_price",
     "stop_price",
+    "active_stop_price",
     "pnl",
     "pnl_R",
     "pnl_R_total",
@@ -21,13 +24,22 @@ TRADE_LOG_FIELDS = [
     "initial_risk_amount",
     "total_risk_amount",
     "equity_at_entry",
+    "entry_risk_multiplier",
     "intended_risk_per_trade",
     "effective_risk_fraction",
+    "equity_return_fraction",
     "bias",
     "regime_score",
     "regime_class",
     "entry_threshold",
     "exit_reason",
+    "pressure_score",
+    "trail_state",
+    "trail_anchor_column",
+    "trail_anchor_price",
+    "trail_open_r_multiple",
+    "trail_momentum_score",
+    "trail_decay_score",
     "entry_layer_count",
     "pyramid_level",
     "score",
@@ -55,12 +67,15 @@ def trade_to_log_record(trade):
         entry_layer_count = getattr(trade, "entry_layer_count", 0)
 
     return {
+        "trade_id": getattr(trade, "trade_id", None),
         "side": getattr(trade, "side", conditions.get("side")),
+        "signal_family": getattr(trade, "signal_family", conditions.get("signal_family")),
         "entry_time": getattr(trade, "entry_time", None),
         "exit_time": getattr(trade, "exit_time", None),
         "entry_price": getattr(trade, "entry_price", None),
         "exit_price": getattr(trade, "exit_price", None),
         "stop_price": getattr(trade, "stop", None),
+        "active_stop_price": getattr(trade, "active_stop", getattr(trade, "stop", None)),
         "pnl": getattr(trade, "pnl", None),
         "pnl_R": getattr(trade, "pnl_R", None),
         "pnl_R_total": getattr(trade, "pnl_R_total", None),
@@ -68,13 +83,22 @@ def trade_to_log_record(trade):
         "initial_risk_amount": getattr(trade, "initial_risk_amount", None),
         "total_risk_amount": getattr(trade, "total_risk_amount", None),
         "equity_at_entry": getattr(trade, "equity_at_entry", None),
+        "entry_risk_multiplier": getattr(trade, "entry_risk_multiplier", None),
         "intended_risk_per_trade": getattr(trade, "intended_risk_per_trade", None),
         "effective_risk_fraction": getattr(trade, "effective_risk_fraction", None),
+        "equity_return_fraction": getattr(trade, "equity_return_fraction", None),
         "bias": getattr(trade, "bias", conditions.get("bias")),
         "regime_score": getattr(trade, "regime_score", conditions.get("regime_score")),
         "regime_class": getattr(trade, "regime_class", conditions.get("regime_class")),
         "entry_threshold": getattr(trade, "entry_threshold", conditions.get("entry_threshold")),
         "exit_reason": getattr(trade, "exit_reason", conditions.get("exit_reason")),
+        "pressure_score": getattr(trade, "pressure_score", conditions.get("pressure_score")),
+        "trail_state": getattr(trade, "trail_state", conditions.get("trail_state")),
+        "trail_anchor_column": getattr(trade, "trail_anchor_column", conditions.get("trail_anchor_column")),
+        "trail_anchor_price": getattr(trade, "trail_anchor_price", conditions.get("trail_anchor_price")),
+        "trail_open_r_multiple": getattr(trade, "trail_open_r_multiple", conditions.get("trail_open_r_multiple")),
+        "trail_momentum_score": getattr(trade, "trail_momentum_score", conditions.get("trail_momentum_score")),
+        "trail_decay_score": getattr(trade, "trail_decay_score", conditions.get("trail_decay_score")),
         "entry_layer_count": entry_layer_count,
         "pyramid_level": getattr(trade, "pyramid_level", conditions.get("pyramid_level", 0)),
         "score": conditions.get("score"),
@@ -142,9 +166,11 @@ class Trade:
         self.entry_time = row.name
         self.entry_price = row["close"]
         self.score = score
+        self.trade_id = f"{self.side}_{_serialize_time(self.entry_time)}"
 
         # Structure
         self.stop = row[self.stop_column]
+        self.active_stop = self.stop
         self.R = abs(self.entry_price - self.stop)
 
         # Position tracking
@@ -164,16 +190,29 @@ class Trade:
         self.initial_risk_amount = 0
         self.total_risk_amount = 0
         self.equity_at_entry = None
+        self.signal_family = "trend"
+        self.entry_risk_multiplier = 1.0
+        self.entry_role = "core"
+        self.entry_priority = 1
         self.intended_risk_per_trade = None
         self.effective_risk_fraction = None
+        self.equity_return_fraction = None
+        self.pressure_score = None
         self.bias = None
         self.regime_score = None
         self.regime_class = None
         self.entry_threshold = None
+        self.trail_state = "init"
+        self.trail_anchor_column = None
+        self.trail_anchor_price = None
+        self.trail_open_r_multiple = 0.0
+        self.trail_momentum_score = 0
+        self.trail_decay_score = 0
 
         # Store WHY trade happened (very important)
         self.conditions = {
             "side": side,
+            "signal_family": self.signal_family,
             "score": score,
             "body_strength": row.get("body_strength", None),
             "close_position": row.get("close_position", None),
@@ -187,6 +226,7 @@ class Trade:
             "ema_gap_ratio": row.get("ema_gap_ratio", None),
             "atr": row.get("atr", None),
             "macd_hist": row.get("macd_hist", None),
+            "pressure_score": None,
         }
 
         print(f"Trade created at {self.entry_time}")
@@ -289,9 +329,14 @@ class Trade:
         if self.initial_risk_amount:
             self.pnl_R_initial = total / self.initial_risk_amount
 
+        if self.equity_at_entry:
+            self.equity_return_fraction = total / self.equity_at_entry
+
         print(f"\nTotal PnL: {self.pnl:.2f}")
         print(f"PnL (R multiple, total risk): {self.pnl_R_total:.2f}")
         print(f"PnL (R multiple, initial risk): {self.pnl_R_initial:.2f}")
+        if self.equity_return_fraction is not None:
+            print(f"PnL (equity-normalized): {self.equity_return_fraction:.4f}")
 
         print(f"Elapsed: {time.time() - start:.4f}s")
 
@@ -322,26 +367,78 @@ class Trade:
         self,
         *,
         equity_at_entry=None,
+        entry_risk_multiplier=None,
         intended_risk_per_trade=None,
         effective_risk_fraction=None,
     ):
         self.equity_at_entry = equity_at_entry
+        self.entry_risk_multiplier = entry_risk_multiplier
         self.intended_risk_per_trade = intended_risk_per_trade
         self.effective_risk_fraction = effective_risk_fraction
         self.conditions.update({
             "equity_at_entry": equity_at_entry,
+            "entry_risk_multiplier": entry_risk_multiplier,
             "intended_risk_per_trade": intended_risk_per_trade,
             "effective_risk_fraction": effective_risk_fraction,
         })
+
+    def annotate_signal_family(self, signal_family, pressure_score=None):
+        self.signal_family = signal_family
+        self.pressure_score = pressure_score
+        self.conditions.update({
+            "signal_family": signal_family,
+            "pressure_score": pressure_score,
+        })
+
+    def update_trailing_state(
+        self,
+        *,
+        trail_state,
+        anchor_column=None,
+        anchor_price=None,
+        open_r_multiple=None,
+        momentum_score=None,
+        decay_score=None,
+        proposed_stop=None,
+    ):
+        self.trail_state = trail_state
+        self.trail_anchor_column = anchor_column
+        self.trail_anchor_price = anchor_price
+        self.trail_open_r_multiple = open_r_multiple
+        self.trail_momentum_score = momentum_score
+        self.trail_decay_score = decay_score
+        self.conditions.update(
+            {
+                "trail_state": trail_state,
+                "trail_anchor_column": anchor_column,
+                "trail_anchor_price": anchor_price,
+                "trail_open_r_multiple": open_r_multiple,
+                "trail_momentum_score": momentum_score,
+                "trail_decay_score": decay_score,
+            }
+        )
+
+        if proposed_stop is None:
+            return self.active_stop
+
+        if self.side == "short":
+            self.active_stop = min(float(self.active_stop), float(proposed_stop))
+        else:
+            self.active_stop = max(float(self.active_stop), float(proposed_stop))
+
+        return self.active_stop
 
     def snapshot(self):
         return {
             "stop_column": self.stop_column,
             "side": self.side,
+            "signal_family": self.signal_family,
             "entry_time": _serialize_time(self.entry_time),
             "entry_price": self.entry_price,
             "score": self.score,
+            "trade_id": self.trade_id,
             "stop": self.stop,
+            "active_stop": self.active_stop,
             "R": self.R,
             "entries": [
                 {
@@ -361,12 +458,23 @@ class Trade:
             "initial_risk_amount": self.initial_risk_amount,
             "total_risk_amount": self.total_risk_amount,
             "equity_at_entry": self.equity_at_entry,
+            "entry_risk_multiplier": self.entry_risk_multiplier,
+            "entry_role": self.entry_role,
+            "entry_priority": self.entry_priority,
             "intended_risk_per_trade": self.intended_risk_per_trade,
             "effective_risk_fraction": self.effective_risk_fraction,
+            "equity_return_fraction": self.equity_return_fraction,
+            "pressure_score": self.pressure_score,
             "bias": self.bias,
             "regime_score": self.regime_score,
             "regime_class": self.regime_class,
             "entry_threshold": self.entry_threshold,
+            "trail_state": self.trail_state,
+            "trail_anchor_column": self.trail_anchor_column,
+            "trail_anchor_price": self.trail_anchor_price,
+            "trail_open_r_multiple": self.trail_open_r_multiple,
+            "trail_momentum_score": self.trail_momentum_score,
+            "trail_decay_score": self.trail_decay_score,
             "conditions": dict(self.conditions),
         }
 
@@ -377,6 +485,7 @@ class Trade:
         high_period = trade.config.require("features", "structure", "high_period")
         low_period = trade.config.require("features", "structure", "low_period")
         trade.side = snapshot.get("side", "long")
+        trade.signal_family = snapshot.get("signal_family", "trend")
         default_stop_column = (
             f"ll{low_period}"
             if trade.side == "long"
@@ -386,7 +495,9 @@ class Trade:
         trade.entry_time = _restore_time(snapshot.get("entry_time"))
         trade.entry_price = snapshot.get("entry_price")
         trade.score = snapshot.get("score")
+        trade.trade_id = snapshot.get("trade_id") or f"{trade.side}_{_serialize_time(trade.entry_time)}"
         trade.stop = snapshot.get("stop")
+        trade.active_stop = snapshot.get("active_stop", trade.stop)
         trade.R = snapshot.get("R")
         trade.entries = [
             (entry.get("price"), entry.get("size"))
@@ -403,11 +514,22 @@ class Trade:
         trade.initial_risk_amount = snapshot.get("initial_risk_amount", 0)
         trade.total_risk_amount = snapshot.get("total_risk_amount", 0)
         trade.equity_at_entry = snapshot.get("equity_at_entry")
+        trade.entry_risk_multiplier = snapshot.get("entry_risk_multiplier", 1.0)
+        trade.entry_role = snapshot.get("entry_role", "core")
+        trade.entry_priority = snapshot.get("entry_priority", 1)
         trade.intended_risk_per_trade = snapshot.get("intended_risk_per_trade")
         trade.effective_risk_fraction = snapshot.get("effective_risk_fraction")
+        trade.equity_return_fraction = snapshot.get("equity_return_fraction")
+        trade.pressure_score = snapshot.get("pressure_score")
         trade.bias = snapshot.get("bias")
         trade.regime_score = snapshot.get("regime_score")
         trade.regime_class = snapshot.get("regime_class")
         trade.entry_threshold = snapshot.get("entry_threshold")
+        trade.trail_state = snapshot.get("trail_state", "init")
+        trade.trail_anchor_column = snapshot.get("trail_anchor_column")
+        trade.trail_anchor_price = snapshot.get("trail_anchor_price")
+        trade.trail_open_r_multiple = snapshot.get("trail_open_r_multiple", 0.0)
+        trade.trail_momentum_score = snapshot.get("trail_momentum_score", 0)
+        trade.trail_decay_score = snapshot.get("trail_decay_score", 0)
         trade.conditions = dict(snapshot.get("conditions", {}))
         return trade

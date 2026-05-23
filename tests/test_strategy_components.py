@@ -4,6 +4,7 @@ import pandas as pd
 
 from entry.breakout import BreakoutDetector
 from entry.entry_engine import EntryEngine
+from entry.exploration_engine import ExplorationEngine
 from exit.exit_engine import ExitEngine
 from features.feature_pipeline import FeaturePipeline
 from pyramiding.pyramiding_engine import PyramidingEngine
@@ -47,6 +48,8 @@ def make_config():
             "blocked_lower_wick_ranges_by_score": {},
             "conditional_filters_by_score": {},
             "directional_filters": {},
+            "risk_multipliers_by_score": {},
+            "allowed_entry_roles": None,
         },
         "features": {
             "ema_periods": {
@@ -61,6 +64,20 @@ def make_config():
                 "fast_range_period": 2,
                 "slow_range_period": 3,
                 "ratio": 0.8,
+            },
+            "pressure": {
+                "atr_baseline_period": 2,
+                "cluster_lookback": 2,
+                "failed_event_lookback": 2,
+                "rejection_tolerance_atr": 0.35,
+                "high_rejection_close_position_max": 0.45,
+                "low_rejection_close_position_min": 0.55,
+                "near_level_atr_multiple": 0.25,
+                "ignition_body_strength_min": 1.8,
+                "ignition_close_position_min": 0.75,
+                "ignition_close_position_max": 0.25,
+                "atr_compression_ratio_max": 0.9,
+                "range_compression_ratio_max": 0.9,
             },
             "candle_metrics": {
                 "average_body_period": 2,
@@ -106,10 +123,55 @@ def make_config():
                 "relaxed_min_confirmations": 0,
                 "slow_anchor_after_r": 2.0,
                 "require_short_vwap_alignment": True,
+                "support_alpha": {},
                 "by_side": {},
+                "trailing": {
+                    "strong_body_min": 1.0,
+                    "clean_wick_max": 1.0,
+                    "min_vwap_distance": 0.0,
+                    "min_ema_gap": 0.0,
+                    "vwap_decay_threshold": 0.0015,
+                    "ema_gap_decay_threshold": 0.0010,
+                    "macd_decay_threshold": 0.0,
+                    "body_decay_max": 0.8,
+                    "wick_decay_min": 1.5,
+                    "decay_close_position_max": 0.45,
+                    "strong_close_position_min": 0.65,
+                    "init_max_r": 0.5,
+                    "confirmation_max_r": 1.5,
+                    "expansion_min_momentum_signals": 4,
+                    "decay_signal_threshold": 2,
+                    "force_exit_decay_signal_threshold": 4,
+                    "init_atr_buffer": 1.2,
+                    "confirmation_atr_buffer": 0.9,
+                    "expansion_atr_buffer": 1.8,
+                    "decay_atr_buffer": 0.35,
+                    "exit_atr_buffer": 0.15,
+                    "expansion_anchor": "slow_ema",
+                    "decay_anchor": "fast_ema",
+                    "confirmation_anchor": "fast_ema",
+                    "by_side": {
+                        "short": {
+                            "strong_close_position_max": 0.35,
+                            "decay_close_position_min": 0.55,
+                            "init_max_r": 0.35,
+                            "confirmation_max_r": 1.0,
+                            "expansion_min_momentum_signals": 3,
+                            "force_exit_decay_signal_threshold": 3,
+                            "init_atr_buffer": 1.0,
+                            "confirmation_atr_buffer": 0.7,
+                            "expansion_atr_buffer": 1.0,
+                            "decay_atr_buffer": 0.25,
+                            "exit_atr_buffer": 0.10,
+                            "expansion_anchor": "fast_ema",
+                            "decay_anchor": "fast_ema",
+                        }
+                    },
+                },
             },
             "pyramiding": {
                 "max_total_risk_multiple": 1.0,
+                "allow_support_alpha": False,
                 "quality_gate": {},
                 "levels": [
                     {
@@ -131,6 +193,23 @@ def make_config():
             },
             "directional": {
                 "enabled_sides": ["long", "short"],
+            },
+            "exploration": {
+                "enabled": False,
+                "enabled_sides": ["long", "short"],
+                "allow_neutral_bias": True,
+                "block_opposite_bias": True,
+                "require_atr_rising": True,
+                "require_vwap_alignment": False,
+                "require_macd_alignment": False,
+                "minimum_regime_score": 2,
+                "allowed_regime_classes": ["moderate", "strong"],
+                "pressure_score_threshold": 4,
+                "pressure_score_threshold_by_side": {"short": 4},
+                "entry_risk_multiplier": 0.25,
+                "entry_risk_multiplier_by_side": {"short": 0.2},
+                "entry_priority": 0,
+                "entry_role": "support",
             },
         },
     })
@@ -171,6 +250,34 @@ class FeaturePipelineTests(unittest.TestCase):
         self.assertTrue(result["breakout"].iloc[0])
         self.assertFalse(result["breakout"].iloc[1])
         self.assertFalse(result["breakdown"].iloc[0])
+
+    def test_pressure_model_columns_are_built(self):
+        df = pd.DataFrame(
+            {
+                "open": [10.0, 9.9, 9.95, 10.02, 10.08, 10.2],
+                "high": [10.3, 10.15, 10.12, 10.14, 10.18, 10.55],
+                "low": [9.8, 9.82, 9.88, 9.94, 10.0, 10.1],
+                "close": [9.9, 9.95, 10.0, 10.04, 10.12, 10.5],
+                "volume": [100, 100, 100, 100, 100, 100],
+            },
+            index=pd.date_range("2026-01-01", periods=6, freq="15min"),
+        )
+
+        result = FeaturePipeline(config=make_config()).compute(df)
+
+        for column in [
+            "range_compression_ratio",
+            "atr_compression_ratio",
+            "resistance_rejection_count",
+            "support_rejection_count",
+            "failed_breakout_up_count",
+            "failed_breakdown_down_count",
+            "pressure_score_long",
+            "pressure_score_short",
+            "pressure_ignition_long",
+            "pressure_ignition_short",
+        ]:
+            self.assertIn(column, result.columns)
 
 
 class BreakoutDetectorTests(unittest.TestCase):
@@ -308,6 +415,7 @@ class EntryEngineTests(unittest.TestCase):
         self.assertIsNotNone(trade)
         self.assertEqual(trade.side, "short")
         self.assertEqual(trade.stop, 105.0)
+        self.assertEqual(trade.entry_risk_multiplier, 1.0)
 
     def test_entry_engine_can_apply_conditional_score_filters(self):
         config = make_config()
@@ -342,6 +450,54 @@ class EntryEngineTests(unittest.TestCase):
 
         self.assertIsNone(trade)
 
+    def test_entry_engine_can_apply_regime_conditioned_score_filters(self):
+        config = make_config()
+        config.data["entry"]["conditional_filters_by_score"] = {
+            "5": {
+                "long": {
+                    "allowed_regime_classes": ["strong"],
+                    "min_metric_values": {
+                        "regime_score": 4,
+                        "upper_wick_ratio": 3.0,
+                        "vwap_distance_ratio": 0.002,
+                    },
+                    "max_close_position": 0.45,
+                }
+            }
+        }
+        engine = EntryEngine(config=config)
+        row = pd.Series(
+            {
+                "close": 101.0,
+                "compression": False,
+                "breakout": True,
+                "body_strength": 0.7,
+                "upper_wick_ratio": 3.5,
+                "close_position": 0.35,
+                "vwap_distance_ratio": 0.003,
+                "ll2": 95.0,
+            },
+            name=pd.Timestamp("2026-01-01 00:00:00"),
+        )
+
+        blocked = engine.generate_entry(
+            row,
+            score=5,
+            bias="bullish",
+            regime_score=3,
+            regime_class="strong",
+        )
+        allowed = engine.generate_entry(
+            row,
+            score=5,
+            bias="bullish",
+            regime_score=4,
+            regime_class="strong",
+        )
+
+        self.assertIsNone(blocked)
+        self.assertIsNotNone(allowed)
+
     def test_entry_engine_can_use_higher_short_threshold(self):
         config = make_config()
         config.data["entry"]["score_threshold_by_side"] = {"short": 9}
@@ -362,6 +518,57 @@ class EntryEngineTests(unittest.TestCase):
         trade = engine.generate_entry(row, score=8, bias="bearish", side="short")
 
         self.assertIsNone(trade)
+
+    def test_entry_engine_can_assign_score_specific_risk_multiplier(self):
+        config = make_config()
+        config.data["entry"]["risk_multipliers_by_score"] = {
+            "5": {"long": 0.5}
+        }
+        engine = EntryEngine(config=config)
+        row = pd.Series(
+            {
+                "close": 101.0,
+                "compression": False,
+                "breakout": True,
+                "body_strength": 1.7,
+                "upper_wick_ratio": 0.3,
+                "close_position": 0.8,
+                "ll2": 95.0,
+            },
+            name=pd.Timestamp("2026-01-01 00:00:00"),
+        )
+
+        trade = engine.generate_entry(row, score=5, bias="bullish", side="long")
+
+        self.assertIsNotNone(trade)
+        self.assertEqual(trade.entry_risk_multiplier, 0.5)
+
+    def test_entry_engine_can_restrict_allowed_roles(self):
+        config = make_config()
+        config.data["entry"]["risk_multipliers_by_score"] = {
+            "5": {"long": 0.5}
+        }
+        config.data["entry"]["allowed_entry_roles"] = ["support"]
+        engine = EntryEngine(config=config)
+        row = pd.Series(
+            {
+                "close": 101.0,
+                "compression": False,
+                "breakout": True,
+                "body_strength": 1.7,
+                "upper_wick_ratio": 0.3,
+                "close_position": 0.8,
+                "ll2": 95.0,
+            },
+            name=pd.Timestamp("2026-01-01 00:00:00"),
+        )
+
+        blocked = engine.generate_entry(row, score=6, bias="bullish", side="long")
+        allowed = engine.generate_entry(row, score=5, bias="bullish", side="long")
+
+        self.assertIsNone(blocked)
+        self.assertIsNotNone(allowed)
+        self.assertEqual(allowed.entry_role, "support")
 
     def test_entry_engine_can_apply_directional_short_filters(self):
         config = make_config()
@@ -394,6 +601,62 @@ class EntryEngineTests(unittest.TestCase):
         trade = engine.generate_entry(row, score=9, bias="bearish", side="short")
 
         self.assertIsNone(trade)
+
+
+class ExplorationEngineTests(unittest.TestCase):
+    def test_exploration_engine_can_build_long_candidate(self):
+        config = make_config()
+        config.data["strategy"]["exploration"]["enabled"] = True
+        engine = ExplorationEngine(config=config)
+        row = pd.Series(
+            {
+                "close": 101.0,
+                "atr_rising": True,
+                "pressure_score_long": 5,
+                "pressure_ignition_long": True,
+                "ll2": 95.0,
+            },
+            name=pd.Timestamp("2026-01-01 00:00:00"),
+        )
+
+        candidate = engine.build_candidate(
+            row,
+            bias="neutral",
+            side="long",
+            regime_score=3,
+            regime_class="strong",
+        )
+
+        self.assertIsNotNone(candidate)
+        self.assertEqual(candidate["signal_family"], "exploratory")
+        self.assertEqual(candidate["trade"].signal_family, "exploratory")
+        self.assertEqual(candidate["trade"].entry_role, "support")
+        self.assertEqual(candidate["trade"].pressure_score, 5)
+
+    def test_exploration_engine_blocks_opposite_bias(self):
+        config = make_config()
+        config.data["strategy"]["exploration"]["enabled"] = True
+        engine = ExplorationEngine(config=config)
+        row = pd.Series(
+            {
+                "close": 101.0,
+                "atr_rising": True,
+                "pressure_score_long": 5,
+                "pressure_ignition_long": True,
+                "ll2": 95.0,
+            },
+            name=pd.Timestamp("2026-01-01 00:00:00"),
+        )
+
+        candidate = engine.build_candidate(
+            row,
+            bias="bearish",
+            side="long",
+            regime_score=3,
+            regime_class="strong",
+        )
+
+        self.assertIsNone(candidate)
 
 
 class TrendSnifferTests(unittest.TestCase):
@@ -434,9 +697,12 @@ class TrendSnifferTests(unittest.TestCase):
                 "close": 108.0,
                 "ema2": 109.0,
                 "ema3": 100.0,
-                "body_strength": 0.3,
-                "upper_wick_ratio": 2.0,
-                "close_position": 0.2,
+                "body_strength": 1.2,
+                "upper_wick_ratio": 0.4,
+                "close_position": 0.8,
+                "vwap_distance_ratio": 0.01,
+                "ema_gap_ratio": 0.02,
+                "macd_hist": 0.5,
             }
         )
         trade = type("TradeStub", (), {"entry_price": 100.0, "R": 4.0})()
@@ -500,6 +766,111 @@ class TrendSnifferTests(unittest.TestCase):
         sniffer = TrendSniffer(config=config)
 
         self.assertFalse(sniffer.is_trend_alive(row, trade=trade))
+
+    def test_support_alpha_trade_can_disable_relaxed_hold_logic(self):
+        config = make_config()
+        config.data["strategy"]["sniffing"]["support_alpha"] = {
+            "min_confirmations": 2,
+            "relax_after_r": None,
+            "slow_anchor_after_r": None,
+        }
+        row = pd.Series(
+            {
+                "close": 110.0,
+                "ema2": 100.0,
+                "body_strength": 0.3,
+                "upper_wick_ratio": 2.0,
+                "close_position": 0.2,
+            }
+        )
+        trade = type(
+            "TradeStub",
+            (),
+            {
+                "entry_price": 100.0,
+                "R": 5.0,
+                "entry_risk_multiplier": 0.5,
+            },
+        )()
+
+        sniffer = TrendSniffer(config=config)
+
+        self.assertFalse(sniffer.is_trend_alive(row, trade=trade))
+
+    def test_trailing_state_can_tighten_long_stop_during_decay(self):
+        row = pd.Series(
+            {
+                "close": 112.0,
+                "ema2": 110.0,
+                "ema3": 106.0,
+                "ll2": 108.0,
+                "session_vwap": 109.5,
+                "atr": 2.0,
+                "body_strength": 0.7,
+                "upper_wick_ratio": 1.8,
+                "close_position": 0.55,
+                "vwap_distance_ratio": 0.0005,
+                "ema_gap_ratio": 0.0025,
+                "macd_hist": 0.3,
+            }
+        )
+        trade = type(
+            "TradeStub",
+            (),
+            {
+                "entry_price": 100.0,
+                "R": 5.0,
+                "side": "long",
+                "stop": 95.0,
+                "stop_column": "ll2",
+                "active_stop": 95.0,
+                "entry_risk_multiplier": 1.0,
+            },
+        )()
+
+        sniffer = TrendSniffer(config=make_config())
+        result = sniffer.evaluate(row, trade=trade)
+
+        self.assertEqual(result["state"], "decay")
+        self.assertFalse(result["should_exit"])
+        self.assertGreater(result["proposed_stop"], 95.0)
+
+    def test_trailing_state_can_force_short_exit_on_behavior_break(self):
+        row = pd.Series(
+            {
+                "close": 95.0,
+                "ema2": 96.0,
+                "ema3": 97.0,
+                "hh2": 98.0,
+                "session_vwap": 94.2,
+                "atr": 1.5,
+                "body_strength": 0.7,
+                "lower_wick_ratio": 1.6,
+                "close_position": 0.7,
+                "vwap_distance_ratio": -0.0002,
+                "ema_gap_ratio": -0.0004,
+                "macd_hist": -0.05,
+            }
+        )
+        trade = type(
+            "TradeStub",
+            (),
+            {
+                "entry_price": 100.0,
+                "R": 4.0,
+                "side": "short",
+                "stop": 104.0,
+                "stop_column": "hh2",
+                "active_stop": 104.0,
+                "entry_risk_multiplier": 1.0,
+            },
+        )()
+
+        sniffer = TrendSniffer(config=make_config())
+        result = sniffer.evaluate(row, trade=trade)
+
+        self.assertEqual(result["state"], "exit")
+        self.assertTrue(result["should_exit"])
 
 
 class ExitEngineTests(unittest.TestCase):
@@ -691,6 +1062,25 @@ class PyramidingEngineTests(unittest.TestCase):
 
         self.assertEqual(normal_size, 0.5)
         self.assertEqual(elite_size, 0.75)
+
+    def test_support_alpha_trade_can_be_blocked_from_pyramiding(self):
+        config = make_config()
+        blocked_engine = PyramidingEngine(config=config)
+        allowed_config = make_config()
+        allowed_config.data["strategy"]["pyramiding"]["allow_support_alpha"] = True
+        allowed_engine = PyramidingEngine(config=allowed_config)
+        trade = type(
+            "TradeStub",
+            (),
+            {
+                "entry_price": 100.0,
+                "R": 5.0,
+                "entry_risk_multiplier": 0.5,
+            },
+        )()
+
+        self.assertFalse(blocked_engine.qualifies_for_pyramiding(pd.Series({}), trade))
+        self.assertTrue(allowed_engine.qualifies_for_pyramiding(pd.Series({}), trade))
 
 
 if __name__ == "__main__":

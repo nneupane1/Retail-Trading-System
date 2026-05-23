@@ -56,6 +56,16 @@ class EntryEngine:
                 "directional_filters",
                 default={},
             )
+            risk_multipliers_by_score = getter(
+                "entry",
+                "risk_multipliers_by_score",
+                default={},
+            )
+            allowed_entry_roles = getter(
+                "entry",
+                "allowed_entry_roles",
+                default=None,
+            )
             block_compression_sides = getter(
                 "entry",
                 "block_compression_sides",
@@ -122,6 +132,20 @@ class EntryEngine:
             except Exception:
                 directional_filters = {}
             try:
+                risk_multipliers_by_score = self.config.require(
+                    "entry",
+                    "risk_multipliers_by_score",
+                )
+            except Exception:
+                risk_multipliers_by_score = {}
+            try:
+                allowed_entry_roles = self.config.require(
+                    "entry",
+                    "allowed_entry_roles",
+                )
+            except Exception:
+                allowed_entry_roles = None
+            try:
                 block_compression_sides = self.config.require(
                     "entry",
                     "block_compression_sides",
@@ -179,6 +203,14 @@ class EntryEngine:
             str(side).lower(): dict(filters or {})
             for side, filters in (directional_filters or {}).items()
         }
+        self.risk_multipliers_by_score = self._parse_risk_multipliers(
+            risk_multipliers_by_score or {}
+        )
+        self.allowed_entry_roles = (
+            {str(role).lower() for role in (allowed_entry_roles or [])}
+            if allowed_entry_roles is not None
+            else None
+        )
 
     @staticmethod
     def _parse_conditional_filters(raw_filters):
@@ -191,12 +223,77 @@ class EntryEngine:
         return parsed
 
     @staticmethod
+    def _parse_risk_multipliers(raw_multipliers):
+        parsed = {}
+        for score, value in (raw_multipliers or {}).items():
+            parsed_score = int(score)
+            if isinstance(value, dict):
+                parsed[parsed_score] = {
+                    str(side).lower(): float(multiplier)
+                    for side, multiplier in value.items()
+                }
+            else:
+                parsed[parsed_score] = float(value)
+        return parsed
+
+    @staticmethod
     def _metric_debug_label(metric_name):
         return metric_name.replace("_", " ")
+
+    def _resolve_entry_risk_multiplier(self, score, side):
+        configured = self.risk_multipliers_by_score.get(int(score))
+        if configured is None:
+            return 1.0
+        if isinstance(configured, dict):
+            return float(configured.get(side, 1.0))
+        return float(configured)
+
+    def entry_threshold_for_side(self, side):
+        side = str(side).lower()
+        return self.score_threshold_by_side.get(side, self.entry_threshold)
+
+    def preview_entry_metadata(self, score, side):
+        side = str(side).lower()
+        entry_risk_multiplier = self._resolve_entry_risk_multiplier(score, side)
+        entry_role = "support" if entry_risk_multiplier < 1.0 else "core"
+        entry_priority = 0 if entry_role == "support" else 1
+        return {
+            "entry_threshold": self.entry_threshold_for_side(side),
+            "entry_risk_multiplier": entry_risk_multiplier,
+            "entry_role": entry_role,
+            "entry_priority": entry_priority,
+        }
 
     def _passes_filter_set(self, row, filters, score, side, label):
         if not filters:
             return True
+
+        allowed_regime_classes = {
+            str(value).lower()
+            for value in (filters.get("allowed_regime_classes", []) or [])
+        }
+        if allowed_regime_classes:
+            regime_class = str(row.get("regime_class", "") or "").lower()
+            if regime_class not in allowed_regime_classes:
+                print(
+                    f"No entry: {label} filter failed for {side} score {score} "
+                    f"(regime class={regime_class or 'unknown'}, "
+                    f"allowed={sorted(allowed_regime_classes)})"
+                )
+                return False
+
+        blocked_regime_classes = {
+            str(value).lower()
+            for value in (filters.get("blocked_regime_classes", []) or [])
+        }
+        if blocked_regime_classes:
+            regime_class = str(row.get("regime_class", "") or "").lower()
+            if regime_class in blocked_regime_classes:
+                print(
+                    f"No entry: {label} filter failed for {side} score {score} "
+                    f"(regime class={regime_class}, blocked by configuration)"
+                )
+                return False
 
         comparisons = [
             ("min_body_strength", "body_strength", ">="),
@@ -272,7 +369,15 @@ class EntryEngine:
 
         return True
 
-    def generate_entry(self, row, score, bias, side="long"):
+    def generate_entry(
+        self,
+        row,
+        score,
+        bias,
+        side="long",
+        regime_score=None,
+        regime_class=None,
+    ):
         start = time.time()
         side = str(side).lower()
 
@@ -280,10 +385,18 @@ class EntryEngine:
 
         required_bias = "bullish" if side == "long" else "bearish"
         event_column = "breakout" if side == "long" else "breakdown"
-        entry_threshold = self.score_threshold_by_side.get(side, self.entry_threshold)
+        entry_metadata = self.preview_entry_metadata(score, side)
+        entry_threshold = entry_metadata["entry_threshold"]
+        entry_role = entry_metadata["entry_role"]
 
         if bias != required_bias:
             print(f"No entry: bias not {required_bias}")
+            return None
+
+        if self.allowed_entry_roles is not None and entry_role not in self.allowed_entry_roles:
+            print(
+                f"No entry: role {entry_role} blocked by channel configuration"
+            )
             return None
 
         if score < entry_threshold:
@@ -323,9 +436,15 @@ class EntryEngine:
                     )
                     return None
 
+        filter_context = row.to_dict()
+        if regime_score is not None:
+            filter_context["regime_score"] = regime_score
+        if regime_class is not None:
+            filter_context["regime_class"] = regime_class
+
         directional_filters = self.directional_filters.get(side, {})
         if not self._passes_filter_set(
-            row,
+            filter_context,
             directional_filters,
             score,
             side,
@@ -335,7 +454,7 @@ class EntryEngine:
 
         score_filters = self.conditional_filters_by_score.get(score, {}).get(side, {})
         if not self._passes_filter_set(
-            row,
+            filter_context,
             score_filters,
             score,
             side,
@@ -361,6 +480,9 @@ class EntryEngine:
 
         # Create trade
         trade = Trade(row, score, side=side, config=self.config)
+        trade.entry_risk_multiplier = entry_metadata["entry_risk_multiplier"]
+        trade.entry_role = entry_role
+        trade.entry_priority = entry_metadata["entry_priority"]
 
         print("\nENTRY SIGNAL GENERATED")
         print(f"  Side: {side.upper()}")
@@ -368,6 +490,8 @@ class EntryEngine:
         print(f"  Price: {row['close']:.2f}")
         print(f"  Score: {score}")
         print(f"  Bias: {bias}")
+        print(f"  Role: {trade.entry_role.upper()}")
+        print(f"  Risk multiplier: {trade.entry_risk_multiplier:.2f}x")
 
         elapsed = time.time() - start
         print(f"Elapsed: {elapsed:.4f}s")

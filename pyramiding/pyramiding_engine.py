@@ -40,6 +40,17 @@ class PyramidingEngine:
                 ) or {}
             except Exception:
                 self.quality_gate = {}
+        if callable(getter):
+            self.allow_support_alpha = bool(
+                getter(
+                    "strategy",
+                    "pyramiding",
+                    "allow_support_alpha",
+                    default=False,
+                )
+            )
+        else:
+            self.allow_support_alpha = False
 
     def check_pyramiding(
         self,
@@ -131,6 +142,15 @@ class PyramidingEngine:
         return 0
 
     def qualifies_for_pyramiding(self, row, trade):
+        entry_risk_multiplier = (
+            float(getattr(trade, "entry_risk_multiplier", 1.0) or 1.0)
+            if trade is not None
+            else 1.0
+        )
+        if entry_risk_multiplier < 1.0 and not self.allow_support_alpha:
+            print("Pyramiding blocked: support-alpha trades are not allowed to pyramid")
+            return False
+
         quality_gate = self.quality_gate
         if not quality_gate.get("enabled", False):
             return True

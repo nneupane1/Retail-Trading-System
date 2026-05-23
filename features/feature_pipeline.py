@@ -43,12 +43,49 @@ class FeaturePipeline:
         )
         self.compression_ratio = self.config.require("features", "compression", "ratio")
         indicator_config = self.config.get("features", "indicators", default={}) or {}
+        pressure_config = self.config.get("features", "pressure", default={}) or {}
         self.atr_period = int(indicator_config.get("atr_period", 14))
         self.macd_fast_period = int(indicator_config.get("macd_fast_period", 12))
         self.macd_slow_period = int(indicator_config.get("macd_slow_period", 26))
         self.macd_signal_period = int(indicator_config.get("macd_signal_period", 9))
         self.bollinger_period = int(indicator_config.get("bollinger_period", 20))
         self.bollinger_std_dev = float(indicator_config.get("bollinger_std_dev", 2.0))
+        self.pressure_atr_baseline_period = int(
+            pressure_config.get("atr_baseline_period", 20)
+        )
+        self.pressure_cluster_lookback = int(
+            pressure_config.get("cluster_lookback", 12)
+        )
+        self.pressure_failed_event_lookback = int(
+            pressure_config.get("failed_event_lookback", 12)
+        )
+        self.pressure_rejection_tolerance_atr = float(
+            pressure_config.get("rejection_tolerance_atr", 0.35)
+        )
+        self.high_rejection_close_position_max = float(
+            pressure_config.get("high_rejection_close_position_max", 0.45)
+        )
+        self.low_rejection_close_position_min = float(
+            pressure_config.get("low_rejection_close_position_min", 0.55)
+        )
+        self.pressure_near_level_atr_multiple = float(
+            pressure_config.get("near_level_atr_multiple", 0.25)
+        )
+        self.pressure_ignition_body_strength_min = float(
+            pressure_config.get("ignition_body_strength_min", 1.8)
+        )
+        self.pressure_ignition_close_position_min = float(
+            pressure_config.get("ignition_close_position_min", 0.75)
+        )
+        self.pressure_ignition_close_position_max = float(
+            pressure_config.get("ignition_close_position_max", 0.25)
+        )
+        self.pressure_atr_compression_ratio_max = float(
+            pressure_config.get("atr_compression_ratio_max", 0.85)
+        )
+        self.pressure_range_compression_ratio_max = float(
+            pressure_config.get("range_compression_ratio_max", self.compression_ratio)
+        )
         self.candle_metrics = CandleMetricsCalculator(config=self.config)
 
     @staticmethod
@@ -199,7 +236,111 @@ class FeaturePipeline:
         df = self.candle_metrics.compute(df)
 
         # ------------------------------
-        # 7. CLEAN INCOMPLETE ROWS
+        # 7. PRESSURE / INSTABILITY MODEL
+        # ------------------------------
+
+        t0 = time.time()
+
+        df["range_compression_ratio"] = (
+            df[fast_range_column] / (df[slow_range_column] + 1e-9)
+        )
+        df["range_contracting"] = df[fast_range_column] < df[fast_range_column].shift(1)
+        df["candle_range_to_atr"] = (
+            (df["high"] - df["low"]) / (df["atr"] + 1e-9)
+        )
+        df["atr_baseline"] = df["atr"].rolling(self.pressure_atr_baseline_period).mean()
+        df["atr_compression_ratio"] = (
+            df["atr"] / (df["atr_baseline"] + 1e-9)
+        )
+
+        rejection_tolerance = self.pressure_rejection_tolerance_atr * df["atr"]
+        df["resistance_rejection"] = (
+            (df["high"] >= (df[previous_high_column] - rejection_tolerance)) &
+            (df["close"] <= df[previous_high_column]) &
+            (df["close_position"] <= self.high_rejection_close_position_max)
+        )
+        df["support_rejection"] = (
+            (df["low"] <= (df[previous_low_column] + rejection_tolerance)) &
+            (df["close"] >= df[previous_low_column]) &
+            (df["close_position"] >= self.low_rejection_close_position_min)
+        )
+        df["failed_breakout_up"] = (
+            (df["high"] > df[previous_high_column]) &
+            (df["close"] <= df[previous_high_column])
+        )
+        df["failed_breakdown_down"] = (
+            (df["low"] < df[previous_low_column]) &
+            (df["close"] >= df[previous_low_column])
+        )
+        df["resistance_rejection_count"] = (
+            df["resistance_rejection"]
+            .rolling(self.pressure_cluster_lookback)
+            .sum()
+        )
+        df["support_rejection_count"] = (
+            df["support_rejection"]
+            .rolling(self.pressure_cluster_lookback)
+            .sum()
+        )
+        df["failed_breakout_up_count"] = (
+            df["failed_breakout_up"]
+            .rolling(self.pressure_failed_event_lookback)
+            .sum()
+        )
+        df["failed_breakdown_down_count"] = (
+            df["failed_breakdown_down"]
+            .rolling(self.pressure_failed_event_lookback)
+            .sum()
+        )
+
+        long_pressure_components = [
+            df["compression"],
+            df["atr_compression_ratio"] <= self.pressure_atr_compression_ratio_max,
+            df["range_compression_ratio"] <= self.pressure_range_compression_ratio_max,
+            df["range_contracting"],
+            df["resistance_rejection_count"] >= 2,
+            df["failed_breakdown_down_count"] >= 1,
+        ]
+        short_pressure_components = [
+            df["compression"],
+            df["atr_compression_ratio"] <= self.pressure_atr_compression_ratio_max,
+            df["range_compression_ratio"] <= self.pressure_range_compression_ratio_max,
+            df["range_contracting"],
+            df["support_rejection_count"] >= 2,
+            df["failed_breakout_up_count"] >= 1,
+        ]
+        df["pressure_score_long"] = sum(
+            component.astype(int) for component in long_pressure_components
+        )
+        df["pressure_score_short"] = sum(
+            component.astype(int) for component in short_pressure_components
+        )
+
+        near_breakout_level = (
+            df[previous_high_column] - (self.pressure_near_level_atr_multiple * df["atr"])
+        )
+        near_breakdown_level = (
+            df[previous_low_column] + (self.pressure_near_level_atr_multiple * df["atr"])
+        )
+        df["pressure_ignition_long"] = (
+            (df["close"] >= near_breakout_level) &
+            (df["close"] > df["prev_close"]) &
+            (df["body_strength"] >= self.pressure_ignition_body_strength_min) &
+            (df["close_position"] >= self.pressure_ignition_close_position_min) &
+            df["atr_rising"]
+        )
+        df["pressure_ignition_short"] = (
+            (df["close"] <= near_breakdown_level) &
+            (df["close"] < df["prev_close"]) &
+            (df["body_strength"] >= self.pressure_ignition_body_strength_min) &
+            (df["close_position"] <= self.pressure_ignition_close_position_max) &
+            df["atr_rising"]
+        )
+
+        print(f"Pressure model computed | Time: {time.time() - t0:.2f}s\n")
+
+        # ------------------------------
+        # 8. CLEAN INCOMPLETE ROWS
         # ------------------------------
 
         required_columns = [
@@ -214,6 +355,7 @@ class FeaturePipeline:
             previous_low_column,
             "session_vwap",
             "atr",
+            "atr_baseline",
             "macd_line",
             "macd_signal",
             "macd_hist",
@@ -227,6 +369,14 @@ class FeaturePipeline:
             "upper_wick_ratio",
             "lower_wick_ratio",
             "close_position",
+            "range_compression_ratio",
+            "atr_compression_ratio",
+            "resistance_rejection_count",
+            "support_rejection_count",
+            "failed_breakout_up_count",
+            "failed_breakdown_down_count",
+            "pressure_score_long",
+            "pressure_score_short",
         ]
         df = self._drop_incomplete_feature_rows(df, required_columns)
 

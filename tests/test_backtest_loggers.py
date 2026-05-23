@@ -32,10 +32,11 @@ class BacktestLoggerTests(unittest.TestCase):
 
             self.assertEqual(
                 header,
-                "side,entry_time,exit_time,entry_price,exit_price,stop_price,pnl,pnl_R,"
+                "trade_id,side,signal_family,entry_time,exit_time,entry_price,exit_price,stop_price,active_stop_price,pnl,pnl_R,"
                 "pnl_R_total,pnl_R_initial,initial_risk_amount,total_risk_amount,"
-                "equity_at_entry,intended_risk_per_trade,effective_risk_fraction,bias,"
-                "regime_score,regime_class,entry_threshold,exit_reason,entry_layer_count,"
+                "equity_at_entry,entry_risk_multiplier,intended_risk_per_trade,effective_risk_fraction,equity_return_fraction,bias,"
+                "regime_score,regime_class,entry_threshold,exit_reason,pressure_score,trail_state,trail_anchor_column,trail_anchor_price,"
+                "trail_open_r_multiple,trail_momentum_score,trail_decay_score,entry_layer_count,"
                 "pyramid_level,score,body_strength,close_position,upper_wick_ratio,"
                 "lower_wick_ratio,compression,breakout,breakdown,session_vwap,"
                 "vwap_distance_ratio,ema_gap_ratio,atr,macd_hist",
@@ -46,12 +47,15 @@ class BacktestLoggerTests(unittest.TestCase):
             output_dir = os.path.join(temp_dir, "backtest_output")
             logger = TradeLogger(config=DummyConfig(output_dir=output_dir))
             trade = SimpleNamespace(
+                trade_id="long_2026-01-01T00:00:00",
                 side="long",
+                signal_family="exploratory",
                 entry_time="2026-01-01 00:00:00",
                 exit_time="2026-01-01 01:00:00",
                 entry_price=100.0,
                 exit_price=110.0,
                 stop=95.0,
+                active_stop=104.0,
                 pnl=12.5,
                 pnl_R=1.25,
                 pnl_R_total=1.25,
@@ -59,13 +63,22 @@ class BacktestLoggerTests(unittest.TestCase):
                 initial_risk_amount=5.0,
                 total_risk_amount=10.0,
                 equity_at_entry=1000.0,
+                entry_risk_multiplier=0.5,
                 intended_risk_per_trade=0.01,
                 effective_risk_fraction=0.005,
+                equity_return_fraction=0.0125,
                 bias="bullish",
                 regime_score=3,
                 regime_class="strong",
                 entry_threshold=4,
                 exit_reason="trend weakness",
+                pressure_score=5,
+                trail_state="decay",
+                trail_anchor_column="ema20",
+                trail_anchor_price=108.0,
+                trail_open_r_multiple=2.0,
+                trail_momentum_score=4,
+                trail_decay_score=2,
                 entry_layer_count=2,
                 pyramid_level=1,
                 conditions={
@@ -91,22 +104,34 @@ class BacktestLoggerTests(unittest.TestCase):
                 rows = list(csv.DictReader(file_handle))
 
             self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["trade_id"], "long_2026-01-01T00:00:00")
             self.assertEqual(rows[0]["side"], "long")
+            self.assertEqual(rows[0]["signal_family"], "exploratory")
             self.assertEqual(rows[0]["entry_time"], "2026-01-01 00:00:00")
             self.assertEqual(rows[0]["exit_time"], "2026-01-01 01:00:00")
             self.assertEqual(float(rows[0]["pnl"]), 12.5)
+            self.assertEqual(float(rows[0]["active_stop_price"]), 104.0)
             self.assertEqual(float(rows[0]["pnl_R_total"]), 1.25)
             self.assertEqual(float(rows[0]["pnl_R_initial"]), 2.5)
             self.assertEqual(float(rows[0]["initial_risk_amount"]), 5.0)
             self.assertEqual(float(rows[0]["total_risk_amount"]), 10.0)
             self.assertEqual(float(rows[0]["equity_at_entry"]), 1000.0)
+            self.assertEqual(float(rows[0]["entry_risk_multiplier"]), 0.5)
             self.assertEqual(float(rows[0]["intended_risk_per_trade"]), 0.01)
             self.assertEqual(float(rows[0]["effective_risk_fraction"]), 0.005)
+            self.assertEqual(float(rows[0]["equity_return_fraction"]), 0.0125)
             self.assertEqual(rows[0]["bias"], "bullish")
             self.assertEqual(rows[0]["regime_score"], "3")
             self.assertEqual(rows[0]["regime_class"], "strong")
             self.assertEqual(rows[0]["entry_threshold"], "4")
             self.assertEqual(rows[0]["exit_reason"], "trend weakness")
+            self.assertEqual(rows[0]["pressure_score"], "5")
+            self.assertEqual(rows[0]["trail_state"], "decay")
+            self.assertEqual(rows[0]["trail_anchor_column"], "ema20")
+            self.assertEqual(float(rows[0]["trail_anchor_price"]), 108.0)
+            self.assertEqual(float(rows[0]["trail_open_r_multiple"]), 2.0)
+            self.assertEqual(rows[0]["trail_momentum_score"], "4")
+            self.assertEqual(rows[0]["trail_decay_score"], "2")
             self.assertEqual(rows[0]["entry_layer_count"], "2")
             self.assertEqual(rows[0]["pyramid_level"], "1")
             self.assertEqual(rows[0]["compression"], "True")

@@ -16,6 +16,7 @@ from data.downloader import load_from_csv
 from data.resampler import TimeframeBuilder
 from features.feature_pipeline import compute_features
 from simulation.simulator import Simulator
+from simulation.trade import TRADE_LOG_FIELDS
 
 
 def _set_nested(mapping, dotted_path, value):
@@ -157,6 +158,16 @@ def _history_source_path(config):
         / base_tf["label"]
         / f"{symbol}_{base_tf['label']}_{start_date}_to_{end_date}.csv"
     )
+
+
+def _validation_output_dir(config, baseline_name, label, branch_name=None):
+    root_output_dir = Path(config.path("backtest", "output_dir"))
+    output_dir = root_output_dir / "validation" / baseline_name
+    if branch_name:
+        output_dir = output_dir / branch_name
+    output_dir = output_dir / label
+    output_dir.mkdir(parents=True, exist_ok=True)
+    return output_dir
 
 
 def _build_timeframes(df_1m, config):
@@ -331,12 +342,12 @@ def run_validation_window(
     train_start=None,
     train_end=None,
 ):
-    root_output_dir = Path(base_config.path("backtest", "output_dir"))
-    output_dir = root_output_dir / "validation" / baseline_name
-    if branch_name:
-        output_dir = output_dir / branch_name
-    output_dir = output_dir / label
-    output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir = _validation_output_dir(
+        config=base_config,
+        baseline_name=baseline_name,
+        label=label,
+        branch_name=branch_name,
+    )
 
     window_config = _clone_config(
         base_config,
@@ -383,6 +394,233 @@ def run_validation_window(
             "start_date": eval_start,
             "end_date": eval_end,
             "output_dir": str(output_dir),
+        }
+    )
+    return summary
+
+
+def _combine_channel_equity_curves(channel_runs, combined_output_dir):
+    combined_output_dir = Path(combined_output_dir)
+    frames = []
+    channel_columns = []
+
+    for channel_run in channel_runs:
+        channel_name = channel_run["channel_name"]
+        channel_column = f"equity__{channel_name}"
+        channel_columns.append(channel_column)
+        equity_path = Path(channel_run["output_dir"]) / "equity.csv"
+        if not equity_path.exists():
+            continue
+
+        equity_df = pd.read_csv(equity_path, parse_dates=["timestamp"])
+        if equity_df.empty:
+            continue
+
+        frames.append(
+            equity_df[["timestamp", "equity"]].rename(
+                columns={"equity": channel_column}
+            )
+        )
+
+    if not frames:
+        breakdown_path = combined_output_dir / "channel_equity_breakdown.csv"
+        pd.DataFrame(columns=["timestamp", "equity"]).to_csv(
+            combined_output_dir / "equity.csv",
+            index=False,
+        )
+        pd.DataFrame(columns=["timestamp", "equity"]).to_csv(
+            breakdown_path,
+            index=False,
+        )
+        return
+
+    merged = frames[0]
+    for frame in frames[1:]:
+        merged = merged.merge(frame, on="timestamp", how="outer")
+
+    merged = merged.sort_values("timestamp").reset_index(drop=True)
+    for channel_run in channel_runs:
+        channel_column = f"equity__{channel_run['channel_name']}"
+        if channel_column not in merged.columns:
+            merged[channel_column] = float(channel_run["initial_equity"])
+        merged[channel_column] = (
+            merged[channel_column]
+            .ffill()
+            .fillna(float(channel_run["initial_equity"]))
+        )
+
+    merged["equity"] = merged[channel_columns].sum(axis=1)
+    merged[["timestamp", "equity"]].to_csv(
+        combined_output_dir / "equity.csv",
+        index=False,
+    )
+    merged.to_csv(
+        combined_output_dir / "channel_equity_breakdown.csv",
+        index=False,
+    )
+
+
+def _combine_channel_trade_logs(channel_runs, combined_output_dir):
+    combined_output_dir = Path(combined_output_dir)
+    combined_columns = list(TRADE_LOG_FIELDS) + [
+        "portfolio_channel",
+        "channel_allocation_fraction",
+        "channel_initial_equity",
+    ]
+    frames = []
+
+    for channel_run in channel_runs:
+        trades_path = Path(channel_run["output_dir"]) / "trades.csv"
+        if not trades_path.exists():
+            continue
+
+        trades_df = pd.read_csv(trades_path)
+        if trades_df.empty:
+            continue
+
+        trades_df["portfolio_channel"] = channel_run["channel_name"]
+        trades_df["channel_allocation_fraction"] = float(
+            channel_run["allocation_fraction"]
+        )
+        trades_df["channel_initial_equity"] = float(channel_run["initial_equity"])
+        frames.append(trades_df)
+
+    if frames:
+        combined = pd.concat(frames, ignore_index=True, sort=False)
+        sort_columns = []
+        for column in ["entry_time", "exit_time"]:
+            if column in combined.columns:
+                combined[column] = pd.to_datetime(combined[column], errors="coerce")
+                sort_columns.append(column)
+        if sort_columns:
+            combined = combined.sort_values(sort_columns, kind="stable")
+        combined.to_csv(combined_output_dir / "trades.csv", index=False)
+        return
+
+    pd.DataFrame(columns=combined_columns).to_csv(
+        combined_output_dir / "trades.csv",
+        index=False,
+    )
+
+
+def _write_channel_summary(channel_runs, combined_output_dir):
+    combined_output_dir = Path(combined_output_dir)
+    rows = []
+    for channel_run in channel_runs:
+        row = {
+            "channel_name": channel_run["channel_name"],
+            "allocation_fraction": float(channel_run["allocation_fraction"]),
+            "initial_equity": float(channel_run["initial_equity"]),
+            "output_dir": str(channel_run["output_dir"]),
+        }
+        row.update(channel_run["summary"])
+        rows.append(row)
+
+    summary_path = combined_output_dir / "channel_summary.csv"
+    if rows:
+        with summary_path.open("w", newline="", encoding="utf-8") as file_handle:
+            writer = csv.DictWriter(file_handle, fieldnames=list(rows[0].keys()))
+            writer.writeheader()
+            writer.writerows(rows)
+    else:
+        summary_path.touch()
+
+
+def run_portfolio_validation_window(
+    base_config,
+    source_df_1m,
+    baseline_name,
+    label,
+    eval_start,
+    eval_end,
+    channel_specs,
+    branch_name=None,
+    train_start=None,
+    train_end=None,
+):
+    total_initial_equity = float(base_config.require("account", "initial_equity"))
+    total_allocation = sum(
+        float(channel_spec["allocation_fraction"])
+        for channel_spec in (channel_specs or [])
+    )
+    if total_allocation <= 0:
+        raise ValueError("Portfolio validation requires positive channel allocation")
+    if abs(total_allocation - 1.0) > 1e-9:
+        raise ValueError(
+            "Portfolio channel allocations must sum to 1.0, "
+            f"received {total_allocation:.6f}"
+        )
+
+    combined_output_dir = _validation_output_dir(
+        config=base_config,
+        baseline_name=baseline_name,
+        label=label,
+        branch_name=branch_name,
+    )
+
+    channel_runs = []
+    for channel_spec in channel_specs:
+        channel_name = channel_spec["name"]
+        allocation_fraction = float(channel_spec["allocation_fraction"])
+        channel_initial_equity = total_initial_equity * allocation_fraction
+
+        if "config" in channel_spec:
+            loaded_config = AppConfig.load(config_path=channel_spec["config"])
+            channel_config = _clone_config(
+                loaded_config,
+                overrides={
+                    **(channel_spec.get("overrides", {}) or {}),
+                    "account.initial_equity": channel_initial_equity,
+                },
+            )
+        else:
+            channel_config = _clone_config(
+                base_config,
+                overrides={
+                    **(channel_spec.get("overrides", {}) or {}),
+                    "account.initial_equity": channel_initial_equity,
+                },
+            )
+
+        channel_summary = run_validation_window(
+            base_config=channel_config,
+            source_df_1m=source_df_1m,
+            baseline_name=baseline_name,
+            branch_name=f"{branch_name}/channels/{channel_name}" if branch_name else f"channels/{channel_name}",
+            label=label,
+            eval_start=eval_start,
+            eval_end=eval_end,
+            train_start=train_start,
+            train_end=train_end,
+        )
+        channel_runs.append(
+            {
+                "channel_name": channel_name,
+                "allocation_fraction": allocation_fraction,
+                "initial_equity": channel_initial_equity,
+                "output_dir": channel_summary["output_dir"],
+                "summary": channel_summary,
+            }
+        )
+
+    _combine_channel_equity_curves(channel_runs, combined_output_dir)
+    _combine_channel_trade_logs(channel_runs, combined_output_dir)
+    _write_channel_summary(channel_runs, combined_output_dir)
+    _write_breakdown_reports(combined_output_dir)
+
+    summary = summarize_backtest_output(
+        output_dir=combined_output_dir,
+        initial_equity=total_initial_equity,
+    )
+    summary.update(
+        {
+            "label": label,
+            "branch_name": branch_name or "portfolio",
+            "train_start": train_start,
+            "train_end": train_end,
+            "start_date": eval_start,
+            "end_date": eval_end,
+            "output_dir": str(combined_output_dir),
         }
     )
     return summary
@@ -480,22 +718,39 @@ def _run_walkforward_validation_for_config(
     baseline_name,
     windows,
     branch_name=None,
+    channel_specs=None,
 ):
     summaries = []
     for window in windows:
-        summaries.append(
-            run_validation_window(
-                base_config=config,
-                source_df_1m=source_df_1m,
-                baseline_name=baseline_name,
-                branch_name=branch_name,
-                label=window["label"],
-                eval_start=window["start_date"],
-                eval_end=window["end_date"],
-                train_start=window.get("train_start"),
-                train_end=window.get("train_end"),
+        if channel_specs:
+            summaries.append(
+                run_portfolio_validation_window(
+                    base_config=config,
+                    source_df_1m=source_df_1m,
+                    baseline_name=baseline_name,
+                    branch_name=branch_name,
+                    channel_specs=channel_specs,
+                    label=window["label"],
+                    eval_start=window["start_date"],
+                    eval_end=window["end_date"],
+                    train_start=window.get("train_start"),
+                    train_end=window.get("train_end"),
+                )
             )
-        )
+        else:
+            summaries.append(
+                run_validation_window(
+                    base_config=config,
+                    source_df_1m=source_df_1m,
+                    baseline_name=baseline_name,
+                    branch_name=branch_name,
+                    label=window["label"],
+                    eval_start=window["start_date"],
+                    eval_end=window["end_date"],
+                    train_start=window.get("train_start"),
+                    train_end=window.get("train_end"),
+                )
+            )
 
     summary_dir = Path(config.path("backtest", "output_dir")) / "validation" / baseline_name
     if branch_name:
@@ -622,6 +877,7 @@ def run_branch_walkforward_validation(
             baseline_name=baseline_name,
             windows=windows,
             branch_name=branch_name,
+            channel_specs=branch_spec.get("channels"),
         )
         branch_results.append(result)
 
