@@ -52,11 +52,16 @@ the market context supports a long entry, whether a setup is strong enough to
 trade, how large the position should be, whether an open trade can be added to,
 and when that trade should be exited.
 
-The strategy is currently long-only. It uses a higher-timeframe directional
-bias, a regime score that blocks weak environments, an event-based breakout
-trigger, a point-based setup score, risk-based sizing, staged pyramiding, a
-tolerant trend-health check for holding winners, and a hard structural stop for
-capital protection.
+The locked production-style research baseline is currently long-only. The
+repository now also contains a side-aware directional engine that can evaluate
+long and short candidates on the same candle, but that short branch remains
+under validation rather than promoted as the default baseline.
+
+The active long baseline uses a higher-timeframe directional bias, a regime
+score that blocks weak environments, an event-based breakout trigger, a
+point-based setup score, risk-based sizing, staged pyramiding, a tolerant
+trend-health check for holding winners, and a hard structural stop for capital
+protection.
 
 The same simulator core is reused in both historical backtesting and near-live
 simulation. That is an important architectural choice: the system does not keep
@@ -70,7 +75,7 @@ decision engine and changes only the data source and execution loop.
 | Venue | Binance spot-style OHLCV market data |
 | Source granularity | `1m` base candles |
 | Execution clock | Closed `15m` candles only |
-| Direction | Long-only |
+| Direction | Locked baseline: long-only; research engine: long + short capable |
 | Bias filter | `1h` price vs EMA and relative EMA slope |
 | Regime filter | `12h` macro + `5h` trend confirmation |
 | Entry trigger | Event-based breakout above prior rolling high |
@@ -125,6 +130,8 @@ This event-driven style reduces late entries and repeated signals.
 | `main_resample.py` | CLI entry point for rebuilding and saving higher timeframes |
 | `main_backtest.py` | CLI entry point for full historical runs |
 | `main_live.py` | CLI entry point for near-live polling and execution |
+| `main_walkforward.py` | CLI entry point for walk-forward validation and controlled branch testing |
+| `main_monte_carlo.py` | CLI entry point for Monte Carlo and trade-concentration robustness analysis |
 
 ## High-Level Operating Model
 
@@ -178,7 +185,9 @@ than assuming everything starts from `main_backtest.py`.
 | `1` | `python main_download.py` | Download and checkpoint local `1m` history from Binance |
 | `2` | `python main_resample.py` | Optional: materialize `15m`, `1h`, `5h`, and `12h` CSVs for inspection |
 | `3` | `python main_backtest.py` | Run the full historical strategy pipeline with Rich progress UI and resume support |
-| `4` | `python main_live.py` | Run near-live simulation using local warmup history plus fresh Binance `1m` candles |
+| `4` | `python main_walkforward.py --scheme multifold --branch-spec ...` | Run controlled multi-fold validation across candidate branches |
+| `5` | `python main_monte_carlo.py ...` | Stress-test completed trades with bootstrap and concentration analysis |
+| `6` | `python main_live.py` | Run near-live simulation using local warmup history plus fresh Binance `1m` candles |
 
 Two practical clarifications matter:
 
@@ -282,9 +291,10 @@ between development verbosity and a fully structured logging framework.
 ## Current Research Baseline
 
 The repository now contains a materially refined research baseline rather than
-only the original breakout skeleton. The active configuration is still fully
-rule-based and inspectable, but it now includes targeted entry filtering,
-profit-aware winner retention, and selective pyramiding for elite trades.
+only the original breakout skeleton. The locked baseline remains fully
+rule-based and inspectable, and it now sits beside a larger research harness
+for controlled branches, walk-forward drift analysis, Monte Carlo robustness,
+and an experimental long+short engine.
 
 ### Active entry refinements
 
@@ -298,6 +308,26 @@ config-driven filters in the entry-conversion layer:
 | Score bucket exclusion | `entry.blocked_scores = [7]` |
 | Score-specific body filter | Score `8` requires `body_strength >= 2.0` |
 | Score-specific wick filter | Score `8` rejects `0.1 <= upper_wick_ratio < 0.3` |
+
+### Directional research extensions
+
+The codebase now supports a unified directional engine even though the locked
+baseline still runs long-only by default.
+
+Directional research additions include:
+
+| Capability | Current implementation |
+| --- | --- |
+| Unified side selection | Competing `LONG` vs `SHORT` scores on the same `15m` candle |
+| Bearish structure events | `breakdown` event below prior rolling low |
+| Side-aware trade math | Shared `Trade` object with `side`, mirrored stops, mirrored PnL |
+| Side-aware regime scoring | Bullish and bearish `12h` / `5h` environment scoring |
+| Side-aware hold logic | Short trades use mirrored wick/close logic and a VWAP guard |
+| Side-aware hard stops | Long exits on `low <= stop`; short exits on `high >= stop` |
+| Side-aware pyramiding | Mirrored `-R` event triggers for shorts |
+
+These directional branches are intentionally treated as research candidates, not
+as a silently promoted replacement for the stronger locked long baseline.
 
 ### Active winner-retention behavior
 
@@ -348,7 +378,7 @@ execution: exit at stop_price
 
 ### Latest validated backtest snapshot
 
-Using the current research baseline on the configured historical range
+Using the current locked long baseline on the configured historical range
 `2018-01-01 -> 2026-05-22`, the latest full rerun produced:
 
 | Metric | Latest result |
@@ -365,6 +395,16 @@ Using the current research baseline on the configured historical range
 This is a research snapshot, not a live-performance claim. Its importance is
 that the current system is now behaving like a concentrated profit-distribution
 engine rather than a flat, overtrading breakout script.
+
+### Controlled validation state
+
+Recent multi-fold validation work produced two important conclusions:
+
+- conditional `score 5` pruning is worth testing, but blunt removal still harms
+  fold stability even when it improves average edge
+- the new long+short engine is functionally complete, but the first short
+  branches remain weaker than the locked long baseline and therefore are not
+  yet promoted
 
 ## Console Experience
 
@@ -994,10 +1034,12 @@ They are designed to explain not just what happened, but why it happened.
 
 | Column | Meaning |
 | --- | --- |
+| `side` | `long` or `short` |
 | `entry_time` | First entry timestamp |
 | `exit_time` | Exit timestamp |
 | `entry_price` | First entry price |
 | `exit_price` | Exit price |
+| `stop_price` | Shared structural stop used by the trade |
 | `pnl` | Quote-currency profit or loss |
 | `pnl_R` | Compatibility alias for total-risk R |
 | `pnl_R_total` | PnL divided by total deployed risk |
@@ -1015,8 +1057,15 @@ They are designed to explain not just what happened, but why it happened.
 | `body_strength` | Candle metric at entry |
 | `close_position` | Candle metric at entry |
 | `upper_wick_ratio` | Candle metric at entry |
+| `lower_wick_ratio` | Candle metric at entry |
 | `compression` | Whether setup formed during compression |
 | `breakout` | Whether entry candle was a breakout event |
+| `breakdown` | Whether entry candle was a breakdown event |
+| `session_vwap` | Session VWAP at entry |
+| `vwap_distance_ratio` | Distance from VWAP at entry |
+| `ema_gap_ratio` | Fast/slow EMA separation at entry |
+| `atr` | ATR value at entry |
+| `macd_hist` | MACD histogram at entry |
 
 ### Equity log
 
@@ -1040,6 +1089,7 @@ The repository includes a focused `unittest` suite under `tests/`.
 | Test area | Purpose |
 | --- | --- |
 | Breakout logic | Verify event-based breakout timing |
+| Directional regime logic | Verify mirrored bearish environment scoring |
 | Feature pipeline | Verify state-transition breakout marking and NaN cleanup |
 | Trend sniffer | Verify tolerant hold logic |
 | Pyramiding | Verify event-based adds and trend gating |
@@ -1084,7 +1134,9 @@ deliberate incompleteness.
 
 ### Strategy scope
 
-- The system is currently long-only.
+- The locked baseline is currently long-only.
+- The repo also contains an experimental long+short engine that has not yet
+  beaten the locked baseline in multi-fold validation.
 - `entry/retest.py` exists but is not part of the active entry path.
 - Regime currently acts only as an entry gate.
 - Regime does not yet reduce sizing or pyramiding in weaker-but-allowed markets.

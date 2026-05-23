@@ -32,10 +32,12 @@ class BacktestLoggerTests(unittest.TestCase):
 
             self.assertEqual(
                 header,
-                "entry_time,exit_time,entry_price,exit_price,pnl,pnl_R,pnl_R_total,"
-                "pnl_R_initial,initial_risk_amount,total_risk_amount,bias,regime_score,"
-                "regime_class,entry_threshold,exit_reason,entry_layer_count,pyramid_level,"
-                "score,body_strength,close_position,upper_wick_ratio,compression,breakout",
+                "side,entry_time,exit_time,entry_price,exit_price,stop_price,pnl,pnl_R,"
+                "pnl_R_total,pnl_R_initial,initial_risk_amount,total_risk_amount,bias,"
+                "regime_score,regime_class,entry_threshold,exit_reason,entry_layer_count,"
+                "pyramid_level,score,body_strength,close_position,upper_wick_ratio,"
+                "lower_wick_ratio,compression,breakout,breakdown,session_vwap,"
+                "vwap_distance_ratio,ema_gap_ratio,atr,macd_hist",
             )
 
     def test_trade_logger_appends_completed_trade_row(self):
@@ -43,10 +45,12 @@ class BacktestLoggerTests(unittest.TestCase):
             output_dir = os.path.join(temp_dir, "backtest_output")
             logger = TradeLogger(config=DummyConfig(output_dir=output_dir))
             trade = SimpleNamespace(
+                side="long",
                 entry_time="2026-01-01 00:00:00",
                 exit_time="2026-01-01 01:00:00",
                 entry_price=100.0,
                 exit_price=110.0,
+                stop=95.0,
                 pnl=12.5,
                 pnl_R=1.25,
                 pnl_R_total=1.25,
@@ -65,8 +69,15 @@ class BacktestLoggerTests(unittest.TestCase):
                     "body_strength": 1.2,
                     "close_position": 0.9,
                     "upper_wick_ratio": 0.4,
+                    "lower_wick_ratio": 0.1,
                     "compression": True,
                     "breakout": True,
+                    "breakdown": False,
+                    "session_vwap": 99.5,
+                    "vwap_distance_ratio": 0.01,
+                    "ema_gap_ratio": 0.02,
+                    "atr": 12.0,
+                    "macd_hist": 0.8,
                 }
             )
 
@@ -76,6 +87,7 @@ class BacktestLoggerTests(unittest.TestCase):
                 rows = list(csv.DictReader(file_handle))
 
             self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["side"], "long")
             self.assertEqual(rows[0]["entry_time"], "2026-01-01 00:00:00")
             self.assertEqual(rows[0]["exit_time"], "2026-01-01 01:00:00")
             self.assertEqual(float(rows[0]["pnl"]), 12.5)

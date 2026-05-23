@@ -1,4 +1,4 @@
-"""Scores trade setup quality from bias, trend, compression, breakout, and candle behavior."""
+"""Scores long and short setup quality from aligned trend, structure, and candle behavior."""
 
 import time
 
@@ -8,11 +8,10 @@ from config import AppConfig
 
 class ScoreEngine:
     """
-    Computes a transparent setup-quality score from configured weights.
+    Computes transparent setup-quality scores from configured weights.
 
-    Each scoring component corresponds to a market condition the strategy cares
-    about: directional alignment, trend, compression, breakout confirmation,
-    and candle quality. The resulting score is passed to the entry engine.
+    The same engine evaluates both long and short candidates so the simulator
+    can compare competing directional opportunities on the same closed candle.
     """
 
     def __init__(self, config=None):
@@ -20,41 +19,66 @@ class ScoreEngine:
         self.scoring = self.config.require("strategy", "scoring")
         fast_ema_period = self.config.require("features", "ema_periods", "fast")
         self.fast_ema_column = f"ema{fast_ema_period}"
+        self.lower_close_position_max = self.scoring.get(
+            "close_position_max",
+            1.0 - self.scoring["close_position_min"],
+        )
+        self.lower_wick_max = self.scoring.get(
+            "lower_wick_max",
+            self.scoring["upper_wick_max"],
+        )
 
-    def compute_score(self, row, bias):
+    @staticmethod
+    def _direction_label(side):
+        return "LONG" if side == "long" else "SHORT"
+
+    def compute_score(self, row, bias, side="long"):
         start = time.time()
+        side = str(side).lower()
+        direction = self._direction_label(side)
+        required_bias = "bullish" if side == "long" else "bearish"
+        event_column = "breakout" if side == "long" else "breakdown"
 
-        print("\nComputing entry score...")
+        print(f"\nComputing {direction} entry score...")
 
         score = 0
 
-        # ----------------------------------
-        # 1. BIAS (direction alignment)
-        # ----------------------------------
-
-        if bias == "bullish":
+        if bias == required_bias:
             score += self.scoring["bias_weight"]
-            print(f"Bias bullish (+{self.scoring['bias_weight']})")
-
-        elif bias == "bearish":
-            print("WARNING: Bearish bias (no score for long)")
-
+            print(f"{direction} bias aligned (+{self.scoring['bias_weight']})")
         else:
-            print("Neutral bias")
+            print(f"{direction} bias not aligned")
 
-        # ----------------------------------
-        # 2. TREND CONFIRMATION
-        # ----------------------------------
-
-        if row["close"] > row[self.fast_ema_column]:
+        trend_aligned = (
+            row["close"] > row[self.fast_ema_column]
+            if side == "long"
+            else row["close"] < row[self.fast_ema_column]
+        )
+        if trend_aligned:
             score += self.scoring["trend_weight"]
-            print(f"Price above {self.fast_ema_column} (+{self.scoring['trend_weight']})")
+            comparator = "above" if side == "long" else "below"
+            print(
+                f"Price {comparator} {self.fast_ema_column} "
+                f"(+{self.scoring['trend_weight']})"
+            )
         else:
-            print(f"Price below {self.fast_ema_column}")
+            comparator = "below" if side == "long" else "above"
+            print(f"Price {comparator} {self.fast_ema_column}")
 
-        # ----------------------------------
-        # 3. COMPRESSION (setup quality)
-        # ----------------------------------
+        vwap_weight = self.scoring.get("vwap_weight", 0)
+        if vwap_weight:
+            vwap_aligned = (
+                row["close"] > row.get("session_vwap", row["close"])
+                if side == "long"
+                else row["close"] < row.get("session_vwap", row["close"])
+            )
+            if vwap_aligned:
+                score += vwap_weight
+                comparator = "above" if side == "long" else "below"
+                print(f"Price {comparator} session VWAP (+{vwap_weight})")
+            else:
+                comparator = "below" if side == "long" else "above"
+                print(f"Price {comparator} session VWAP")
 
         if row["compression"]:
             score += self.scoring["compression_weight"]
@@ -62,19 +86,16 @@ class ScoreEngine:
         else:
             print("No compression")
 
-        # ----------------------------------
-        # 4. BREAKOUT EVENT (core trigger)
-        # ----------------------------------
-
-        if row["breakout"]:
-            score += self.scoring["breakout_weight"]
-            print(f"Breakout event confirmed (+{self.scoring['breakout_weight']})")
+        event_weight_key = "breakout_weight" if side == "long" else "breakdown_weight"
+        event_weight = self.scoring.get(
+            event_weight_key,
+            self.scoring.get("breakout_weight", 0),
+        )
+        if row[event_column]:
+            score += event_weight
+            print(f"{event_column.title()} event confirmed (+{event_weight})")
         else:
-            print("No breakout event")
-
-        # ----------------------------------
-        # 5. MOMENTUM (candle quality)
-        # ----------------------------------
+            print(f"No {event_column} event")
 
         if row["body_strength"] > self.scoring["body_strength_min"]:
             score += self.scoring["body_strength_weight"]
@@ -82,39 +103,91 @@ class ScoreEngine:
         else:
             print("Weak body")
 
-        if row["close_position"] > self.scoring["close_position_min"]:
+        close_position_aligned = (
+            row["close_position"] > self.scoring["close_position_min"]
+            if side == "long"
+            else row["close_position"] < self.lower_close_position_max
+        )
+        if close_position_aligned:
             score += self.scoring["close_position_weight"]
-            print(f"Strong close position (+{self.scoring['close_position_weight']})")
+            print(
+                "Directional close quality "
+                f"(+{self.scoring['close_position_weight']})"
+            )
         else:
-            print("Weak close")
+            print("Weak directional close")
 
-        if row["upper_wick_ratio"] < self.scoring["upper_wick_max"]:
-            score += self.scoring["upper_wick_weight"]
-            print(f"Low rejection (+{self.scoring['upper_wick_weight']})")
+        wick_metric = "upper_wick_ratio" if side == "long" else "lower_wick_ratio"
+        wick_threshold = (
+            self.scoring["upper_wick_max"]
+            if side == "long"
+            else self.lower_wick_max
+        )
+        wick_weight = (
+            self.scoring["upper_wick_weight"]
+            if side == "long"
+            else self.scoring.get(
+                "lower_wick_weight",
+                self.scoring["upper_wick_weight"],
+            )
+        )
+        if row[wick_metric] < wick_threshold:
+            score += wick_weight
+            print(f"Directional wick quality (+{wick_weight})")
         else:
-            print("High rejection wick")
+            print("Poor directional wick quality")
 
-        # ----------------------------------
-        # FINAL OUTPUT
-        # ----------------------------------
+        atr_weight = self.scoring.get("atr_weight", 0)
+        if atr_weight:
+            if bool(row.get("atr_rising", False)):
+                score += atr_weight
+                print(f"Volatility expansion (+{atr_weight})")
+            else:
+                print("ATR not expanding")
+
+        macd_weight = self.scoring.get("macd_weight", 0)
+        if macd_weight:
+            macd_aligned = (
+                row.get("macd_line", 0.0) > row.get("macd_signal", 0.0)
+                and row.get("macd_hist", 0.0) > 0
+                if side == "long"
+                else row.get("macd_line", 0.0) < row.get("macd_signal", 0.0)
+                and row.get("macd_hist", 0.0) < 0
+            )
+            if macd_aligned:
+                score += macd_weight
+                print(f"MACD aligned (+{macd_weight})")
+            else:
+                print("MACD not aligned")
+
+        bollinger_weight = self.scoring.get("bollinger_weight", 0)
+        if bollinger_weight:
+            bollinger_aligned = (
+                bool(row.get("bb_breakout_up", False))
+                if side == "long"
+                else bool(row.get("bb_breakout_down", False))
+            )
+            if bollinger_aligned:
+                score += bollinger_weight
+                print(f"Bollinger breakout context (+{bollinger_weight})")
+            else:
+                print("No Bollinger breakout context")
 
         elapsed = time.time() - start
 
-        print(f"\nFinal Score: {score}")
+        print(f"\nFinal {direction} Score: {score}")
         print(f"Elapsed: {elapsed:.4f}s")
 
         entry_threshold = self.config.require("entry", "score_threshold")
-
-        # quality interpretation
         if score > entry_threshold:
-            print("High-quality setup")
+            print(f"High-quality {direction} setup")
         elif score == entry_threshold:
-            print("Tradable setup")
+            print(f"Tradable {direction} setup")
         else:
-            print("Weak setup")
+            print(f"Weak {direction} setup")
 
         return score
 
 
-def compute_score(row, bias, config=None):
-    return ScoreEngine(config=config).compute_score(row, bias)
+def compute_score(row, bias, side="long", config=None):
+    return ScoreEngine(config=config).compute_score(row, bias, side=side)

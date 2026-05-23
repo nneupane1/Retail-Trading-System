@@ -96,6 +96,28 @@ class RegimeDetectorTests(unittest.TestCase):
         self.assertTrue(detector.allows_entries(2))
         self.assertFalse(detector.allows_entries(1))
 
+    def test_short_regime_can_score_bearish_macro_and_trend_alignment(self):
+        df_12h = pd.DataFrame(
+            {
+                "close": [99.0, 98.5, 98.0, 97.5],
+                "ema50": [100.0, 99.8, 99.5, 99.0],
+            }
+        )
+        df_5h = pd.DataFrame(
+            {
+                "close": [99.5, 99.0, 98.5, 98.0],
+                "ema50": [100.0, 99.9, 99.6, 99.2],
+            }
+        )
+
+        regime = RegimeDetector(config=make_config(slope_threshold=0.0005)).compute_regime(
+            df_5h,
+            df_12h,
+            side="short",
+        )
+
+        self.assertEqual(regime, 4)
+
 
 if __name__ == "__main__":
     unittest.main()

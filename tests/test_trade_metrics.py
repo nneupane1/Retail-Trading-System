@@ -6,12 +6,15 @@ from simulation.trade import Trade
 
 
 class DummyConfig:
-    def __init__(self, low_period=2):
+    def __init__(self, low_period=2, high_period=2):
         self.low_period = low_period
+        self.high_period = high_period
 
     def require(self, *keys):
         if keys == ("features", "structure", "low_period"):
             return self.low_period
+        if keys == ("features", "structure", "high_period"):
+            return self.high_period
         raise KeyError(f"Unexpected config lookup: {keys}")
 
 
@@ -90,6 +93,36 @@ class TradeMetricsTests(unittest.TestCase):
         self.assertEqual(trade.exit_price, 95.0)
         self.assertEqual(trade.pnl, -5.0)
         self.assertEqual(trade.pnl_R_initial, -1.0)
+
+    def test_short_trade_pnl_uses_inverse_price_move(self):
+        entry_row = pd.Series(
+            {
+                "close": 100.0,
+                "hh2": 105.0,
+                "body_strength": 1.5,
+                "close_position": 0.2,
+                "upper_wick_ratio": 0.3,
+                "lower_wick_ratio": 0.2,
+                "compression": False,
+                "breakdown": True,
+            },
+            name=pd.Timestamp("2026-01-01 00:00:00"),
+        )
+        exit_row = pd.Series(
+            {
+                "close": 92.0,
+            },
+            name=pd.Timestamp("2026-01-01 01:00:00"),
+        )
+
+        trade = Trade(entry_row, score=6, side="short", config=DummyConfig())
+        trade.add_entry(100.0, 1.0)
+        trade.close(exit_row)
+
+        self.assertEqual(trade.side, "short")
+        self.assertEqual(trade.stop, 105.0)
+        self.assertEqual(trade.pnl, 8.0)
+        self.assertEqual(trade.pnl_R_initial, 1.6)
 
 
 if __name__ == "__main__":

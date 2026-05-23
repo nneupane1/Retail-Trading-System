@@ -37,10 +37,14 @@ class AppConfig:
     JSON-backed application configuration.
     """
 
-    def __init__(self, data, config_path):
+    def __init__(self, data, config_path, root_dir=None):
         self.data = data
         self.config_path = Path(config_path)
-        self.root_dir = self.config_path.resolve().parents[1]
+        self.root_dir = (
+            Path(root_dir).resolve()
+            if root_dir is not None
+            else Path(__file__).resolve().parents[1]
+        )
 
     @classmethod
     def load(cls, config_path=None):
@@ -59,7 +63,7 @@ class AppConfig:
         with path.open() as f:
             data = json.load(f)
 
-        return cls(data=data, config_path=path)
+        return cls(data=data, config_path=path, root_dir=root_dir)
 
     def get(self, *keys, default=None):
         value = self.data

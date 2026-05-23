@@ -120,6 +120,27 @@ class BacktestEngineTests(unittest.TestCase):
         self.assertFalse(simulator.calls[0]["df_5h_empty"])
         self.assertFalse(simulator.calls[0]["df_12h_empty"])
 
+    def test_engine_can_disable_fixed_minimum_warmup_when_inputs_are_prewarmed(self):
+        df_15m, df_1h, df_5h, df_12h = self._build_context_frames()
+
+        simulator = RecordingSimulator()
+        engine = BacktestEngine(
+            df_15m=df_15m.iloc[60:],
+            df_1h=df_1h,
+            df_5h=df_5h,
+            df_12h=df_12h,
+            simulator=simulator,
+            minimum_warmup_bars=0,
+        )
+
+        engine.run()
+
+        self.assertTrue(simulator.calls)
+        self.assertEqual(
+            simulator.calls[0]["time"],
+            pd.Timestamp("2018-01-02 04:00:00"),
+        )
+
     def test_engine_saves_checkpoint_on_interrupt_and_resumes_from_next_pending_candle(self):
         df_15m, df_1h, df_5h, df_12h = self._build_context_frames()
 

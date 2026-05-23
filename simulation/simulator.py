@@ -48,6 +48,17 @@ class Simulator:
         print("\nInitializing Simulator...")
 
         self.config = config or AppConfig.load()
+        getter = getattr(self.config, "get", None)
+        if callable(getter):
+            enabled_sides = getter(
+                "strategy",
+                "directional",
+                "enabled_sides",
+                default=["long"],
+            )
+        else:
+            enabled_sides = ["long"]
+        self.enabled_sides = {str(side).lower() for side in (enabled_sides or ["long"])}
         self.risk_per_trade = (
             risk_per_trade
             if risk_per_trade is not None
@@ -73,6 +84,17 @@ class Simulator:
         self.exit_engine = exit_engine or ExitEngine()
         self.position_sizer = position_sizer or PositionSizer()
 
+    @staticmethod
+    def _choose_direction(long_score, short_score, threshold):
+        long_valid = long_score >= threshold
+        short_valid = short_score >= threshold
+
+        if long_valid and long_score > short_score:
+            return "long"
+        if short_valid and short_score > long_score:
+            return "short"
+        return None
+
     def _close_current_trade(self, row, reason=None, exit_price=None):
         trade = self.current_trade
 
@@ -95,6 +117,8 @@ class Simulator:
         self.level = 0
 
     def _regime_allows_entry(self, regime_score):
+        if regime_score is None:
+            return False
         allows_entries = getattr(self.regime_detector, "allows_entries", None)
         if callable(allows_entries):
             return allows_entries(regime_score)
@@ -128,8 +152,6 @@ class Simulator:
         # --------------------------
 
         bias = self.bias_detector.get_bias(df_1h)
-        regime = self.regime_detector.compute_regime(df_5h, df_12h)
-        regime_class = self._regime_classification(regime)
         entry_threshold = self.config.require("entry", "score_threshold")
 
         # --------------------------
@@ -137,30 +159,87 @@ class Simulator:
         # --------------------------
 
         if self.current_trade is None:
-            if not self._regime_allows_entry(regime):
-                print(f"No entry: regime too weak ({regime})")
-            else:
-                score = self.score_engine.compute_score(row, bias)
+            long_regime = (
+                self.regime_detector.compute_regime(df_5h, df_12h, side="long")
+                if "long" in self.enabled_sides
+                else None
+            )
+            short_regime = (
+                self.regime_detector.compute_regime(df_5h, df_12h, side="short")
+                if "short" in self.enabled_sides
+                else None
+            )
+            long_allowed = (
+                self._regime_allows_entry(long_regime)
+                if long_regime is not None
+                else False
+            )
+            short_allowed = (
+                self._regime_allows_entry(short_regime)
+                if short_regime is not None
+                else False
+            )
 
-                trade = self.entry_engine.generate_entry(row, score, bias)
+            if not long_allowed and not short_allowed:
+                print(
+                    "No entry: both directional regimes are too weak "
+                    f"(LONG={long_regime}, SHORT={short_regime})"
+                )
+            else:
+                long_score = (
+                    self.score_engine.compute_score(row, bias, side="long")
+                    if "long" in self.enabled_sides and long_allowed
+                    else -1
+                )
+                short_score = (
+                    self.score_engine.compute_score(row, bias, side="short")
+                    if "short" in self.enabled_sides and short_allowed
+                    else -1
+                )
+                print("\nDirectional regime gate")
+                print(f"  LONG:  {long_regime} ({'ALLOW' if long_allowed else 'BLOCK'})")
+                print(f"  SHORT: {short_regime} ({'ALLOW' if short_allowed else 'BLOCK'})")
+                print("\nDirectional scorecard")
+                print(f"  LONG:  {long_score}")
+                print(f"  SHORT: {short_score}")
+
+                selected_side = self._choose_direction(
+                    long_score=long_score,
+                    short_score=short_score,
+                    threshold=entry_threshold,
+                )
+                if selected_side is None:
+                    print("No entry: no directional edge beat threshold cleanly")
+                    trade = None
+                    score = None
+                else:
+                    score = long_score if selected_side == "long" else short_score
+                    print(f"Selected direction: {selected_side.upper()}")
+                    trade = self.entry_engine.generate_entry(
+                        row,
+                        score,
+                        bias,
+                        side=selected_side,
+                    )
 
                 if trade:
+                    trade_regime = long_regime if selected_side == "long" else short_regime
+                    regime_class = self._regime_classification(trade_regime)
                     if hasattr(trade, "annotate_entry_context") and callable(trade.annotate_entry_context):
                         trade.annotate_entry_context(
                             bias=bias,
-                            regime_score=regime,
+                            regime_score=trade_regime,
                             regime_class=regime_class,
                             entry_threshold=entry_threshold,
                         )
                     else:
                         trade.bias = bias
-                        trade.regime_score = regime
+                        trade.regime_score = trade_regime
                         trade.regime_class = regime_class
                         trade.entry_threshold = entry_threshold
 
                     print("\nEXECUTING NEW TRADE")
 
-                    # position sizing
                     size = self.position_sizer.calculate(
                         equity=self.account.equity,
                         risk_per_trade=self.risk_per_trade,
@@ -187,11 +266,10 @@ class Simulator:
 
             price = row["close"]
             trade = self.current_trade
+            side = getattr(trade, "side", "long")
 
-            # TrendSniffer is the primary soft-exit signal.
-            # ExitEngine remains reserved for hard exits such as the stop.
             trend_ok = self.trend_sniffer.is_trend_alive(row, trade=trade)
-            hard_exit_signal = self.exit_engine.should_exit(row, trade.stop)
+            hard_exit_signal = self.exit_engine.should_exit(row, trade.stop, side=side)
             soft_exit_signal = not trend_ok
 
             if hard_exit_signal:
@@ -216,7 +294,8 @@ class Simulator:
                     R=trade.R,
                     current_level=self.level,
                     trend_ok=trend_ok and pyramid_quality_ok,
-                    previous_price=row.get("prev_close")
+                    previous_price=row.get("prev_close"),
+                    side=side,
                 )
 
                 if new_level != self.level:

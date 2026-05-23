@@ -8,10 +8,12 @@ from config import AppConfig
 
 
 TRADE_LOG_FIELDS = [
+    "side",
     "entry_time",
     "exit_time",
     "entry_price",
     "exit_price",
+    "stop_price",
     "pnl",
     "pnl_R",
     "pnl_R_total",
@@ -29,8 +31,15 @@ TRADE_LOG_FIELDS = [
     "body_strength",
     "close_position",
     "upper_wick_ratio",
+    "lower_wick_ratio",
     "compression",
     "breakout",
+    "breakdown",
+    "session_vwap",
+    "vwap_distance_ratio",
+    "ema_gap_ratio",
+    "atr",
+    "macd_hist",
 ]
 
 
@@ -43,10 +52,12 @@ def trade_to_log_record(trade):
         entry_layer_count = getattr(trade, "entry_layer_count", 0)
 
     return {
+        "side": getattr(trade, "side", conditions.get("side")),
         "entry_time": getattr(trade, "entry_time", None),
         "exit_time": getattr(trade, "exit_time", None),
         "entry_price": getattr(trade, "entry_price", None),
         "exit_price": getattr(trade, "exit_price", None),
+        "stop_price": getattr(trade, "stop", None),
         "pnl": getattr(trade, "pnl", None),
         "pnl_R": getattr(trade, "pnl_R", None),
         "pnl_R_total": getattr(trade, "pnl_R_total", None),
@@ -64,8 +75,15 @@ def trade_to_log_record(trade):
         "body_strength": conditions.get("body_strength"),
         "close_position": conditions.get("close_position"),
         "upper_wick_ratio": conditions.get("upper_wick_ratio"),
+        "lower_wick_ratio": conditions.get("lower_wick_ratio"),
         "compression": conditions.get("compression"),
         "breakout": conditions.get("breakout"),
+        "breakdown": conditions.get("breakdown"),
+        "session_vwap": conditions.get("session_vwap"),
+        "vwap_distance_ratio": conditions.get("vwap_distance_ratio"),
+        "ema_gap_ratio": conditions.get("ema_gap_ratio"),
+        "atr": conditions.get("atr"),
+        "macd_hist": conditions.get("macd_hist"),
     }
 
 
@@ -99,14 +117,20 @@ class Trade:
     trade remain connected.
     """
 
-    def __init__(self, row, score, config=None):
+    def __init__(self, row, score, side="long", config=None):
 
         print("\nCreating new Trade object...")
 
         start = time.time()
         self.config = config or AppConfig.load()
+        self.side = side
+        high_period = self.config.require("features", "structure", "high_period")
         low_period = self.config.require("features", "structure", "low_period")
-        self.stop_column = f"ll{low_period}"
+        self.stop_column = (
+            f"ll{low_period}"
+            if self.side == "long"
+            else f"hh{high_period}"
+        )
 
         # Entry info
         self.entry_time = row.name
@@ -114,7 +138,7 @@ class Trade:
         self.score = score
 
         # Structure
-        self.stop = row[self.stop_column]     # stop = recent low
+        self.stop = row[self.stop_column]
         self.R = abs(self.entry_price - self.stop)
 
         # Position tracking
@@ -140,15 +164,24 @@ class Trade:
 
         # Store WHY trade happened (very important)
         self.conditions = {
+            "side": side,
             "score": score,
             "body_strength": row.get("body_strength", None),
             "close_position": row.get("close_position", None),
             "upper_wick_ratio": row.get("upper_wick_ratio", None),
+            "lower_wick_ratio": row.get("lower_wick_ratio", None),
             "compression": row.get("compression", None),
             "breakout": row.get("breakout", None),
+            "breakdown": row.get("breakdown", None),
+            "session_vwap": row.get("session_vwap", None),
+            "vwap_distance_ratio": row.get("vwap_distance_ratio", None),
+            "ema_gap_ratio": row.get("ema_gap_ratio", None),
+            "atr": row.get("atr", None),
+            "macd_hist": row.get("macd_hist", None),
         }
 
         print(f"Trade created at {self.entry_time}")
+        print(f"  Side: {self.side}")
         print(f"  Entry price: {self.entry_price:.2f}")
         print(f"  Stop: {self.stop:.2f}")
         print(f"  R: {self.R:.2f}")
@@ -226,7 +259,10 @@ class Trade:
         total = 0
 
         for entry_price, size in self.entries:
-            move = self.exit_price - entry_price
+            if self.side == "short":
+                move = entry_price - self.exit_price
+            else:
+                move = self.exit_price - entry_price
             pnl_part = move * size
             total += pnl_part
 
@@ -276,6 +312,7 @@ class Trade:
     def snapshot(self):
         return {
             "stop_column": self.stop_column,
+            "side": self.side,
             "entry_time": _serialize_time(self.entry_time),
             "entry_price": self.entry_price,
             "score": self.score,
@@ -309,8 +346,15 @@ class Trade:
     def from_snapshot(cls, snapshot, config=None):
         trade = cls.__new__(cls)
         trade.config = config or AppConfig.load()
+        high_period = trade.config.require("features", "structure", "high_period")
         low_period = trade.config.require("features", "structure", "low_period")
-        trade.stop_column = snapshot.get("stop_column") or f"ll{low_period}"
+        trade.side = snapshot.get("side", "long")
+        default_stop_column = (
+            f"ll{low_period}"
+            if trade.side == "long"
+            else f"hh{high_period}"
+        )
+        trade.stop_column = snapshot.get("stop_column") or default_stop_column
         trade.entry_time = _restore_time(snapshot.get("entry_time"))
         trade.entry_price = snapshot.get("entry_price")
         trade.score = snapshot.get("score")

@@ -55,61 +55,59 @@ class RegimeDetector:
             return "moderate"
         return "weak"
 
-    def allows_entries(self, score):
+    def allows_entries(self, score, side="long"):
         return score >= self.moderate_score
 
-    def compute_regime(self, df_5h, df_12h):
+    def compute_regime(self, df_5h, df_12h, side="long"):
         start = time.time()
+        side = str(side).lower()
+        direction = "bullish" if side == "long" else "bearish"
 
-        print("\nComputing market regime...")
+        print(f"\nComputing {direction} market regime...")
 
         score = 0
-
-        # ------------------------------
-        # Macro timeframe
-        # ------------------------------
 
         close_12h = df_12h["close"].iloc[-1]
         ema_12h = df_12h[self.ema_column].iloc[-1]
 
-        if close_12h > ema_12h:
+        macro_aligned = close_12h > ema_12h if side == "long" else close_12h < ema_12h
+        if macro_aligned:
             score += self.macro_weight
-            print(f"Macro bullish (price > {self.ema_column})")
-
+            print(f"Macro {direction} (price {'>' if side == 'long' else '<'} {self.ema_column})")
         else:
-            print("Macro not bullish")
+            print(f"Macro not {direction}")
 
-        # slope (trend strength)
         slope_12h = _compute_slope(
             df_12h[self.ema_column],
             lookback=self.slope_lookback
         )
-
-        if slope_12h > self.slope_threshold:
+        slope_aligned = (
+            slope_12h > self.slope_threshold
+            if side == "long"
+            else slope_12h < -self.slope_threshold
+        )
+        if slope_aligned:
             score += self.macro_slope_weight
+            comparator = ">" if side == "long" else "<"
+            threshold = self.slope_threshold if side == "long" else -self.slope_threshold
             print(
-                "Macro EMA slope positive "
-                f"(+{slope_12h:.4f} > {self.slope_threshold:.6f})"
+                "Macro EMA slope aligned "
+                f"({slope_12h:.4f} {comparator} {threshold:.6f})"
             )
         else:
             print("Macro EMA slope not strong enough")
 
-        # ------------------------------
-        # Trend confirmation timeframe
-        # ------------------------------
-
         close_5h = df_5h["close"].iloc[-1]
         ema_5h = df_5h[self.ema_column].iloc[-1]
-
-        if close_5h > ema_5h:
+        trend_aligned = close_5h > ema_5h if side == "long" else close_5h < ema_5h
+        if trend_aligned:
             score += self.trend_weight
-            print(f"Trend confirms uptrend (price > {self.ema_column})")
+            print(
+                f"Trend confirms {direction} state "
+                f"(price {'>' if side == 'long' else '<'} {self.ema_column})"
+            )
         else:
             print("Trend not confirming")
-
-        # ------------------------------
-        # FINAL OUTPUT
-        # ------------------------------
 
         elapsed = time.time() - start
 
@@ -123,14 +121,14 @@ class RegimeDetector:
         regime_classification = self.classify(score)
 
         if regime_classification == "strong":
-            print("Strong trending environment")
+            print(f"Strong {direction} environment")
         elif regime_classification == "moderate":
-            print("WARNING: Moderate trend")
+            print(f"WARNING: Moderate {direction} environment")
         else:
             print("Weak / choppy market")
 
         return score
 
 
-def compute_regime(df_5h, df_12h, config=None):
-    return RegimeDetector(config=config).compute_regime(df_5h, df_12h)
+def compute_regime(df_5h, df_12h, side="long", config=None):
+    return RegimeDetector(config=config).compute_regime(df_5h, df_12h, side=side)

@@ -48,9 +48,11 @@ class PyramidingEngine:
         R,
         current_level,
         trend_ok=True,
-        previous_price=None
+        previous_price=None,
+        side="long",
     ):
         start = time.time()
+        side = str(side).lower()
 
         print("\nChecking pyramiding levels...")
 
@@ -69,20 +71,25 @@ class PyramidingEngine:
         for level_config in self.levels:
             level = level_config["level"]
             required_previous_level = level - 1
-            trigger_price = entry_price + (level_config["r_multiple"] * R)
-            crossed_level = previous_price < trigger_price <= price
+            if side == "short":
+                trigger_price = entry_price - (level_config["r_multiple"] * R)
+                crossed_level = previous_price > trigger_price >= price
+            else:
+                trigger_price = entry_price + (level_config["r_multiple"] * R)
+                crossed_level = previous_price < trigger_price <= price
 
             if current_level == required_previous_level and crossed_level:
                 new_level = level
                 print(
                     f" Triggered Level {level} "
-                    f"(crossed +{level_config['r_multiple']}R)"
+                    f"(crossed {'-' if side == 'short' else '+'}{level_config['r_multiple']}R)"
                 )
                 break
 
         if new_level == current_level:
             print("No pyramiding condition met")
 
+        print(f"  Side: {side.upper()}")
         print(f"  Previous price: {previous_price:.2f}")
         print(f"  Price: {price:.2f}")
         print(f"  Entry: {entry_price:.2f}")
@@ -132,26 +139,39 @@ class PyramidingEngine:
             print("Pyramiding blocked: missing trade context for quality gate")
             return False
 
+        side = getattr(trade, "side", "long")
         body_strength = float(row.get("body_strength", 0.0))
-        upper_wick_ratio = float(row.get("upper_wick_ratio", float("inf")))
         close_position = float(row.get("close_position", 0.0))
-        open_r_multiple = (float(row["close"]) - float(trade.entry_price)) / float(trade.R)
+        if side == "short":
+            wick_ratio = float(row.get("lower_wick_ratio", float("inf")))
+            wick_key = "lower_wick_max"
+            wick_threshold = quality_gate.get(
+                wick_key,
+                quality_gate.get("upper_wick_max", float("inf")),
+            )
+            strong_close = close_position <= (
+                1.0 - float(quality_gate.get("close_position_min", 0.0))
+            )
+            open_r_multiple = (float(trade.entry_price) - float(row["close"])) / float(trade.R)
+        else:
+            wick_ratio = float(row.get("upper_wick_ratio", float("inf")))
+            wick_threshold = quality_gate.get("upper_wick_max", float("inf"))
+            strong_close = close_position >= quality_gate.get("close_position_min", 0.0)
+            open_r_multiple = (float(row["close"]) - float(trade.entry_price)) / float(trade.R)
 
         strong_body = body_strength >= quality_gate.get("body_strength_min", 0.0)
-        low_rejection = upper_wick_ratio <= quality_gate.get("upper_wick_max", float("inf"))
-        strong_close = close_position >= quality_gate.get("close_position_min", 0.0)
+        clean_wick = wick_ratio <= wick_threshold
         min_open_r_multiple = quality_gate.get("min_open_r_multiple", 0.0)
         min_confirmations = int(quality_gate.get("min_confirmations", 0))
 
         confirmation_count = sum([
             strong_body,
-            low_rejection,
+            clean_wick,
             strong_close,
         ])
         qualifies = (
             open_r_multiple >= min_open_r_multiple
-            and
-            confirmation_count >= min_confirmations
+            and confirmation_count >= min_confirmations
         )
 
         if qualifies:
@@ -159,9 +179,10 @@ class PyramidingEngine:
         else:
             print("Pyramiding blocked: quality gate failed")
 
+        print(f"  Side: {side.upper()}")
         print(f"  Open R multiple: {open_r_multiple:.2f}")
         print(f"  Body strength: {body_strength:.2f} {'PASS' if strong_body else 'FAIL'}")
-        print(f"  Upper wick: {upper_wick_ratio:.2f} {'PASS' if low_rejection else 'FAIL'}")
+        print(f"  Wick ratio: {wick_ratio:.2f} {'PASS' if clean_wick else 'FAIL'}")
         print(f"  Close position: {close_position:.2f} {'PASS' if strong_close else 'FAIL'}")
         print(f"  Confirmation count: {confirmation_count}/3 (need {min_confirmations})")
 
@@ -185,14 +206,6 @@ class PyramidingEngine:
         risk_per_trade,
         quality_gate_passed=False,
     ):
-        """
-        Risk-budgeted pyramiding.
-
-        Caps the requested add size so the total worst-case loss to the shared
-        stop does not exceed:
-
-            equity * risk_per_trade * max_total_risk_multiple
-        """
         max_total_risk_multiple = self._resolved_max_total_risk_multiple(
             quality_gate_passed=quality_gate_passed,
         )
@@ -227,6 +240,7 @@ def check_pyramiding(
     current_level,
     trend_ok=True,
     previous_price=None,
+    side="long",
     config=None
 ):
     return PyramidingEngine(config=config).check_pyramiding(
@@ -235,7 +249,8 @@ def check_pyramiding(
         R=R,
         current_level=current_level,
         trend_ok=trend_ok,
-        previous_price=previous_price
+        previous_price=previous_price,
+        side=side,
     )
 
 

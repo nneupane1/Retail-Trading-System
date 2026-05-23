@@ -6,6 +6,11 @@ from simulation.simulator import Simulator
 
 
 class DummyConfig:
+    def get(self, *keys, default=None):
+        if keys == ("strategy", "directional", "enabled_sides"):
+            return ["long", "short"]
+        return default
+
     def require(self, *keys):
         if keys == ("entry", "score_threshold"):
             return 4
@@ -18,12 +23,12 @@ class StaticBiasDetector:
 
 
 class StaticRegimeDetector:
-    def compute_regime(self, df_5h, df_12h):
+    def compute_regime(self, df_5h, df_12h, side="long"):
         return None
 
 
 class ContextRegimeDetector:
-    def compute_regime(self, df_5h, df_12h):
+    def compute_regime(self, df_5h, df_12h, side="long"):
         return 3
 
     def classify(self, regime_score):
@@ -31,7 +36,7 @@ class ContextRegimeDetector:
 
 
 class BlockingRegimeDetector:
-    def compute_regime(self, df_5h, df_12h):
+    def compute_regime(self, df_5h, df_12h, side="long"):
         return 1
 
     def allows_entries(self, regime_score):
@@ -39,17 +44,17 @@ class BlockingRegimeDetector:
 
 
 class StaticScoreEngine:
-    def compute_score(self, row, bias):
+    def compute_score(self, row, bias, side="long"):
         return 0
 
 
 class PositiveScoreEngine:
-    def compute_score(self, row, bias):
-        return 5
+    def compute_score(self, row, bias, side="long"):
+        return 5 if side == "long" else 0
 
 
 class NullEntryEngine:
-    def generate_entry(self, row, score, bias):
+    def generate_entry(self, row, score, bias, side="long"):
         return None
 
 
@@ -76,8 +81,9 @@ class FixedEntryEngine:
         self.trade = DummyTrade()
         self.calls = 0
 
-    def generate_entry(self, row, score, bias):
+    def generate_entry(self, row, score, bias, side="long"):
         self.calls += 1
+        self.trade.side = side
         return self.trade
 
 
@@ -96,7 +102,7 @@ class RecordingExitEngine:
         self.result = result
         self.calls = calls
 
-    def should_exit(self, row, stop_price):
+    def should_exit(self, row, stop_price, side="long"):
         self.calls.append("hard_exit")
         return self.result
 
@@ -123,6 +129,7 @@ class RecordingPyramidingEngine:
 
 class DummyTrade:
     def __init__(self):
+        self.side = "long"
         self.entry_price = 100.0
         self.stop = 95.0
         self.R = 5.0
@@ -310,6 +317,40 @@ class SimulatorManagementTests(unittest.TestCase):
         self.assertEqual(trade.regime_score, 3)
         self.assertEqual(trade.regime_class, "strong")
         self.assertEqual(trade.entry_threshold, 4)
+
+    def test_directional_competition_can_open_short_trade(self):
+        class ShortBiasDetector:
+            def get_bias(self, df_1h):
+                return "bearish"
+
+        class ShortScoreEngine:
+            def compute_score(self, row, bias, side="long"):
+                return 2 if side == "long" else 6
+
+        entry_engine = FixedEntryEngine()
+        simulator = Simulator(
+            initial_equity=1000.0,
+            risk_per_trade=0.01,
+            trade_logger=None,
+            equity_logger=None,
+            entry_engine=entry_engine,
+            score_engine=ShortScoreEngine(),
+            bias_detector=ShortBiasDetector(),
+            regime_detector=ContextRegimeDetector(),
+            pyramiding_engine=RecordingPyramidingEngine(0, []),
+            trend_sniffer=RecordingTrendSniffer(True, []),
+            exit_engine=RecordingExitEngine(False, []),
+            position_sizer=DummyPositionSizer(),
+            config=DummyConfig(),
+        )
+
+        row = self._make_row(close=99.0)
+        empty_df = pd.DataFrame()
+
+        simulator.step(row, empty_df, empty_df, empty_df)
+
+        self.assertIsNotNone(simulator.current_trade)
+        self.assertEqual(simulator.current_trade.side, "short")
 
     def test_exit_reason_is_attached_before_trade_is_closed(self):
         simulator, _calls = self._make_simulator(

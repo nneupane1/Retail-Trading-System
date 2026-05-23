@@ -4,7 +4,15 @@ import time
 
 from common.debug import debug_print as print
 from config import AppConfig
-from .indicators import ema, rolling_high, rolling_low
+from .indicators import (
+    atr,
+    bollinger_bands,
+    ema,
+    macd,
+    rolling_high,
+    rolling_low,
+    session_vwap,
+)
 from .candle_metrics import CandleMetricsCalculator
 
 
@@ -34,6 +42,13 @@ class FeaturePipeline:
             "slow_range_period"
         )
         self.compression_ratio = self.config.require("features", "compression", "ratio")
+        indicator_config = self.config.get("features", "indicators", default={}) or {}
+        self.atr_period = int(indicator_config.get("atr_period", 14))
+        self.macd_fast_period = int(indicator_config.get("macd_fast_period", 12))
+        self.macd_slow_period = int(indicator_config.get("macd_slow_period", 26))
+        self.macd_signal_period = int(indicator_config.get("macd_signal_period", 9))
+        self.bollinger_period = int(indicator_config.get("bollinger_period", 20))
+        self.bollinger_std_dev = float(indicator_config.get("bollinger_std_dev", 2.0))
         self.candle_metrics = CandleMetricsCalculator(config=self.config)
 
     @staticmethod
@@ -114,24 +129,77 @@ class FeaturePipeline:
         t0 = time.time()
 
         previous_high_column = f"{high_column}_prev"
+        previous_low_column = f"{low_column}_prev"
         df["prev_close"] = df["close"].shift(1)
         df[previous_high_column] = df[high_column].shift(1)
+        df[previous_low_column] = df[low_column].shift(1)
         df["above_breakout_level"] = df["close"] > df[previous_high_column]
         df["breakout"] = (
             df["above_breakout_level"] &
             (df["prev_close"] <= df[previous_high_column])
         )
+        df["below_breakdown_level"] = df["close"] < df[previous_low_column]
+        df["breakdown"] = (
+            df["below_breakdown_level"] &
+            (df["prev_close"] >= df[previous_low_column])
+        )
 
         print(f"Breakout event logic applied | Time: {time.time() - t0:.2f}s\n")
 
         # ------------------------------
-        # 5. CANDLE METRICS
+        # 5. DIRECTIONAL INDICATORS
+        # ------------------------------
+
+        t0 = time.time()
+
+        df["session_vwap"] = session_vwap(df)
+        df["vwap_distance_ratio"] = (
+            (df["close"] - df["session_vwap"]) / (df["session_vwap"] + 1e-9)
+        )
+        df["atr"] = atr(df, self.atr_period)
+        df["atr_rising"] = df["atr"] > df["atr"].shift(1)
+
+        macd_line, macd_signal, macd_hist = macd(
+            df["close"],
+            fast_period=self.macd_fast_period,
+            slow_period=self.macd_slow_period,
+            signal_period=self.macd_signal_period,
+        )
+        df["macd_line"] = macd_line
+        df["macd_signal"] = macd_signal
+        df["macd_hist"] = macd_hist
+
+        bb_mid, bb_upper, bb_lower = bollinger_bands(
+            df["close"],
+            period=self.bollinger_period,
+            std_dev=self.bollinger_std_dev,
+        )
+        df["bb_mid"] = bb_mid
+        df["bb_upper"] = bb_upper
+        df["bb_lower"] = bb_lower
+        df["bb_breakout_up"] = df["close"] > df["bb_upper"]
+        df["bb_breakout_down"] = df["close"] < df["bb_lower"]
+
+        df["ema_gap_ratio"] = (
+            (df[fast_ema_column] - df[slow_ema_column]) / (df[slow_ema_column] + 1e-9)
+        )
+        df["price_to_fast_ema_ratio"] = (
+            (df["close"] - df[fast_ema_column]) / (df[fast_ema_column] + 1e-9)
+        )
+        df["fast_ema_slope_ratio"] = (
+            df[fast_ema_column].pct_change().fillna(0.0)
+        )
+
+        print(f"Directional indicators computed | Time: {time.time() - t0:.2f}s\n")
+
+        # ------------------------------
+        # 6. CANDLE METRICS
         # ------------------------------
 
         df = self.candle_metrics.compute(df)
 
         # ------------------------------
-        # 6. CLEAN INCOMPLETE ROWS
+        # 7. CLEAN INCOMPLETE ROWS
         # ------------------------------
 
         required_columns = [
@@ -143,6 +211,18 @@ class FeaturePipeline:
             slow_range_column,
             "prev_close",
             previous_high_column,
+            previous_low_column,
+            "session_vwap",
+            "atr",
+            "macd_line",
+            "macd_signal",
+            "macd_hist",
+            "bb_mid",
+            "bb_upper",
+            "bb_lower",
+            "ema_gap_ratio",
+            "price_to_fast_ema_ratio",
+            "fast_ema_slope_ratio",
             "body_strength",
             "upper_wick_ratio",
             "lower_wick_ratio",

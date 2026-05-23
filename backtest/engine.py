@@ -26,6 +26,7 @@ class BacktestEngine:
         checkpoint_every_steps=0,
         resume_index=None,
         checkpoint_metadata=None,
+        minimum_warmup_bars=50,
     ):
 
         print("\nInitializing Backtest Engine...")
@@ -41,6 +42,7 @@ class BacktestEngine:
         self.checkpoint_every_steps = max(0, int(checkpoint_every_steps or 0))
         self.resume_index = resume_index
         self.checkpoint_metadata = checkpoint_metadata or {}
+        self.minimum_warmup_bars = max(0, int(minimum_warmup_bars or 0))
 
         print("Backtest engine ready")
 
@@ -57,7 +59,7 @@ class BacktestEngine:
         first_context_index = int(
             self.df_15m.index.searchsorted(required_context_start, side="left")
         )
-        return max(50, first_context_index)
+        return max(self.minimum_warmup_bars, first_context_index)
 
     # --------------------------------------------------
     # RUN BACKTEST
