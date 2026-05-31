@@ -372,6 +372,49 @@ selection/scaling layer:
 This is intentionally not a large model. It is a small, explainable filter on
 top of the looser weighted path.
 
+### Refined breakout edge-lab status
+
+The current edge-lab focus is no longer "generic breakout". It is the narrower
+question:
+
+- `impulse_breakout`
+- `pressure_breakout`
+- `breakout_pullback`
+
+The bucket structure remains intentionally small:
+
+- `edge_type`
+- `bias_bucket`
+- `body_bucket`
+- `vwap_bucket`
+
+That keeps the lab explainable while changing the quality of the underlying
+signals rather than exploding bucket complexity.
+
+Latest local BTC/ETH/SOL run:
+
+```bash
+python main_edge_lab.py --symbols BTCUSDT ETHUSDT SOLUSDT --horizons 1 3 5 --bucket-min-count 150 --bucket-min-avg-return-net 0.0
+```
+
+What that run showed:
+
+- broad refined breakout families are still mostly fee-negative
+- `impulse_breakout` improved materially versus the older generic breakout pool,
+  but still did not clear fees at this resolution
+- `pressure_breakout` remained negative across the tested horizons
+- exactly one bucket survived the current fee-aware filter:
+  - `breakout_pullback|neutral|strong|far`
+  - `selected_horizon = 3`
+  - `signal_count = 234`
+  - `avg_return_net = 0.000037`
+
+That result matters because it is the first narrow breakout-derived bucket in
+the current workflow that stayed positive after the configured round-trip fee.
+It is still too small and too narrow to promote as a production selector on its
+own, but it is now a real pocket of measurable edge rather than a plausible
+story.
+
 ### Active refinement hooks
 
 The refinement hooks are still available, but the live weighted config keeps
@@ -790,7 +833,7 @@ The optional bucket layer is intentionally lean:
 It only answers:
 
 > Has this simple edge/bias/body/VWAP situation shown enough net edge to deserve
-> capital'
+> capital?
 
 If yes, the candidate stays alive and receives a small size multiplier. If no,
 the candidate is skipped when edge selection is enabled.
@@ -1272,12 +1315,18 @@ It produces:
 
 | File | Purpose |
 | --- | --- |
-| `edge_signals.csv` | Every isolated momentum/compression/mean-reversion signal across the chosen symbols |
+| `edge_signals.csv` | Every isolated refined breakout signal across the chosen symbols |
 | `edge_summary.csv` | Forward-return summary by edge family, side, and horizon |
 | `edge_daily_frequency.csv` | Signal flow by day |
 | `edge_overview.csv` | Top-level frequency and expectancy snapshot |
 | `edge_bucket_summary.csv` | Small bucket-table summary using `edge_type`, `bias`, `body`, and `VWAP distance` |
 | `edge_table.json` | Runtime-loadable lookup table for `strategy.edge_selection` |
+
+The current refined breakout families are:
+
+- `impulse_breakout`
+- `pressure_breakout`
+- `breakout_pullback`
 
 ### Equity log
 
@@ -1354,7 +1403,9 @@ deliberate incompleteness.
 - The repo also contains an experimental exploratory pressure layer that is
   disabled by default.
 - The lean edge-table selector exists, but it remains optional because the
-  current broad BTC/ETH/SOL buckets are still weak net of fees.
+  refined BTC/ETH/SOL breakout lab currently shows only one fee-surviving
+  bucket at `min_count = 150`, so the selector is still too narrow to act as a
+  global production gate by default.
 - `entry/retest.py` exists but is not part of the active entry path.
 - The runtime simulator still operates through a single open-position lane.
 - True multi-position and multi-asset portfolio execution are still planned
@@ -1517,7 +1568,24 @@ python main_calibrate.py
 This command links `opportunities.csv` back to executed trades and produces
 bucketed calibration reports under `backtest/output/calibration/`.
 
-### 8. Run live simulation
+### 8. Run the refined breakout edge lab
+
+```bash
+python main_edge_lab.py --symbols BTCUSDT ETHUSDT SOLUSDT --horizons 1 3 5 --bucket-min-count 150 --bucket-min-avg-return-net 0.0
+```
+
+This is the current lean edge-discovery loop. It isolates three refined
+breakout populations:
+
+- `impulse_breakout`
+- `pressure_breakout`
+- `breakout_pullback`
+
+It then builds `edge_bucket_summary.csv` and `edge_table.json` so you can see
+whether any fee-aware breakout subpopulation is strong enough to justify the
+optional runtime selector.
+
+### 9. Run live simulation
 
 ```bash
 python main_live.py

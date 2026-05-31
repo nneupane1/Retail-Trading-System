@@ -1,4 +1,4 @@
-"""Isolates simple edge families and builds a lean deployable edge table."""
+"""Isolates refined breakout edge families and builds a lean deployable edge table."""
 
 import json
 from pathlib import Path
@@ -8,13 +8,7 @@ import pandas as pd
 from config import AppConfig
 from data.downloader import load_from_csv
 from data.resampler import TimeframeBuilder
-from entry.edge_buckets import (
-    build_signal_bucket,
-    classify_bias_bucket,
-    classify_body_bucket,
-    classify_vwap_bucket,
-    infer_edge_type,
-)
+from entry.edge_buckets import classify_body_bucket, classify_vwap_bucket
 from features.feature_pipeline import compute_features
 
 
@@ -132,54 +126,35 @@ def _build_forward_metrics(df, horizon, side):
 
 
 def _infer_edge_family(row, config):
-    signals = []
-    scoring = config.get("strategy", "scoring", default={}) or {}
-    body_min = float(scoring.get("body_strength_min", 1.3))
-    close_min = float(scoring.get("close_position_min", 0.6))
-    close_max = float(scoring.get("close_position_max", 0.4))
-    pressure = config.get("features", "pressure", default={}) or {}
-    vwap_threshold = float(
-        pressure.get("mean_reversion_vwap_distance_threshold", 0.01)
-    )
-    wick_threshold = float(
-        pressure.get("mean_reversion_wick_threshold", 1.2)
-    )
+    body_strength = float(row.get("body_strength", 0.0) or 0.0)
+    close_position = float(row.get("close_position", 0.0) or 0.0)
+    prev_breakout = bool(row.get("prev_breakout", False))
+    prev_close = float(row.get("prev_close", 0.0) or 0.0)
+    close = float(row.get("close", 0.0) or 0.0)
 
-    if (
+    impulse_breakout = (
         bool(row.get("breakout"))
-        and float(row.get("body_strength", 0.0) or 0.0) >= body_min
-        and float(row.get("close_position", 0.0) or 0.0) >= close_min
-    ):
-        signals.append(("momentum_breakout", "long"))
-    if (
-        bool(row.get("breakdown"))
-        and float(row.get("body_strength", 0.0) or 0.0) >= body_min
-        and float(row.get("close_position", 1.0) or 1.0) <= close_max
-    ):
-        signals.append(("momentum_breakout", "short"))
+        and body_strength >= 2.0
+        and close_position >= 0.75
+    )
+    pressure_breakout = (
+        bool(row.get("compression"))
+        and body_strength >= 1.2
+        and bool(row.get("breakout"))
+    )
+    breakout_pullback = (
+        prev_breakout
+        and body_strength >= 1.0
+        and close > prev_close
+    )
 
-    if bool(row.get("compression")) and bool(row.get("breakout")):
-        signals.append(("compression_expansion", "long"))
-    if bool(row.get("compression")) and bool(row.get("breakdown")):
-        signals.append(("compression_expansion", "short"))
-
-    vwap_distance = float(row.get("vwap_distance_ratio", 0.0) or 0.0)
-    upper_wick_ratio = float(row.get("upper_wick_ratio", 0.0) or 0.0)
-    lower_wick_ratio = float(row.get("lower_wick_ratio", 0.0) or 0.0)
-    close_position = float(row.get("close_position", 0.5) or 0.5)
-    if (
-        vwap_distance <= -vwap_threshold
-        and lower_wick_ratio >= wick_threshold
-        and close_position >= 0.45
-    ):
-        signals.append(("mean_reversion_vwap", "long"))
-    if (
-        vwap_distance >= vwap_threshold
-        and upper_wick_ratio >= wick_threshold
-        and close_position <= 0.55
-    ):
-        signals.append(("mean_reversion_vwap", "short"))
-    return signals
+    if impulse_breakout:
+        return [("impulse_breakout", "long")]
+    if pressure_breakout:
+        return [("pressure_breakout", "long")]
+    if breakout_pullback:
+        return [("breakout_pullback", "long")]
+    return []
 
 
 def _infer_bias_bucket(row, config):
@@ -200,12 +175,9 @@ def _infer_bias_bucket(row, config):
 
 def _runtime_edge_type(edge_family, side):
     family_map = {
-        ("momentum_breakout", "long"): "momentum_long",
-        ("momentum_breakout", "short"): "momentum_short",
-        ("compression_expansion", "long"): "compression_long",
-        ("compression_expansion", "short"): "compression_short",
-        ("mean_reversion_vwap", "long"): "mean_reversion_long",
-        ("mean_reversion_vwap", "short"): "mean_reversion_short",
+        ("impulse_breakout", "long"): "impulse_breakout",
+        ("pressure_breakout", "long"): "pressure_breakout",
+        ("breakout_pullback", "long"): "breakout_pullback",
     }
     return family_map.get((edge_family, side))
 
@@ -220,12 +192,14 @@ def extract_edge_signals(
 ):
     config = config or AppConfig.load()
     signal_rows = []
+    working = df.copy()
+    working["prev_breakout"] = working.get("breakout", pd.Series(False, index=working.index)).shift(1).fillna(False)
 
     for horizon in horizons:
-        long_metrics = _build_forward_metrics(df, horizon, "long")
-        short_metrics = _build_forward_metrics(df, horizon, "short")
+        long_metrics = _build_forward_metrics(working, horizon, "long")
+        short_metrics = _build_forward_metrics(working, horizon, "short")
 
-        for timestamp, row in df.iterrows():
+        for timestamp, row in working.iterrows():
             families = _infer_edge_family(row, config)
             if not families:
                 continue

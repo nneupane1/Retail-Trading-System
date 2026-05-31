@@ -1341,7 +1341,10 @@ class PyramidingEngineTests(unittest.TestCase):
             profile = selector.evaluate(row, bias="bullish", side="long")
 
             self.assertTrue(profile["bucket_valid"])
-            self.assertEqual(profile["bucket_key_text"], "momentum_long|bullish|strong|near")
+            self.assertEqual(
+                profile["bucket_key_text"],
+                "momentum_breakout|bullish|strong|near",
+            )
             self.assertAlmostEqual(profile["bucket_expected_return"], 0.0015)
             self.assertAlmostEqual(profile["bucket_risk_mult"], 1.2)
 

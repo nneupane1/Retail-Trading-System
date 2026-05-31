@@ -38,6 +38,49 @@ class EdgeSelector:
         self.metadata = {}
         self._load_table()
 
+    @staticmethod
+    def _legacy_bucket_aliases(bucket):
+        edge_type = str(bucket.get("edge_type") or "")
+        bucket_key = tuple(bucket.get("bucket_key") or ())
+        if len(bucket_key) != 4:
+            return []
+
+        _, bias_bucket, body_bucket, vwap_bucket = bucket_key
+        aliases = []
+        if edge_type == "impulse_breakout":
+            aliases.append(
+                f"momentum_long|{bias_bucket}|{body_bucket}|{vwap_bucket}"
+            )
+        elif edge_type == "momentum_breakout":
+            aliases.append(
+                f"momentum_long|{bias_bucket}|{body_bucket}|{vwap_bucket}"
+            )
+        elif edge_type == "pressure_breakout":
+            aliases.append(
+                f"compression_long|{bias_bucket}|{body_bucket}|{vwap_bucket}"
+            )
+        elif edge_type == "breakout_pullback":
+            aliases.append(
+                f"momentum_long|{bias_bucket}|{body_bucket}|{vwap_bucket}"
+            )
+        elif edge_type == "mean_reversion_vwap":
+            aliases.append(
+                f"mean_reversion_long|{bias_bucket}|{body_bucket}|{vwap_bucket}"
+            )
+        elif edge_type == "momentum_breakdown":
+            aliases.append(
+                f"momentum_short|{bias_bucket}|{body_bucket}|{vwap_bucket}"
+            )
+        elif edge_type == "compression_expansion_short":
+            aliases.append(
+                f"compression_short|{bias_bucket}|{body_bucket}|{vwap_bucket}"
+            )
+        elif edge_type == "mean_reversion_vwap_short":
+            aliases.append(
+                f"mean_reversion_short|{bias_bucket}|{body_bucket}|{vwap_bucket}"
+            )
+        return aliases
+
     def _load_table(self):
         self.edge_table = {}
         self.metadata = {}
@@ -67,6 +110,11 @@ class EdgeSelector:
             }
 
         record = dict(self.edge_table.get(bucket["bucket_key_text"], {}) or {})
+        if not record:
+            for alias in self._legacy_bucket_aliases(bucket):
+                record = dict(self.edge_table.get(alias, {}) or {})
+                if record:
+                    break
         expected_return = record.get("expected_return")
         risk_mult = float(record.get("risk_mult", self.default_risk_mult) or self.default_risk_mult)
         valid = bool(record.get("valid", False))

@@ -76,6 +76,10 @@ def infer_edge_type(row, side, config=None):
     close_max = 0.4
     wick_threshold = 1.2
     vwap_threshold = 0.01
+    impulse_body_threshold = 2.0
+    impulse_close_threshold = 0.75
+    pressure_body_threshold = 1.2
+    pullback_body_threshold = 1.0
     if callable(getter):
         body_threshold = _safe_float(
             getter("strategy", "scoring", "body_strength_min", default=1.3),
@@ -109,37 +113,87 @@ def infer_edge_type(row, side, config=None):
                 default=0.01,
             )
         )
+        impulse_body_threshold = _safe_float(
+            getter(
+                "strategy",
+                "edge_selection",
+                "impulse_body_threshold",
+                default=2.0,
+            ),
+            default=2.0,
+        )
+        impulse_close_threshold = _safe_float(
+            getter(
+                "strategy",
+                "edge_selection",
+                "impulse_close_threshold",
+                default=0.75,
+            ),
+            default=0.75,
+        )
+        pressure_body_threshold = _safe_float(
+            getter(
+                "strategy",
+                "edge_selection",
+                "pressure_body_threshold",
+                default=1.2,
+            ),
+            default=1.2,
+        )
+        pullback_body_threshold = _safe_float(
+            getter(
+                "strategy",
+                "edge_selection",
+                "pullback_body_threshold",
+                default=1.0,
+            ),
+            default=1.0,
+        )
 
     if side == "long":
+        if (
+            bool(row.get("breakout"))
+            and body_strength >= impulse_body_threshold
+            and close_position >= impulse_close_threshold
+        ):
+            return "impulse_breakout"
         if bool(row.get("compression")) and bool(row.get("breakout")):
-            return "compression_long"
+            if body_strength >= pressure_body_threshold:
+                return "pressure_breakout"
+        if (
+            bool(row.get("prev_breakout", False))
+            and body_strength >= pullback_body_threshold
+            and _safe_float(row.get("close"), default=0.0)
+            > _safe_float(row.get("prev_close"), default=0.0)
+        ):
+            return "breakout_pullback"
         if (
             bool(row.get("breakout"))
             and body_strength >= body_threshold
             and close_position >= close_min
         ):
-            return "momentum_long"
+            return "momentum_breakout"
         if (
             vwap_distance <= -vwap_threshold
             and lower_wick_ratio >= wick_threshold
             and close_position >= 0.45
         ):
-            return "mean_reversion_long"
+            return "mean_reversion_vwap"
     else:
         if bool(row.get("compression")) and bool(row.get("breakdown")):
-            return "compression_short"
+            return "compression_expansion_short"
         if (
             bool(row.get("breakdown"))
             and body_strength >= body_threshold
             and close_position <= close_max
         ):
-            return "momentum_short"
+            return "momentum_breakdown"
         if (
             vwap_distance >= vwap_threshold
             and upper_wick_ratio >= wick_threshold
             and close_position <= 0.55
         ):
-            return "mean_reversion_short"
+            return "mean_reversion_vwap_short"
 
     return None
 
