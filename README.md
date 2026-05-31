@@ -188,7 +188,7 @@ than assuming everything starts from `main_backtest.py`.
 | --- | --- | --- |
 | `1` | `python main_download.py` | Download and checkpoint local `1m` history from Binance |
 | `2` | `python main_resample.py` | Optional: materialize `15m`, `1h`, `5h`, and `12h` CSVs for inspection |
-| `3` | `python main_backtest.py` | Run the historical strategy pipeline with trade, equity, and opportunity logging |
+| `3` | `python main_backtest.py` | Run the historical replay path: by default a multi-asset portfolio backtest aligned with the live paper portfolio |
 | `4` | `python main_edge_lab.py --symbols BTCUSDT ETHUSDT SOLUSDT` | Isolate hidden edge families and build a small deployable edge table |
 | `5` | `python main_calibrate.py` | Build opportunity-to-trade calibration reports from the latest backtest outputs |
 | `6` | `python main_walkforward.py --scheme multifold --branch-spec ...` | Run controlled multi-fold validation across candidate branches |
@@ -199,11 +199,17 @@ Two practical clarifications matter:
 
 - `main_backtest.py` already resamples and computes features internally, so
   `main_resample.py` is optional for strategy correctness.
+- The default historical mode is now `backtest.mode = "portfolio_replay"`.
+  Set `backtest.mode` back to `single_symbol` if you want the older
+  one-position simulator path and checkpointed `BacktestEngine`.
 - `main_live.py` now boots from local `1m` history first, then merges
   recent Binance candles into that in-memory state before resampling.
 - The default live mode is now `portfolio_paper`, not the old single-symbol
   loop. Set `live_sim.mode` back to `single_symbol` if you want the legacy
   behavior.
+- `main_backtest.py` and `main_live.py` serve different jobs: the backtest path
+  is the historical research layer, while the live path is a near-live paper
+  execution layer and does not replay the full dataset trade-by-trade.
 
 ## Timeframe Hierarchy
 
@@ -1175,8 +1181,15 @@ unrealized PnL between candles.
 
 ## Backtest Mode
 
-Backtesting runs the full pipeline over historical candles stored in the local
-data directory.
+Backtesting now supports two historical modes over local market data:
+
+- `backtest.mode = "portfolio_replay"`:
+  the default path. It replays the same multi-asset ranking, adaptive
+  thresholding, and shared-risk execution logic used by the live paper
+  portfolio, but over historical candles.
+- `backtest.mode = "single_symbol"`:
+  the older compatibility path. It replays one symbol through the legacy
+  `Simulator` and `BacktestEngine`.
 
 ### Entry point
 
@@ -1184,7 +1197,42 @@ data directory.
 python main_backtest.py
 ```
 
-### Historical pipeline
+### Historical modes
+
+#### Portfolio replay
+
+In `portfolio_replay` mode, `main_backtest.py`:
+
+1. loads the configured symbol universe from local `1m` history
+2. clips every symbol to the requested historical window
+3. rebuilds `15m` and `1h` strategy timeframes per symbol
+4. recomputes features on those historical frames
+5. precomputes aligned `1h` bias snapshots and cross-symbol momentum ranks
+6. replays every `15m` timestamp across the universe
+7. ranks same-step candidates with the same continuous score used in the live scanner
+8. applies the same adaptive daily threshold and shared-risk portfolio rules
+9. manages multiple simultaneous paper positions with the same `LivePaperPortfolio`
+10. writes trade, equity, signal-scan, score-bucket, daily-summary, and portfolio-state artifacts
+
+This is the historical analogue of the live multi-asset paper portfolio. It is
+the correct research path for validating daily trade flow, adaptive selection,
+and shared capital usage before running `main_live.py`.
+
+The historical replay does not assume knowledge of future top movers. At each
+historical timestamp, the system ranks symbols using only data available up to
+that point, exactly as the live scanner would. In other words, it does not try
+to predict which symbol will become the top gainer later; it simply measures
+relative strength inside the market snapshot that exists at that candle close.
+That keeps the backtest aligned with the live ranking behavior and avoids
+lookahead bias.
+
+Portfolio replay can also be computationally heavier than the legacy
+single-symbol path because it manages multi-asset state, cross-symbol ranking,
+adaptive thresholds, and concurrent positions on every replay step. Large
+universes and long date ranges may therefore need narrower windows or more
+incremental execution during research runs.
+
+#### Legacy single-symbol replay
 
 `backtest/runner.py` performs these stages:
 
@@ -1195,7 +1243,7 @@ python main_backtest.py
 5. optionally enable the opportunity logger
 6. hand everything to `BacktestEngine`
 
-The backtest always uses the configured `1m` history as the canonical source,
+The single-symbol backtest always uses the configured `1m` history as the canonical source,
 then rebuilds the higher timeframes from that source during the run. Prebuilt
 `15m`, `1h`, `5h`, and `12h` CSVs are useful for inspection, but they are not
 the historical execution source of truth.
@@ -1212,7 +1260,7 @@ evaluation.
 
 ### Backtest checkpointing
 
-Historical backtests are resumable. If the process is interrupted, the engine
+The legacy `single_symbol` backtest is resumable. If the process is interrupted, the engine
 stores:
 
 | Artifact | Purpose |
@@ -1221,13 +1269,27 @@ stores:
 | `backtest/output/trades.csv` | Trade log continued safely on resume |
 | `backtest/output/equity.csv` | Equity log continued safely on resume |
 
-On a fresh run, the output CSVs are recreated from scratch. On a resume, the
+On a fresh `single_symbol` run, the output CSVs are recreated from scratch. On a resume, the
 current checkpoint and output files are reused so the run can continue from the
 last saved execution step.
 
+The newer `portfolio_replay` mode currently writes a full fresh report per run
+and does not yet use the checkpoint store.
+
 ### Backtest outputs
 
-By default:
+`portfolio_replay` now writes:
+
+```text
+backtest/output/trades.csv
+backtest/output/equity.csv
+backtest/output/signals.csv
+backtest/output/score_bucket_summary.csv
+backtest/output/daily_summary.csv
+backtest/output/portfolio_status.json
+```
+
+The legacy `single_symbol` mode writes:
 
 ```text
 backtest/output/trades.csv
@@ -1270,6 +1332,19 @@ python main_live.py
   the older compatibility path. It keeps the original single-symbol live loop
   and calls the shared `Simulator` directly.
 
+This distinction is important:
+
+- `main_backtest.py` is a historical simulation path. It replays past candles
+  across the configured dataset and produces a full research report such as
+  `trades.csv`, `equity.csv`, and `opportunities.csv`.
+- `main_live.py` is a near-live execution path. It uses local history only for
+  warmup, context building, and state continuity, then makes decisions on each
+  newly closed real-time candle.
+
+So the live portfolio system does not produce a single full historical replay
+report by design. Its real performance record comes from continuous paper
+execution over time, not from one backtest run.
+
 ### Portfolio-paper loop behavior
 
 In `portfolio_paper` mode, `live_sim/runner.py` continuously:
@@ -1289,6 +1364,11 @@ In `portfolio_paper` mode, `live_sim/runner.py` continuously:
 13. manages existing trades with the shared hard-stop and trailing components
 14. writes trade, signal-scan, score-bucket, and portfolio-state artifacts
 15. sleeps for `live_sim.poll_seconds`
+
+`Top movers` in this system means strongest symbols right now, not symbols
+predicted to be tomorrow's winners. The live scanner ranks the current market
+snapshot at each closed `15m` candle, and the historical portfolio replay uses
+that exact same relative-strength idea at each historical candle close.
 
 ### Legacy single-symbol loop behavior
 
@@ -1451,6 +1531,30 @@ The current refined breakout families are:
 | --- | --- |
 | `timestamp` | Strategy step timestamp |
 | `equity` | Account equity after that step |
+
+### Backtest signal scan log
+
+`backtest/output/signals.csv` records every scored historical portfolio
+candidate before selection.
+
+Important columns include:
+
+- `symbol`, `timestamp`, `edge_type`, `bias`
+- `body_bucket`, `vwap_bucket`, `bucket_key`
+- `is_top_mover`, `momentum_rank`
+- `score`, `score_bucket`, `threshold`
+- `selected`, `selection_reason`
+
+### Backtest portfolio state
+
+In `portfolio_replay` mode:
+
+- `backtest/output/score_bucket_summary.csv` aggregates realized historical
+  trade performance by score bucket
+- `backtest/output/daily_summary.csv` tracks daily realized PnL, entries taken,
+  and the effective threshold
+- `backtest/output/portfolio_status.json` stores the final replay state,
+  adaptive threshold, score weights, and current equity
 
 ### Live trade log
 

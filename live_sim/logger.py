@@ -65,8 +65,11 @@ class LiveTradeLogger:
         print("\nInitializing LIVE Trade Logger...")
 
         self.config = config or AppConfig.load()
-        output_dir = self.config.require("live_sim", "output_dir")
-        self.filepath = filepath or os.path.join(output_dir, "trades.csv")
+        if filepath is not None:
+            self.filepath = filepath
+        else:
+            output_dir = self.config.require("live_sim", "output_dir")
+            self.filepath = os.path.join(output_dir, "trades.csv")
 
         self._base = _CsvLoggerBase(self.filepath, TRADE_LOG_FIELDS)
 
@@ -96,8 +99,11 @@ class LiveSignalLogger:
 
     def __init__(self, filepath=None, config=None):
         self.config = config or AppConfig.load()
-        output_dir = self.config.require("live_sim", "output_dir")
-        self.filepath = filepath or os.path.join(output_dir, "signals.csv")
+        if filepath is not None:
+            self.filepath = filepath
+        else:
+            output_dir = self.config.require("live_sim", "output_dir")
+            self.filepath = os.path.join(output_dir, "signals.csv")
         self._base = _CsvLoggerBase(self.filepath, LIVE_SIGNAL_LOG_FIELDS)
 
     def log_signal(self, payload):
@@ -130,6 +136,24 @@ class LivePortfolioStateLogger:
             "win_rate",
             "avg_R",
             "total_pnl",
+        ]
+        with target.open("w", newline="", encoding="utf-8") as file_handle:
+            writer = csv.DictWriter(file_handle, fieldnames=fieldnames)
+            writer.writeheader()
+            for row in rows:
+                writer.writerow({field: row.get(field) for field in fieldnames})
+
+    def write_daily_summary(self, rows):
+        target = self.output_dir / "daily_summary.csv"
+        fieldnames = [
+            "date",
+            "equity_start",
+            "equity_end",
+            "realized_pnl",
+            "realized_return_fraction",
+            "entries_taken",
+            "closed_trades",
+            "threshold",
         ]
         with target.open("w", newline="", encoding="utf-8") as file_handle:
             writer = csv.DictWriter(file_handle, fieldnames=fieldnames)

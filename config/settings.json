@@ -11,6 +11,7 @@
     }
   },
   "backtest": {
+    "mode": "portfolio_replay",
     "output_dir": "backtest/output",
     "opportunity_log_enabled": true,
     "opportunity_log_filename": "opportunities.csv",
@@ -18,7 +19,23 @@
     "checkpoint_dir": "_checkpoints",
     "checkpoint_suffix": ".checkpoint.json",
     "resume_enabled": true,
-    "save_every_steps": 250
+    "save_every_steps": 250,
+    "portfolio_replay": {
+      "signal_log_filename": "signals.csv",
+      "symbols": [
+        "AAVEUSDT",
+        "AVAXUSDT",
+        "BNBUSDT",
+        "BTCUSDT",
+        "ETHUSDT",
+        "LINKUSDT",
+        "SOLUSDT",
+        "TRXUSDT",
+        "XRPUSDT"
+      ],
+      "minimum_execution_bars": 50,
+      "close_open_positions_at_end": true
+    }
   },
   "binance": {
     "base_url": "https://api.binance.com",

@@ -13,6 +13,7 @@ from backtest.engine import BacktestEngine
 from backtest.equity_logger import EquityLogger
 from backtest.logger import TradeLogger
 from backtest.opportunity_logger import OpportunityLogger
+from backtest.portfolio_runner import run_portfolio_backtest
 
 from data.downloader import load_from_csv
 from data.resampler import build_timeframes_and_save
@@ -61,6 +62,12 @@ def run_backtest(
 
     config = config or AppConfig.load()
     configure_debug(config=config)
+    mode = str(
+        config.get("backtest", "mode", default="single_symbol") or "single_symbol"
+    ).lower()
+    if mode == "portfolio_replay":
+        return run_portfolio_backtest(config=config)
+
     symbol = symbol or config.require("app", "default_symbol")
     base_path = base_path or config.require("storage", "base_path")
     start_date = start_date or config.require("history", "start_date")

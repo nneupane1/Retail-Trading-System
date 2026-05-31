@@ -79,6 +79,7 @@ class LivePaperPortfolio:
         self.daily_entries_taken = 0
         self.daily_closed_trades = 0
         self.daily_closed_pnl = 0.0
+        self.daily_history = []
 
         self.score_stats = defaultdict(
             lambda: {"count": 0, "wins": 0, "total_R": 0.0, "total_pnl": 0.0}
@@ -87,6 +88,27 @@ class LivePaperPortfolio:
             lambda: {"sum_pos": 0.0, "sum_neg": 0.0}
         )
         self.last_top_symbols = []
+
+    def _record_completed_day(self):
+        if self.current_trading_day is None:
+            return
+
+        self.daily_history.append(
+            {
+                "date": self.current_trading_day,
+                "equity_start": self.day_start_equity,
+                "equity_end": self.account.equity,
+                "realized_pnl": self.daily_closed_pnl,
+                "realized_return_fraction": (
+                    self.daily_closed_pnl / self.day_start_equity
+                    if self.day_start_equity
+                    else 0.0
+                ),
+                "entries_taken": self.daily_entries_taken,
+                "closed_trades": self.daily_closed_trades,
+                "threshold": self.current_threshold,
+            }
+        )
 
     def _open_r_multiple(self, trade, price):
         if not getattr(trade, "R", None):
@@ -170,6 +192,7 @@ class LivePaperPortfolio:
         if self.current_trading_day == current_day:
             return
 
+        self._record_completed_day()
         self._update_threshold_for_new_day()
         self._maybe_update_score_weights()
         self.current_trading_day = current_day
@@ -252,6 +275,9 @@ class LivePaperPortfolio:
             )
         summary_rows.sort(key=lambda item: bucket_floor(item["bucket"]), reverse=True)
         self.state_logger.write_score_bucket_summary(summary_rows)
+        write_daily_summary = getattr(self.state_logger, "write_daily_summary", None)
+        if callable(write_daily_summary):
+            write_daily_summary(list(self.daily_history))
         self.state_logger.write_json(
             "portfolio_status.json",
             {
@@ -269,6 +295,40 @@ class LivePaperPortfolio:
 
     def flush_state(self):
         self._write_state_artifacts()
+
+    def finalize_backtest(self, latest_rows_by_symbol=None, *, close_open_positions=True):
+        latest_rows_by_symbol = dict(latest_rows_by_symbol or {})
+
+        if close_open_positions:
+            for trade in list(self.open_positions):
+                row = latest_rows_by_symbol.get(getattr(trade, "symbol", None))
+                if row is None:
+                    continue
+                self.close_trade(trade, row, reason="end_of_replay")
+
+        self._record_completed_day()
+        self.current_trading_day = None
+        self._write_state_artifacts()
+
+    def summary(self):
+        self.account.summary()
+        completed_days = len(self.daily_history)
+        if completed_days <= 0:
+            return
+
+        total_entries = sum(int(row.get("entries_taken", 0) or 0) for row in self.daily_history)
+        total_realized_pnl = sum(
+            float(row.get("realized_pnl", 0.0) or 0.0)
+            for row in self.daily_history
+        )
+        avg_entries = total_entries / completed_days if completed_days else 0.0
+        avg_daily_pnl = total_realized_pnl / completed_days if completed_days else 0.0
+
+        print("\nPORTFOLIO DAILY SUMMARY")
+        print(f"  Days tracked: {completed_days}")
+        print(f"  Avg entries/day: {avg_entries:.2f}")
+        print(f"  Avg realized PnL/day: {avg_daily_pnl:.2f}")
+        print(f"  Current threshold: {self.current_threshold:.2f}")
 
     def close_trade(self, trade, row, *, reason, exit_price=None):
         trade.annotate_exit(reason=reason)
