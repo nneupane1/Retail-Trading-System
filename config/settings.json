@@ -112,7 +112,73 @@
   },
   "live_sim": {
     "output_dir": "live_sim/output",
-    "poll_seconds": 30
+    "poll_seconds": 30,
+    "mode": "portfolio_paper",
+    "max_cycles": null,
+    "universe": {
+      "symbols": [
+        "AAVEUSDT",
+        "AVAXUSDT",
+        "BNBUSDT",
+        "BTCUSDT",
+        "ETHUSDT",
+        "LINKUSDT",
+        "SOLUSDT",
+        "TRXUSDT",
+        "XRPUSDT"
+      ],
+      "momentum_lookback_bars": 4,
+      "fetch_pause_seconds": 0.05
+    },
+    "opportunity_scoring": {
+      "weights": {
+        "body_strength": 0.35,
+        "close_position": 0.25,
+        "vwap_score": 0.25,
+        "momentum": 0.15
+      },
+      "body_strength_range": [1.0, 3.0],
+      "close_position_range": [0.55, 1.0],
+      "vwap_bucket_values": {
+        "near": 0.3,
+        "moderate": 0.6,
+        "far": 1.0
+      },
+      "edge_type_bonus": {
+        "impulse_breakout": 0.08,
+        "breakout_pullback": 0.04,
+        "pressure_breakout": 0.02,
+        "momentum_breakout": 0.03
+      },
+      "top_mover_bonus": 0.05,
+      "min_weight": 0.10,
+      "max_weight": 0.50,
+      "update_smoothing": 0.20
+    },
+    "paper_portfolio": {
+      "allowed_sides": ["long"],
+      "allowed_edge_types": ["impulse_breakout", "breakout_pullback", "pressure_breakout"],
+      "min_trades_per_day": 10,
+      "target_trades_per_day": 10,
+      "max_trades_per_day": 15,
+      "base_threshold": 0.65,
+      "min_threshold": 0.50,
+      "max_threshold": 0.90,
+      "pacing_relax_step": 0.05,
+      "pacing_tighten_step": 0.03,
+      "threshold_smoothing": 0.20,
+      "min_profitable_bucket_count": 30,
+      "min_risk_per_trade": 0.0025,
+      "max_risk_per_trade": 0.0060,
+      "max_total_risk_fraction": 0.04,
+      "max_trades_per_asset": 2,
+      "max_same_direction_positions": 6,
+      "trailing_activation_r": 1.2,
+      "breakeven_trigger_r": 1.0,
+      "slow_grind_max_bars": 8,
+      "slow_grind_open_r_max": 1.0,
+      "weight_update_min_trades": 30
+    }
   },
   "position": {
     "min_stop_distance_ratio": 0.001,

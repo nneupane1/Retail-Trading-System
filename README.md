@@ -126,12 +126,12 @@ This event-driven style reduces late entries and repeated signals.
 | `exit/` | Hard exit logic |
 | `simulation/` | Trade state, account state, and simulator orchestration |
 | `backtest/` | Historical runner, engine, and CSV loggers |
-| `live_sim/` | Near-live runner, candle clock, and live trade logger |
+| `live_sim/` | Near-live runner, multi-asset paper portfolio, candle clock, and live loggers |
 | `tests/` | Focused unit and regression tests for the system's critical behavior |
 | `main_download.py` | CLI entry point for resumable historical `1m` downloads |
 | `main_resample.py` | CLI entry point for rebuilding and saving higher timeframes |
 | `main_backtest.py` | CLI entry point for full historical runs |
-| `main_live.py` | CLI entry point for near-live polling and execution |
+| `main_live.py` | CLI entry point for near-live single-symbol execution or multi-asset paper scanning |
 | `main_walkforward.py` | CLI entry point for walk-forward validation and controlled branch testing |
 | `main_monte_carlo.py` | CLI entry point for Monte Carlo and trade-concentration robustness analysis |
 | `main_edge_lab.py` | CLI entry point for isolated edge-family diagnostics and lean bucket-table generation |
@@ -193,14 +193,17 @@ than assuming everything starts from `main_backtest.py`.
 | `5` | `python main_calibrate.py` | Build opportunity-to-trade calibration reports from the latest backtest outputs |
 | `6` | `python main_walkforward.py --scheme multifold --branch-spec ...` | Run controlled multi-fold validation across candidate branches |
 | `7` | `python main_monte_carlo.py ...` | Stress-test completed trades with bootstrap and concentration analysis |
-| `8` | `python main_live.py` | Run near-live simulation using local warmup history plus fresh Binance `1m` candles |
+| `8` | `python main_live.py` | Run the live path: by default a multi-asset paper portfolio scanner with local warmup history plus fresh Binance `1m` candles |
 
 Two practical clarifications matter:
 
 - `main_backtest.py` already resamples and computes features internally, so
   `main_resample.py` is optional for strategy correctness.
-- `main_live.py` now bootstraps from local `1m` history first, then merges
+- `main_live.py` now boots from local `1m` history first, then merges
   recent Binance candles into that in-memory state before resampling.
+- The default live mode is now `portfolio_paper`, not the old single-symbol
+  loop. Set `live_sim.mode` back to `single_symbol` if you want the legacy
+  behavior.
 
 ## Timeframe Hierarchy
 
@@ -255,7 +258,7 @@ not scattered across the codebase.
 | `entry` | Legacy score-threshold compatibility plus score-specific refinement hooks |
 | `features` | EMA periods, structure windows, compression, pressure-model, and candle-metric settings |
 | `history` | Backtest date range |
-| `live_sim` | Live output directory and polling interval |
+| `live_sim` | Live mode, output directory, polling interval, scanned universe, continuous opportunity scoring, and paper-portfolio controls |
 | `position` | Minimum stop-distance safeguards and optional size caps |
 | `storage` | Base data directory |
 | `strategy.directional` | Enabled sides for the active directional engine |
@@ -1254,9 +1257,42 @@ with a polling loop.
 python main_live.py
 ```
 
-### Live loop behavior
+### Live modes
 
-`live_sim/runner.py` continuously:
+`main_live.py` now supports two runtime modes:
+
+- `live_sim.mode = "portfolio_paper"`:
+  the default path. It scans the configured multi-asset universe, ranks live
+  opportunities with a continuous score, applies an adaptive threshold to keep
+  daily flow near the configured target, and paper-trades multiple simultaneous
+  positions with shared equity.
+- `live_sim.mode = "single_symbol"`:
+  the older compatibility path. It keeps the original single-symbol live loop
+  and calls the shared `Simulator` directly.
+
+### Portfolio-paper loop behavior
+
+In `portfolio_paper` mode, `live_sim/runner.py` continuously:
+
+1. loads local `1m` bootstrap history for every configured symbol
+2. trims each symbol's state to the warmup window needed by the feature stack
+3. fetches fresh recent Binance `1m` candles for each symbol
+4. merges, deduplicates, and sorts the in-memory `1m` state per symbol
+5. rebuilds `15m`, `1h`, `5h`, and `12h` in memory for every symbol
+6. recomputes features on every timeframe
+7. detects whether a new `15m` candle has appeared for each symbol
+8. computes recent cross-symbol momentum ranks and identifies top movers
+9. builds live opportunity candidates using the same bucket semantics as the edge lab
+10. scores those candidates with a continuous `0-1` opportunity score
+11. adapts the score threshold intra-day so trade flow can relax toward the configured floor
+12. opens paper trades across multiple symbols while respecting total-risk and per-asset caps
+13. manages existing trades with the shared hard-stop and trailing components
+14. writes trade, signal-scan, score-bucket, and portfolio-state artifacts
+15. sleeps for `live_sim.poll_seconds`
+
+### Legacy single-symbol loop behavior
+
+In `single_symbol` mode, `live_sim/runner.py` continuously:
 
 1. loads local `1m` bootstrap history from the completed CSV, or falls back to the partial CSV
 2. trims that state to the required warmup window for the current feature and context stack
@@ -1274,7 +1310,7 @@ python main_live.py
 `live_sim/candle_clock.py` prevents repeated execution on the same `15m`
 candle. It also safely handles the case where the `15m` DataFrame is empty.
 
-Because the live loop now depends on local bootstrap history, the intended order
+Because the live loop depends on local bootstrap history, the intended order
 is:
 
 1. `python main_download.py`
@@ -1286,10 +1322,14 @@ By default:
 
 ```text
 live_sim/output/trades.csv
+live_sim/output/signals.csv
+live_sim/output/score_bucket_summary.csv
+live_sim/output/portfolio_status.json
 ```
 
-The live loop currently logs trades but does not maintain a separate live equity
-CSV by default.
+The live path now logs both executions and scanned candidates. The portfolio
+state JSON exposes the current adaptive threshold, active score weights, daily
+trade counts, and open-position count.
 
 ## Outputs and CSV Schemas
 
@@ -1302,7 +1342,7 @@ They are designed to explain not just what happened, but why it happened.
 
 | Column | Meaning |
 | --- | --- |
-| `trade_id`, `opportunity_id` | Unique trade identifier and optional back-link to `opportunities.csv` |
+| `trade_id`, `opportunity_id`, `symbol` | Unique trade identifier, optional back-link to `opportunities.csv`, and traded symbol |
 | `side` | `long` or `short` |
 | `signal_family` | `trend` or `exploratory` |
 | `edge_type`, `body_bucket`, `vwap_bucket`, `edge_bucket_key` | Lean runtime bucket metadata when edge selection is active |
@@ -1342,6 +1382,7 @@ They are designed to explain not just what happened, but why it happened.
 | `ema_gap_ratio` | Fast/slow EMA separation at entry |
 | `atr` | ATR value at entry |
 | `macd_hist` | MACD histogram at entry |
+| `opportunity_score`, `score_bucket`, `momentum_rank` | Live paper-portfolio ranking score, bucket, and cross-symbol momentum percentile |
 | `score_norm`, `momentum_strength`, `final_strength` | Weighted-path strength diagnostics |
 | `trail_state`, `trail_anchor_column`, `trail_anchor_price` | Trailing state-machine telemetry |
 
@@ -1414,6 +1455,26 @@ The current refined breakout families are:
 ### Live trade log
 
 `live_sim/output/trades.csv` uses the same schema as the backtest trade log.
+
+### Live signal scan log
+
+`live_sim/output/signals.csv` records every scored live candidate before
+portfolio selection.
+
+Important columns include:
+
+- `symbol`, `timestamp`, `edge_type`, `bias`
+- `body_bucket`, `vwap_bucket`, `bucket_key`
+- `is_top_mover`, `momentum_rank`
+- `score`, `score_bucket`, `threshold`
+- `selected`, `selection_reason`
+
+### Live portfolio state
+
+`live_sim/output/score_bucket_summary.csv` aggregates realized paper-trade
+results by score bucket. `live_sim/output/portfolio_status.json` exposes the
+current adaptive threshold, score weights, daily trade counts, current equity,
+and open-position count.
 
 ## Testing and Verification
 

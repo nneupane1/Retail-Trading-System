@@ -10,6 +10,7 @@ from config import AppConfig
 TRADE_LOG_FIELDS = [
     "trade_id",
     "opportunity_id",
+    "symbol",
     "side",
     "signal_family",
     "edge_type",
@@ -42,6 +43,9 @@ TRADE_LOG_FIELDS = [
     "entry_threshold",
     "exit_reason",
     "pressure_score",
+    "opportunity_score",
+    "score_bucket",
+    "momentum_rank",
     "score_norm",
     "momentum_strength",
     "final_strength",
@@ -85,6 +89,7 @@ def trade_to_log_record(trade):
     return {
         "trade_id": getattr(trade, "trade_id", None),
         "opportunity_id": getattr(trade, "opportunity_id", conditions.get("opportunity_id")),
+        "symbol": getattr(trade, "symbol", conditions.get("symbol")),
         "side": getattr(trade, "side", conditions.get("side")),
         "signal_family": getattr(trade, "signal_family", conditions.get("signal_family")),
         "edge_type": getattr(trade, "edge_type", conditions.get("edge_type")),
@@ -117,6 +122,9 @@ def trade_to_log_record(trade):
         "entry_threshold": getattr(trade, "entry_threshold", conditions.get("entry_threshold")),
         "exit_reason": getattr(trade, "exit_reason", conditions.get("exit_reason")),
         "pressure_score": getattr(trade, "pressure_score", conditions.get("pressure_score")),
+        "opportunity_score": getattr(trade, "opportunity_score", conditions.get("opportunity_score")),
+        "score_bucket": getattr(trade, "score_bucket", conditions.get("score_bucket")),
+        "momentum_rank": getattr(trade, "momentum_rank", conditions.get("momentum_rank")),
         "score_norm": getattr(trade, "score_norm", conditions.get("score_norm")),
         "momentum_strength": getattr(trade, "momentum_strength", conditions.get("momentum_strength")),
         "final_strength": getattr(trade, "final_strength", conditions.get("final_strength")),
@@ -200,6 +208,7 @@ class Trade:
         self.score = score
         self.trade_id = f"{self.side}_{_serialize_time(self.entry_time)}"
         self.opportunity_id = None
+        self.symbol = None
 
         # Structure
         self.stop = row[self.stop_column]
@@ -232,6 +241,10 @@ class Trade:
         self.effective_risk_fraction = None
         self.equity_return_fraction = None
         self.pressure_score = None
+        self.opportunity_score = None
+        self.score_bucket = None
+        self.momentum_rank = None
+        self.feature_values = {}
         self.score_norm = None
         self.momentum_strength = None
         self.final_strength = None
@@ -266,6 +279,7 @@ class Trade:
             "side": side,
             "signal_family": self.signal_family,
             "opportunity_id": None,
+            "symbol": None,
             "score": score,
             "body_strength": row.get("body_strength", None),
             "close_position": row.get("close_position", None),
@@ -280,6 +294,9 @@ class Trade:
             "atr": row.get("atr", None),
             "macd_hist": row.get("macd_hist", None),
             "pressure_score": None,
+            "opportunity_score": None,
+            "score_bucket": None,
+            "momentum_rank": None,
             "edge_type": None,
             "body_bucket": None,
             "vwap_bucket": None,
@@ -481,6 +498,29 @@ class Trade:
         self.opportunity_id = opportunity_id
         self.conditions["opportunity_id"] = opportunity_id
 
+    def annotate_live_scoring(
+        self,
+        *,
+        symbol=None,
+        opportunity_score=None,
+        score_bucket=None,
+        momentum_rank=None,
+        feature_values=None,
+    ):
+        self.symbol = symbol
+        self.opportunity_score = opportunity_score
+        self.score_bucket = score_bucket
+        self.momentum_rank = momentum_rank
+        self.feature_values = dict(feature_values or {})
+        self.conditions.update(
+            {
+                "symbol": symbol,
+                "opportunity_score": opportunity_score,
+                "score_bucket": score_bucket,
+                "momentum_rank": momentum_rank,
+            }
+        )
+
     def annotate_weighted_context(
         self,
         *,
@@ -609,6 +649,7 @@ class Trade:
             "stop_column": self.stop_column,
             "side": self.side,
             "signal_family": self.signal_family,
+            "symbol": self.symbol,
             "entry_time": _serialize_time(self.entry_time),
             "entry_price": self.entry_price,
             "score": self.score,
@@ -642,6 +683,10 @@ class Trade:
             "effective_risk_fraction": self.effective_risk_fraction,
             "equity_return_fraction": self.equity_return_fraction,
             "pressure_score": self.pressure_score,
+            "opportunity_score": self.opportunity_score,
+            "score_bucket": self.score_bucket,
+            "momentum_rank": self.momentum_rank,
+            "feature_values": dict(self.feature_values),
             "score_norm": self.score_norm,
             "momentum_strength": self.momentum_strength,
             "final_strength": self.final_strength,
@@ -675,6 +720,7 @@ class Trade:
         low_period = trade.config.require("features", "structure", "low_period")
         trade.side = snapshot.get("side", "long")
         trade.signal_family = snapshot.get("signal_family", "trend")
+        trade.symbol = snapshot.get("symbol")
         default_stop_column = (
             f"ll{low_period}"
             if trade.side == "long"
@@ -711,6 +757,10 @@ class Trade:
         trade.effective_risk_fraction = snapshot.get("effective_risk_fraction")
         trade.equity_return_fraction = snapshot.get("equity_return_fraction")
         trade.pressure_score = snapshot.get("pressure_score")
+        trade.opportunity_score = snapshot.get("opportunity_score")
+        trade.score_bucket = snapshot.get("score_bucket")
+        trade.momentum_rank = snapshot.get("momentum_rank")
+        trade.feature_values = dict(snapshot.get("feature_values", {}) or {})
         trade.score_norm = snapshot.get("score_norm")
         trade.momentum_strength = snapshot.get("momentum_strength")
         trade.final_strength = snapshot.get("final_strength")

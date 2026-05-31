@@ -5,7 +5,9 @@ from pathlib import Path
 import pandas as pd
 
 from live_sim.runner import (
+    _discover_live_symbols,
     _load_live_bootstrap_history,
+    _momentum_ranks,
     _merge_recent_into_state,
     _required_live_warmup_minutes,
 )
@@ -78,6 +80,16 @@ class DummyConfig:
 
 
 class LiveSimRunnerTests(unittest.TestCase):
+    def test_discover_live_symbols_uses_local_symbol_folders(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            Path(temp_dir, "BTCUSDT").mkdir(parents=True, exist_ok=True)
+            Path(temp_dir, "ETHUSDT").mkdir(parents=True, exist_ok=True)
+            config = DummyConfig(storage_base_path=temp_dir)
+
+            symbols = _discover_live_symbols(config)
+
+            self.assertEqual(symbols, ["BTCUSDT", "ETHUSDT"])
+
     def test_required_live_warmup_minutes_covers_macro_requirement(self):
         config = DummyConfig(storage_base_path="data_storage")
 
@@ -178,6 +190,46 @@ class LiveSimRunnerTests(unittest.TestCase):
 
             self.assertEqual(source_path, partial_path)
             self.assertEqual(len(df_1m), 2)
+
+    def test_load_live_bootstrap_history_can_use_timestamped_storage_file(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config = DummyConfig(storage_base_path=temp_dir)
+            folder = Path(temp_dir) / "BTCUSDT" / "1m"
+            folder.mkdir(parents=True, exist_ok=True)
+
+            timestamped = folder / (
+                "BTCUSDT_1m_2018-01-01T00.00.00_to_2026-05-23T00.00.00.csv"
+            )
+            timestamped.write_text(
+                "timestamp,open,high,low,close,volume\n"
+                "2026-01-01 00:00:00,1,1,1,1,1\n"
+                "2026-01-01 00:01:00,2,2,2,2,2\n",
+                encoding="utf-8",
+            )
+
+            df_1m, source_path = _load_live_bootstrap_history(
+                symbol="BTCUSDT",
+                interval="1m",
+                warmup_minutes=60,
+                config=config,
+            )
+
+            self.assertEqual(source_path, timestamped)
+            self.assertEqual(len(df_1m), 2)
+
+    def test_momentum_ranks_prioritize_stronger_recent_symbols(self):
+        dates = pd.date_range("2026-01-01", periods=5, freq="15min")
+        frames = {
+            "BTCUSDT": pd.DataFrame({"close": [100, 101, 102, 103, 104]}, index=dates),
+            "ETHUSDT": pd.DataFrame({"close": [100, 100, 100, 100, 100]}, index=dates),
+            "SOLUSDT": pd.DataFrame({"close": [100, 99, 98, 97, 96]}, index=dates),
+        }
+
+        ranks, top_symbols = _momentum_ranks(frames, lookback_bars=2)
+
+        self.assertGreater(ranks["BTCUSDT"], ranks["ETHUSDT"])
+        self.assertGreater(ranks["ETHUSDT"], ranks["SOLUSDT"])
+        self.assertEqual(top_symbols[0], "BTCUSDT")
 
 
 if __name__ == "__main__":
