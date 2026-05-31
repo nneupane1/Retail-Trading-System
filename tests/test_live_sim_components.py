@@ -43,9 +43,9 @@ class LiveTradeLoggerTests(unittest.TestCase):
 
             self.assertEqual(
                 header,
-                "trade_id,opportunity_id,side,signal_family,entry_time,exit_time,entry_price,exit_price,stop_price,active_stop_price,pnl,pnl_R,"
+                "trade_id,opportunity_id,side,signal_family,edge_type,body_bucket,vwap_bucket,edge_bucket_key,bucket_expected_return,bucket_risk_mult,entry_time,exit_time,entry_price,exit_price,stop_price,active_stop_price,pnl,pnl_R,"
                 "pnl_R_total,pnl_R_initial,initial_risk_amount,total_risk_amount,"
-                "equity_at_entry,entry_risk_multiplier,intended_risk_per_trade,effective_risk_fraction,equity_return_fraction,bias,"
+                "equity_at_entry,entry_risk_multiplier,runtime_risk_multiplier,intended_risk_per_trade,effective_risk_fraction,equity_return_fraction,bias,"
                 "regime_score,regime_class,entry_threshold,exit_reason,pressure_score,score_norm,momentum_strength,final_strength,bias_weight,"
                 "regime_weight,event_bonus,trail_state,trail_anchor_column,trail_anchor_price,"
                 "trail_open_r_multiple,trail_momentum_score,trail_decay_score,entry_layer_count,"

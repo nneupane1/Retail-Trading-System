@@ -342,6 +342,23 @@ class ExplorationEnabledConfig(DummyConfig):
         return super().get(*keys, default=default)
 
 
+class DailyControlsConfig(DummyConfig):
+    def get(self, *keys, default=None):
+        if keys == ("strategy", "daily_controls"):
+            return {
+                "enabled": True,
+                "target_daily_return": 0.003,
+                "max_daily_loss": -0.01,
+                "max_daily_risk": 0.05,
+                "loss_brake_multiplier": 0.7,
+                "target_brake_multiplier": 0.5,
+                "soft_trade_cap": 20,
+                "max_trades_per_day": 40,
+                "soft_cap_min_strength": 0.55,
+            }
+        return super().get(*keys, default=default)
+
+
 class RecordingTrendSniffer:
     def __init__(self, result, calls):
         self.result = result
@@ -414,11 +431,13 @@ class DummyTrade:
         *,
         equity_at_entry=None,
         entry_risk_multiplier=None,
+        runtime_risk_multiplier=None,
         intended_risk_per_trade=None,
         effective_risk_fraction=None,
     ):
         self.equity_at_entry = equity_at_entry
         self.entry_risk_multiplier = entry_risk_multiplier
+        self.runtime_risk_multiplier = runtime_risk_multiplier
         self.intended_risk_per_trade = intended_risk_per_trade
         self.effective_risk_fraction = effective_risk_fraction
 
@@ -822,6 +841,36 @@ class SimulatorManagementTests(unittest.TestCase):
         self.assertIsNotNone(simulator.current_trade)
         self.assertEqual(simulator.current_trade.side, "long")
         self.assertAlmostEqual(simulator.current_trade.entry_risk_multiplier, 0.55)
+
+    def test_daily_controls_reduce_runtime_risk_after_positive_day(self):
+        position_sizer = RecordingPositionSizer()
+        simulator = Simulator(
+            initial_equity=1000.0,
+            risk_per_trade=0.01,
+            trade_logger=None,
+            equity_logger=None,
+            entry_engine=FixedEntryEngine(),
+            score_engine=PositiveScoreEngine(),
+            bias_detector=StaticBiasDetector(),
+            regime_detector=ContextRegimeDetector(),
+            pyramiding_engine=RecordingPyramidingEngine(0, []),
+            trend_sniffer=RecordingTrendSniffer(True, []),
+            exit_engine=RecordingExitEngine(False, []),
+            position_sizer=position_sizer,
+            config=DailyControlsConfig(),
+        )
+
+        simulator.account.equity = 1005.0
+        simulator.day_start_equity = 1000.0
+        simulator.current_trading_day = pd.Timestamp("2026-01-01 00:00:00").date()
+        row = self._make_row(close=101.0)
+        empty_df = pd.DataFrame()
+
+        simulator.step(row, empty_df, empty_df, empty_df)
+
+        self.assertEqual(len(position_sizer.calls), 1)
+        self.assertAlmostEqual(position_sizer.calls[0]["risk_per_trade"], 0.005)
+        self.assertAlmostEqual(simulator.current_trade.runtime_risk_multiplier, 0.5)
 
 
 if __name__ == "__main__":

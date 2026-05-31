@@ -2,6 +2,7 @@
 
 from common.debug import debug_print as print
 from config import AppConfig
+from entry.edge_selector import EdgeSelector
 from entry.legacy_entry_engine import LegacyEntryEngine
 from entry.weighted_opportunity_engine import WeightedOpportunityEngine
 
@@ -330,6 +331,7 @@ class EntryEngine:
             }
         )
         self.max_score = self._compute_max_score()
+        self.edge_selector = EdgeSelector(config=self.config)
         self.legacy_engine = LegacyEntryEngine(self)
         self.weighted_engine = WeightedOpportunityEngine(self)
 

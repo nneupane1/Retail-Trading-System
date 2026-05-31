@@ -104,6 +104,8 @@ def load_opportunities(path):
         "event_bonus",
         "final_strength",
         "entry_risk_multiplier",
+        "bucket_expected_return",
+        "bucket_risk_mult",
         "price_to_fast_ema_ratio",
         "ema_gap_ratio",
         "vwap_distance_ratio",

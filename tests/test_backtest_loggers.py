@@ -33,9 +33,9 @@ class BacktestLoggerTests(unittest.TestCase):
 
             self.assertEqual(
                 header,
-                "trade_id,opportunity_id,side,signal_family,entry_time,exit_time,entry_price,exit_price,stop_price,active_stop_price,pnl,pnl_R,"
+                "trade_id,opportunity_id,side,signal_family,edge_type,body_bucket,vwap_bucket,edge_bucket_key,bucket_expected_return,bucket_risk_mult,entry_time,exit_time,entry_price,exit_price,stop_price,active_stop_price,pnl,pnl_R,"
                 "pnl_R_total,pnl_R_initial,initial_risk_amount,total_risk_amount,"
-                "equity_at_entry,entry_risk_multiplier,intended_risk_per_trade,effective_risk_fraction,equity_return_fraction,bias,"
+                "equity_at_entry,entry_risk_multiplier,runtime_risk_multiplier,intended_risk_per_trade,effective_risk_fraction,equity_return_fraction,bias,"
                 "regime_score,regime_class,entry_threshold,exit_reason,pressure_score,score_norm,momentum_strength,final_strength,bias_weight,"
                 "regime_weight,event_bonus,trail_state,trail_anchor_column,trail_anchor_price,"
                 "trail_open_r_multiple,trail_momentum_score,trail_decay_score,entry_layer_count,"
@@ -53,6 +53,12 @@ class BacktestLoggerTests(unittest.TestCase):
                 opportunity_id="opp_2026-01-01T00-00-00_long_trend_000001",
                 side="long",
                 signal_family="exploratory",
+                edge_type="momentum_long",
+                body_bucket="strong",
+                vwap_bucket="near",
+                edge_bucket_key="momentum_long|bullish|strong|near",
+                bucket_expected_return=0.0015,
+                bucket_risk_mult=1.2,
                 entry_time="2026-01-01 00:00:00",
                 exit_time="2026-01-01 01:00:00",
                 entry_price=100.0,
@@ -67,6 +73,7 @@ class BacktestLoggerTests(unittest.TestCase):
                 total_risk_amount=10.0,
                 equity_at_entry=1000.0,
                 entry_risk_multiplier=0.5,
+                runtime_risk_multiplier=0.7,
                 intended_risk_per_trade=0.01,
                 effective_risk_fraction=0.005,
                 equity_return_fraction=0.0125,
@@ -117,6 +124,8 @@ class BacktestLoggerTests(unittest.TestCase):
             self.assertEqual(rows[0]["opportunity_id"], "opp_2026-01-01T00-00-00_long_trend_000001")
             self.assertEqual(rows[0]["side"], "long")
             self.assertEqual(rows[0]["signal_family"], "exploratory")
+            self.assertEqual(rows[0]["edge_type"], "momentum_long")
+            self.assertEqual(rows[0]["edge_bucket_key"], "momentum_long|bullish|strong|near")
             self.assertEqual(rows[0]["entry_time"], "2026-01-01 00:00:00")
             self.assertEqual(rows[0]["exit_time"], "2026-01-01 01:00:00")
             self.assertEqual(float(rows[0]["pnl"]), 12.5)
@@ -127,6 +136,7 @@ class BacktestLoggerTests(unittest.TestCase):
             self.assertEqual(float(rows[0]["total_risk_amount"]), 10.0)
             self.assertEqual(float(rows[0]["equity_at_entry"]), 1000.0)
             self.assertEqual(float(rows[0]["entry_risk_multiplier"]), 0.5)
+            self.assertEqual(float(rows[0]["runtime_risk_multiplier"]), 0.7)
             self.assertEqual(float(rows[0]["intended_risk_per_trade"]), 0.01)
             self.assertEqual(float(rows[0]["effective_risk_fraction"]), 0.005)
             self.assertEqual(float(rows[0]["equity_return_fraction"]), 0.0125)
@@ -142,6 +152,8 @@ class BacktestLoggerTests(unittest.TestCase):
             self.assertEqual(float(rows[0]["bias_weight"]), 1.15)
             self.assertEqual(float(rows[0]["regime_weight"]), 1.25)
             self.assertEqual(float(rows[0]["event_bonus"]), 1.12)
+            self.assertEqual(float(rows[0]["bucket_expected_return"]), 0.0015)
+            self.assertEqual(float(rows[0]["bucket_risk_mult"]), 1.2)
             self.assertEqual(rows[0]["trail_state"], "decay")
             self.assertEqual(rows[0]["trail_anchor_column"], "ema20")
             self.assertEqual(float(rows[0]["trail_anchor_price"]), 108.0)
@@ -194,6 +206,15 @@ class BacktestLoggerTests(unittest.TestCase):
                     "timestamp": "2026-01-01 00:00:00",
                     "side": "long",
                     "signal_family": "trend",
+                    "edge_type": "momentum_long",
+                    "body_bucket": "strong",
+                    "vwap_bucket": "near",
+                    "bucket_key": "momentum_long|bullish|strong|near",
+                    "bucket_valid": True,
+                    "bucket_expected_return": 0.0015,
+                    "bucket_risk_mult": 1.2,
+                    "bucket_signal_count": 520,
+                    "bucket_selected_horizon": 3,
                     "bias": "bullish",
                     "regime_score": 3,
                     "regime_class": "strong",
@@ -252,8 +273,11 @@ class BacktestLoggerTests(unittest.TestCase):
             self.assertEqual(rows[0]["opportunity_id"], "opp_2026-01-01T00-00-00_long_trend_000001")
             self.assertEqual(rows[0]["side"], "long")
             self.assertEqual(rows[0]["eligible"], "True")
+            self.assertEqual(rows[0]["edge_type"], "momentum_long")
+            self.assertEqual(rows[0]["bucket_valid"], "True")
             self.assertEqual(float(rows[0]["final_strength"]), 1.02)
             self.assertEqual(float(rows[0]["score_max"]), 9.0)
+            self.assertEqual(float(rows[0]["bucket_expected_return"]), 0.0015)
             self.assertEqual(float(rows[0]["bias_directional_strength"]), 0.8)
             self.assertEqual(float(rows[0]["regime_normalized_strength"]), 0.75)
             self.assertEqual(rows[0]["regime_trend_aligned"], "False")

@@ -103,6 +103,30 @@ class Simulator:
         weighted_mode_getter = getattr(self.entry_engine, "is_weighted_mode", None)
         self.weighted_entry_mode = bool(weighted_mode_getter()) if callable(weighted_mode_getter) else False
         self._opportunity_sequence = 0
+        daily_controls = (
+            getter("strategy", "daily_controls", default={})
+            if callable(getter)
+            else {}
+        ) or {}
+        self.daily_controls_enabled = bool(daily_controls.get("enabled", False))
+        self.daily_target_return = float(daily_controls.get("target_daily_return", 0.003))
+        self.daily_max_loss = float(daily_controls.get("max_daily_loss", -0.01))
+        self.daily_max_risk = float(daily_controls.get("max_daily_risk", 0.05))
+        self.daily_loss_brake_multiplier = float(
+            daily_controls.get("loss_brake_multiplier", 0.7)
+        )
+        self.daily_target_brake_multiplier = float(
+            daily_controls.get("target_brake_multiplier", 0.5)
+        )
+        self.daily_max_trades = int(daily_controls.get("max_trades_per_day", 40))
+        self.daily_soft_trade_cap = int(daily_controls.get("soft_trade_cap", 20))
+        self.daily_soft_cap_min_strength = float(
+            daily_controls.get("soft_cap_min_strength", 0.55)
+        )
+        self.current_trading_day = None
+        self.day_start_equity = self.account.equity
+        self.daily_risk_used = 0.0
+        self.daily_trades_taken = 0
 
     @staticmethod
     def _choose_direction(candidates):
@@ -270,6 +294,49 @@ class Simulator:
 
     def _risk_for_side(self, side):
         return self.risk_per_trade_by_side.get(str(side).lower(), self.risk_per_trade)
+
+    def _reset_daily_state_if_needed(self, timestamp):
+        current_day = getattr(timestamp, "date", lambda: timestamp)()
+        if self.current_trading_day == current_day:
+            return
+        self.current_trading_day = current_day
+        self.day_start_equity = self.account.equity
+        self.daily_risk_used = 0.0
+        self.daily_trades_taken = 0
+
+    def _daily_pnl_fraction(self):
+        if not self.day_start_equity:
+            return 0.0
+        return (self.account.equity - self.day_start_equity) / self.day_start_equity
+
+    def _daily_runtime_risk_multiplier(self):
+        if not self.daily_controls_enabled:
+            return 1.0
+        pnl_fraction = self._daily_pnl_fraction()
+        if pnl_fraction >= self.daily_target_return:
+            return self.daily_target_brake_multiplier
+        if pnl_fraction < 0:
+            return self.daily_loss_brake_multiplier
+        return 1.0
+
+    def _can_take_candidate_today(self, candidate):
+        if not self.daily_controls_enabled:
+            return True, None
+
+        pnl_fraction = self._daily_pnl_fraction()
+        if pnl_fraction <= self.daily_max_loss:
+            return False, "daily_loss_limit"
+        if self.daily_risk_used >= self.daily_max_risk:
+            return False, "daily_risk_limit"
+        if self.daily_trades_taken >= self.daily_max_trades:
+            return False, "daily_trade_cap"
+        if (
+            self.daily_trades_taken >= self.daily_soft_trade_cap
+            and float(candidate.get("selection_value", candidate.get("score", 0.0)) or 0.0)
+            < self.daily_soft_cap_min_strength
+        ):
+            return False, "daily_soft_cap"
+        return True, None
 
     def _trade_role(self, trade):
         if trade is None:
@@ -769,14 +836,24 @@ class Simulator:
                 candidate.get("signal_family", getattr(trade, "signal_family", "trend")),
                 pressure_score=getattr(trade, "pressure_score", None),
             )
+        if hasattr(trade, "annotate_edge_bucket") and callable(trade.annotate_edge_bucket):
+            trade.annotate_edge_bucket(
+                edge_type=candidate.get("edge_type"),
+                body_bucket=candidate.get("body_bucket"),
+                vwap_bucket=candidate.get("vwap_bucket"),
+                bucket_key=candidate.get("bucket_key_text"),
+                bucket_expected_return=candidate.get("bucket_expected_return"),
+                bucket_risk_mult=candidate.get("bucket_risk_mult"),
+            )
 
         print("\nEXECUTING NEW TRADE")
         base_side_risk_per_trade = self._risk_for_side(selected_side)
         entry_risk_multiplier = float(
             getattr(trade, "entry_risk_multiplier", 1.0) or 1.0
         )
+        runtime_risk_multiplier = self._daily_runtime_risk_multiplier()
         applied_risk_per_trade = (
-            base_side_risk_per_trade * entry_risk_multiplier
+            base_side_risk_per_trade * entry_risk_multiplier * runtime_risk_multiplier
         )
 
         size = self.position_sizer.calculate(
@@ -800,6 +877,7 @@ class Simulator:
             trade.annotate_risk_context(
                 equity_at_entry=self.account.equity,
                 entry_risk_multiplier=entry_risk_multiplier,
+                runtime_risk_multiplier=runtime_risk_multiplier,
                 intended_risk_per_trade=applied_risk_per_trade,
                 effective_risk_fraction=effective_risk_fraction,
             )
@@ -808,6 +886,8 @@ class Simulator:
         self.current_trade = trade
         self.base_size = size
         self.level = 0
+        self.daily_risk_used += effective_risk_fraction
+        self.daily_trades_taken += 1
         return True
 
     # --------------------------------------------------
@@ -826,6 +906,7 @@ class Simulator:
 
         print("\n" + "=" * 60)
         print(f"Processing candle: {row.name}")
+        self._reset_daily_state_if_needed(row.name)
 
         # --------------------------
         # 1. MARKET CONTEXT
@@ -847,7 +928,11 @@ class Simulator:
                 bias_snapshot=bias_snapshot,
             )
             if candidate:
-                self._open_candidate_trade(row, bias, candidate)
+                can_take, block_reason = self._can_take_candidate_today(candidate)
+                if can_take:
+                    self._open_candidate_trade(row, bias, candidate)
+                else:
+                    print(f"Entry skipped: {block_reason}")
 
         # --------------------------
         # 3. TRADE MANAGEMENT
@@ -894,11 +979,19 @@ class Simulator:
                     exit_price=active_stop,
                 )
                 if override_candidate is not None:
-                    self._open_candidate_trade(row, bias, override_candidate)
+                    can_take, block_reason = self._can_take_candidate_today(override_candidate)
+                    if can_take:
+                        self._open_candidate_trade(row, bias, override_candidate)
+                    else:
+                        print(f"Override entry skipped: {block_reason}")
 
             elif override_candidate is not None:
                 self._close_current_trade(row, reason="core override")
-                self._open_candidate_trade(row, bias, override_candidate)
+                can_take, block_reason = self._can_take_candidate_today(override_candidate)
+                if can_take:
+                    self._open_candidate_trade(row, bias, override_candidate)
+                else:
+                    print(f"Override entry skipped: {block_reason}")
 
             else:
                 evaluate = getattr(self.trend_sniffer, "evaluate", None)
@@ -930,7 +1023,11 @@ class Simulator:
                     exit_reason = "state exit" if getattr(trade, "trail_state", None) == "exit" else "trend weakness"
                     self._close_current_trade(row, reason=exit_reason)
                     if override_candidate is not None:
-                        self._open_candidate_trade(row, bias, override_candidate)
+                        can_take, block_reason = self._can_take_candidate_today(override_candidate)
+                        if can_take:
+                            self._open_candidate_trade(row, bias, override_candidate)
+                        else:
+                            print(f"Override entry skipped: {block_reason}")
                     if self.equity_logger:
                         self.equity_logger.log(row.name, self.account.equity)
                     print("=" * 60 + "\n")

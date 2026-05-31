@@ -49,6 +49,11 @@ class WeightedOpportunityEngine:
             final_strength,
             self.owner.weighted_max_strength_multiplier,
         )
+        bucket_profile = self.owner.edge_selector.evaluate(
+            row,
+            bias=bias,
+            side=side,
+        )
 
         structural_floor_passed = self.owner._passes_weighted_structural_floor(
             row,
@@ -57,6 +62,12 @@ class WeightedOpportunityEngine:
         rejection_reason = None
         if not structural_floor_passed:
             rejection_reason = "structural_floor"
+        elif (
+            bucket_profile.get("edge_selector_enabled")
+            and bucket_profile.get("edge_selector_active")
+            and not bucket_profile.get("bucket_valid")
+        ):
+            rejection_reason = bucket_profile.get("bucket_reason") or "edge_bucket"
         elif final_strength < self.owner.weighted_noise_guard_min_strength:
             rejection_reason = "noise_guard"
 
@@ -66,10 +77,13 @@ class WeightedOpportunityEngine:
         candidate = None
 
         if eligible:
+            bucket_risk_mult = float(
+                bucket_profile.get("bucket_risk_mult", 1.0) or 1.0
+            )
             entry_risk_multiplier = max(
                 self.owner.weighted_min_entry_risk_multiplier,
                 min(
-                    final_strength,
+                    final_strength * bucket_risk_mult,
                     self.owner.weighted_max_strength_multiplier,
                 ),
             )
@@ -88,11 +102,30 @@ class WeightedOpportunityEngine:
                     regime_weight=regime_weight,
                     event_bonus=event_bonus,
                 )
+            if hasattr(trade, "annotate_edge_bucket"):
+                trade.annotate_edge_bucket(
+                    edge_type=bucket_profile.get("edge_type"),
+                    body_bucket=bucket_profile.get("body_bucket"),
+                    vwap_bucket=bucket_profile.get("vwap_bucket"),
+                    bucket_key=bucket_profile.get("bucket_key_text"),
+                    bucket_expected_return=bucket_profile.get("bucket_expected_return"),
+                    bucket_risk_mult=bucket_profile.get("bucket_risk_mult"),
+                )
 
+            selection_value = float(final_strength)
+            if (
+                bucket_profile.get("edge_selector_enabled")
+                and bucket_profile.get("edge_selector_active")
+                and bucket_profile.get("bucket_expected_return") is not None
+            ):
+                selection_value = float(
+                    bucket_profile["bucket_expected_return"]
+                    * bucket_profile.get("bucket_risk_mult", 1.0)
+                )
             candidate = {
                 "side": side,
                 "score": float(score),
-                "selection_value": float(final_strength),
+                "selection_value": selection_value,
                 "trade": trade,
                 "trade_regime": regime_score,
                 "regime_class": regime_class,
@@ -101,6 +134,12 @@ class WeightedOpportunityEngine:
                 "entry_role": "core",
                 "entry_priority": 1,
                 "signal_family": "trend",
+                "edge_type": bucket_profile.get("edge_type"),
+                "body_bucket": bucket_profile.get("body_bucket"),
+                "vwap_bucket": bucket_profile.get("vwap_bucket"),
+                "bucket_key_text": bucket_profile.get("bucket_key_text"),
+                "bucket_expected_return": bucket_profile.get("bucket_expected_return"),
+                "bucket_risk_mult": bucket_profile.get("bucket_risk_mult"),
             }
 
         return {
@@ -138,5 +177,14 @@ class WeightedOpportunityEngine:
             "atr_rising": bool(row.get("atr_rising", False)),
             "macd_hist": float(row.get("macd_hist", 0.0) or 0.0),
             "momentum_components": momentum_components,
+            "edge_type": bucket_profile.get("edge_type"),
+            "body_bucket": bucket_profile.get("body_bucket"),
+            "vwap_bucket": bucket_profile.get("vwap_bucket"),
+            "bucket_key": bucket_profile.get("bucket_key_text"),
+            "bucket_valid": bucket_profile.get("bucket_valid"),
+            "bucket_expected_return": bucket_profile.get("bucket_expected_return"),
+            "bucket_risk_mult": bucket_profile.get("bucket_risk_mult"),
+            "bucket_signal_count": bucket_profile.get("bucket_signal_count"),
+            "bucket_selected_horizon": bucket_profile.get("bucket_selected_horizon"),
             "candidate": candidate,
         }

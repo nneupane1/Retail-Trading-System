@@ -127,6 +127,15 @@
     "directional": {
       "enabled_sides": ["long", "short"]
     },
+    "edge_selection": {
+      "enabled": false,
+      "table_path": "backtest/output/edge_lab/edge_table.json",
+      "strong_body_threshold": 1.3,
+      "vwap_far_threshold": 0.01,
+      "min_expected_return": 0.0,
+      "default_risk_mult": 1.0,
+      "max_risk_mult": 1.5
+    },
     "execution": {
       "mode": "weighted",
       "weighted": {
@@ -163,6 +172,17 @@
           "macd_hist_atr_ratio": 0.25
         }
       }
+    },
+    "daily_controls": {
+      "enabled": true,
+      "target_daily_return": 0.003,
+      "max_daily_loss": -0.01,
+      "max_daily_risk": 0.05,
+      "loss_brake_multiplier": 0.7,
+      "target_brake_multiplier": 0.5,
+      "soft_trade_cap": 20,
+      "max_trades_per_day": 40,
+      "soft_cap_min_strength": 0.55
     },
     "exploration": {
       "enabled": false,

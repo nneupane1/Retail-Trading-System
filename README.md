@@ -134,6 +134,7 @@ This event-driven style reduces late entries and repeated signals.
 | `main_live.py` | CLI entry point for near-live polling and execution |
 | `main_walkforward.py` | CLI entry point for walk-forward validation and controlled branch testing |
 | `main_monte_carlo.py` | CLI entry point for Monte Carlo and trade-concentration robustness analysis |
+| `main_edge_lab.py` | CLI entry point for isolated edge-family diagnostics and lean bucket-table generation |
 | `main_calibrate.py` | CLI entry point for opportunity-to-trade calibration reports |
 
 ## High-Level Operating Model
@@ -188,10 +189,11 @@ than assuming everything starts from `main_backtest.py`.
 | `1` | `python main_download.py` | Download and checkpoint local `1m` history from Binance |
 | `2` | `python main_resample.py` | Optional: materialize `15m`, `1h`, `5h`, and `12h` CSVs for inspection |
 | `3` | `python main_backtest.py` | Run the historical strategy pipeline with trade, equity, and opportunity logging |
-| `4` | `python main_calibrate.py` | Build opportunity-to-trade calibration reports from the latest backtest outputs |
-| `5` | `python main_walkforward.py --scheme multifold --branch-spec ...` | Run controlled multi-fold validation across candidate branches |
-| `6` | `python main_monte_carlo.py ...` | Stress-test completed trades with bootstrap and concentration analysis |
-| `7` | `python main_live.py` | Run near-live simulation using local warmup history plus fresh Binance `1m` candles |
+| `4` | `python main_edge_lab.py --symbols BTCUSDT ETHUSDT SOLUSDT` | Isolate hidden edge families and build a small deployable edge table |
+| `5` | `python main_calibrate.py` | Build opportunity-to-trade calibration reports from the latest backtest outputs |
+| `6` | `python main_walkforward.py --scheme multifold --branch-spec ...` | Run controlled multi-fold validation across candidate branches |
+| `7` | `python main_monte_carlo.py ...` | Stress-test completed trades with bootstrap and concentration analysis |
+| `8` | `python main_live.py` | Run near-live simulation using local warmup history plus fresh Binance `1m` candles |
 
 Two practical clarifications matter:
 
@@ -257,7 +259,9 @@ not scattered across the codebase.
 | `position` | Minimum stop-distance safeguards and optional size caps |
 | `storage` | Base data directory |
 | `strategy.directional` | Enabled sides for the active directional engine |
+| `strategy.edge_selection` | Optional lean bucket-table filter and size-scaling layer |
 | `strategy.execution` | Legacy gated vs weighted execution mode and weighted-strength settings |
+| `strategy.daily_controls` | Daily trade-flow, risk-budget, and profit-protection controls |
 | `strategy.exploration` | Early pressure/ignition probe settings for the exploratory signal family |
 | `strategy.bias` | Bias EMA and slope threshold |
 | `strategy.regime` | Regime weights, slope threshold, and regime bands |
@@ -332,11 +336,41 @@ the locked gated baseline.
 | Regime handling | Continuous multiplier, not a hard blocker |
 | Event handling | Breakout/breakdown remain bonuses, not universal requirements |
 | Opportunity logging | Enabled by default into `backtest/output/opportunities.csv` |
+| Lean edge selection | Optional `strategy.edge_selection` lookup table built from `main_edge_lab.py` |
+| Daily controls | Enabled by default: daily loss brake, target brake, risk cap, and trade-flow cap |
 | Exploration layer | Implemented but `strategy.exploration.enabled = false` by default |
 
 The weighted path is intentionally looser than the locked baseline. The design
 goal is to allow many more candidates to exist, then scale capital by measured
 strength instead of relying on compounded hard gates.
+
+### Lean edge-selection layer
+
+The repo now includes a deliberately small edge-selection seam built for
+execution, not research sprawl.
+
+The deployable bucket uses only:
+
+- `edge_type`
+- `bias_bucket`
+- `body_bucket`
+- `vwap_bucket`
+
+`main_edge_lab.py` can turn raw isolated forward-return diagnostics into:
+
+- `backtest/output/edge_lab/edge_bucket_summary.csv`
+- `backtest/output/edge_lab/edge_table.json`
+
+The runtime weighted engine can optionally load that JSON through
+`strategy.edge_selection`. When enabled, the bucket becomes the final
+selection/scaling layer:
+
+1. the weighted engine still generates broad candidates
+2. the bucket decides whether that situation is historically tradable
+3. a small `bucket_risk_mult` nudges capital up or down
+
+This is intentionally not a large model. It is a small, explainable filter on
+top of the looser weighted path.
 
 ### Active refinement hooks
 
@@ -733,15 +767,33 @@ The weighted path behaves differently:
 1. compute score details and normalized score
 2. blend score with continuous momentum features
 3. apply bias, regime, and event modifiers
-4. produce a weighted candidate with:
+4. optionally map the candidate into a small edge bucket built from
+   `main_edge_lab.py`
+5. produce a weighted candidate with:
    - `signal_strength`
    - `final_strength`
    - `entry_risk_multiplier`
    - `selection_value`
-5. let the simulator decide whether that candidate deserves capital
+6. let the simulator decide whether that candidate deserves capital
 
 This distinction is important. The refactor goal is broader participation with
 smarter sizing, not re-creating the old gate stack in a fancier form.
+
+### What the bucket layer does and does not do
+
+The optional bucket layer is intentionally lean:
+
+- it does not replace the weighted engine
+- it does not add dozens of extra variables
+- it does not do online machine learning
+
+It only answers:
+
+> Has this simple edge/bias/body/VWAP situation shown enough net edge to deserve
+> capital'
+
+If yes, the candidate stays alive and receives a small size multiplier. If no,
+the candidate is skipped when edge selection is enabled.
 
 ### Current refinement filters
 
@@ -922,11 +974,30 @@ If there is no open trade, the simulator:
 1. computes bias and regime snapshots
 2. scores the execution candle, and optionally exploratory pressure
 3. builds weighted or legacy candidates depending on mode
-4. logs weighted opportunities for later calibration
-5. compares candidates on `selection_value`
-6. sizes the winner
-7. skips invalid zero-size or floor-failed candidates
-8. opens the trade by adding the first entry layer
+4. optionally runs the lean edge-table selector
+5. logs weighted opportunities for later calibration
+6. compares candidates on `selection_value`
+7. applies daily trade-flow and realized-risk controls
+8. sizes the winner
+9. skips invalid zero-size or floor-failed candidates
+10. opens the trade by adding the first entry layer
+
+### Daily execution controls
+
+The active config now includes a small execution-control layer under
+`strategy.daily_controls`.
+
+Its purpose is not to predict better. Its purpose is to keep daily execution
+realistic and controllable:
+
+- stop taking new entries once realized daily loss breaches a configured floor
+- reduce new-entry risk after a positive day reaches the target zone
+- reduce new-entry risk after a weak day turns negative
+- cap total realized daily risk usage
+- cap daily trade count and require higher strength beyond a soft cap
+
+That gives the system a way to pursue regular daily participation without
+allowing one bad day to expand uncontrollably.
 
 ### Management path
 
@@ -1117,6 +1188,8 @@ They are designed to explain not just what happened, but why it happened.
 | `trade_id`, `opportunity_id` | Unique trade identifier and optional back-link to `opportunities.csv` |
 | `side` | `long` or `short` |
 | `signal_family` | `trend` or `exploratory` |
+| `edge_type`, `body_bucket`, `vwap_bucket`, `edge_bucket_key` | Lean runtime bucket metadata when edge selection is active |
+| `bucket_expected_return`, `bucket_risk_mult` | Expected-return proxy and sizing nudge from the edge table |
 | `entry_time` | First entry timestamp |
 | `exit_time` | Exit timestamp |
 | `entry_price` | First entry price |
@@ -1131,6 +1204,7 @@ They are designed to explain not just what happened, but why it happened.
 | `initial_risk_amount` | Risk of the first layer |
 | `total_risk_amount` | Total risk of all layers to stop |
 | `entry_risk_multiplier` | Weighted-path capital scaling applied at entry |
+| `runtime_risk_multiplier` | Daily-control multiplier applied on top of entry scaling |
 | `bias` | Directional bias at entry |
 | `regime_score` | Higher-timeframe regime score at entry |
 | `regime_class` | Regime label such as `strong` or `moderate` |
@@ -1165,6 +1239,8 @@ Important columns include:
 | --- | --- |
 | `opportunity_id` | Stable identifier later reused by the trade log when executed |
 | `timestamp`, `side`, `signal_family` | Candidate timing and direction |
+| `edge_type`, `body_bucket`, `vwap_bucket`, `bucket_key` | Lean bucket classification fields |
+| `bucket_valid`, `bucket_expected_return`, `bucket_risk_mult` | Edge-table verdict and suggested size scaling |
 | `raw_score`, `score_norm`, `score_max` | Score-engine outputs |
 | `momentum_strength`, `signal_strength`, `final_strength` | Weighted-path ranking fields |
 | `bias_weight`, `regime_weight`, `event_bonus` | Context multipliers |
@@ -1185,6 +1261,23 @@ reports such as:
 | `signal_family_summary.csv` | Performance split by side and signal family |
 | `daily_frequency_summary.csv` | Opportunity and execution frequency by day |
 | `calibration_overview.csv` | Aggregate execution-rate and expectancy overview |
+
+### Edge-lab outputs
+
+`main_edge_lab.py` is the deliberately stripped-down hidden-edge diagnostics
+tool. It is separate from the main simulator because its job is hypothesis
+isolation, not trade execution.
+
+It produces:
+
+| File | Purpose |
+| --- | --- |
+| `edge_signals.csv` | Every isolated momentum/compression/mean-reversion signal across the chosen symbols |
+| `edge_summary.csv` | Forward-return summary by edge family, side, and horizon |
+| `edge_daily_frequency.csv` | Signal flow by day |
+| `edge_overview.csv` | Top-level frequency and expectancy snapshot |
+| `edge_bucket_summary.csv` | Small bucket-table summary using `edge_type`, `bias`, `body`, and `VWAP distance` |
+| `edge_table.json` | Runtime-loadable lookup table for `strategy.edge_selection` |
 
 ### Equity log
 
@@ -1260,6 +1353,8 @@ deliberate incompleteness.
   historical benchmark is still the older long-only baseline.
 - The repo also contains an experimental exploratory pressure layer that is
   disabled by default.
+- The lean edge-table selector exists, but it remains optional because the
+  current broad BTC/ETH/SOL buckets are still weak net of fees.
 - `entry/retest.py` exists but is not part of the active entry path.
 - The runtime simulator still operates through a single open-position lane.
 - True multi-position and multi-asset portfolio execution are still planned
@@ -1271,6 +1366,8 @@ deliberate incompleteness.
 - There is no slippage model.
 - There is no partial-fill model.
 - Equity is updated on realized trade close, not mark-to-market unrealized value.
+- The edge lab is fee-aware for diagnostics, but the simulator itself still does
+  not subtract execution fees from live trade PnL.
 
 ### Backtest behavior
 

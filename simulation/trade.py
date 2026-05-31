@@ -12,6 +12,12 @@ TRADE_LOG_FIELDS = [
     "opportunity_id",
     "side",
     "signal_family",
+    "edge_type",
+    "body_bucket",
+    "vwap_bucket",
+    "edge_bucket_key",
+    "bucket_expected_return",
+    "bucket_risk_mult",
     "entry_time",
     "exit_time",
     "entry_price",
@@ -26,6 +32,7 @@ TRADE_LOG_FIELDS = [
     "total_risk_amount",
     "equity_at_entry",
     "entry_risk_multiplier",
+    "runtime_risk_multiplier",
     "intended_risk_per_trade",
     "effective_risk_fraction",
     "equity_return_fraction",
@@ -78,6 +85,12 @@ def trade_to_log_record(trade):
         "opportunity_id": getattr(trade, "opportunity_id", conditions.get("opportunity_id")),
         "side": getattr(trade, "side", conditions.get("side")),
         "signal_family": getattr(trade, "signal_family", conditions.get("signal_family")),
+        "edge_type": getattr(trade, "edge_type", conditions.get("edge_type")),
+        "body_bucket": getattr(trade, "body_bucket", conditions.get("body_bucket")),
+        "vwap_bucket": getattr(trade, "vwap_bucket", conditions.get("vwap_bucket")),
+        "edge_bucket_key": getattr(trade, "edge_bucket_key", conditions.get("edge_bucket_key")),
+        "bucket_expected_return": getattr(trade, "bucket_expected_return", conditions.get("bucket_expected_return")),
+        "bucket_risk_mult": getattr(trade, "bucket_risk_mult", conditions.get("bucket_risk_mult")),
         "entry_time": getattr(trade, "entry_time", None),
         "exit_time": getattr(trade, "exit_time", None),
         "entry_price": getattr(trade, "entry_price", None),
@@ -92,6 +105,7 @@ def trade_to_log_record(trade):
         "total_risk_amount": getattr(trade, "total_risk_amount", None),
         "equity_at_entry": getattr(trade, "equity_at_entry", None),
         "entry_risk_multiplier": getattr(trade, "entry_risk_multiplier", None),
+        "runtime_risk_multiplier": getattr(trade, "runtime_risk_multiplier", None),
         "intended_risk_per_trade": getattr(trade, "intended_risk_per_trade", None),
         "effective_risk_fraction": getattr(trade, "effective_risk_fraction", None),
         "equity_return_fraction": getattr(trade, "equity_return_fraction", None),
@@ -207,6 +221,7 @@ class Trade:
         self.equity_at_entry = None
         self.signal_family = "trend"
         self.entry_risk_multiplier = 1.0
+        self.runtime_risk_multiplier = 1.0
         self.entry_role = "core"
         self.entry_priority = 1
         self.intended_risk_per_trade = None
@@ -223,6 +238,12 @@ class Trade:
         self.regime_score = None
         self.regime_class = None
         self.entry_threshold = None
+        self.edge_type = None
+        self.body_bucket = None
+        self.vwap_bucket = None
+        self.edge_bucket_key = None
+        self.bucket_expected_return = None
+        self.bucket_risk_mult = None
         self.trail_state = "init"
         self.trail_anchor_column = None
         self.trail_anchor_price = None
@@ -249,6 +270,12 @@ class Trade:
             "atr": row.get("atr", None),
             "macd_hist": row.get("macd_hist", None),
             "pressure_score": None,
+            "edge_type": None,
+            "body_bucket": None,
+            "vwap_bucket": None,
+            "edge_bucket_key": None,
+            "bucket_expected_return": None,
+            "bucket_risk_mult": None,
             "score_norm": None,
             "momentum_strength": None,
             "final_strength": None,
@@ -413,16 +440,19 @@ class Trade:
         *,
         equity_at_entry=None,
         entry_risk_multiplier=None,
+        runtime_risk_multiplier=None,
         intended_risk_per_trade=None,
         effective_risk_fraction=None,
     ):
         self.equity_at_entry = equity_at_entry
         self.entry_risk_multiplier = entry_risk_multiplier
+        self.runtime_risk_multiplier = runtime_risk_multiplier
         self.intended_risk_per_trade = intended_risk_per_trade
         self.effective_risk_fraction = effective_risk_fraction
         self.conditions.update({
             "equity_at_entry": equity_at_entry,
             "entry_risk_multiplier": entry_risk_multiplier,
+            "runtime_risk_multiplier": runtime_risk_multiplier,
             "intended_risk_per_trade": intended_risk_per_trade,
             "effective_risk_fraction": effective_risk_fraction,
         })
@@ -462,6 +492,31 @@ class Trade:
             "bias_weight": bias_weight,
             "regime_weight": regime_weight,
             "event_bonus": event_bonus,
+        })
+
+    def annotate_edge_bucket(
+        self,
+        *,
+        edge_type=None,
+        body_bucket=None,
+        vwap_bucket=None,
+        bucket_key=None,
+        bucket_expected_return=None,
+        bucket_risk_mult=None,
+    ):
+        self.edge_type = edge_type
+        self.body_bucket = body_bucket
+        self.vwap_bucket = vwap_bucket
+        self.edge_bucket_key = bucket_key
+        self.bucket_expected_return = bucket_expected_return
+        self.bucket_risk_mult = bucket_risk_mult
+        self.conditions.update({
+            "edge_type": edge_type,
+            "body_bucket": body_bucket,
+            "vwap_bucket": vwap_bucket,
+            "edge_bucket_key": bucket_key,
+            "bucket_expected_return": bucket_expected_return,
+            "bucket_risk_mult": bucket_risk_mult,
         })
 
     def update_trailing_state(

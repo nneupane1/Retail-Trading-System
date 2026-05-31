@@ -1,8 +1,11 @@
 import unittest
+import json
+import tempfile
 
 import pandas as pd
 
 from entry.breakout import BreakoutDetector
+from entry.edge_selector import EdgeSelector
 from entry.entry_engine import EntryEngine
 from entry.exploration_engine import ExplorationEngine
 from entry.scoring import ScoreEngine
@@ -1291,6 +1294,56 @@ class PyramidingEngineTests(unittest.TestCase):
 
         self.assertFalse(blocked_engine.qualifies_for_pyramiding(pd.Series({}), trade))
         self.assertTrue(allowed_engine.qualifies_for_pyramiding(pd.Series({}), trade))
+
+    def test_edge_selector_reads_small_bucket_table_and_returns_valid_bucket(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            edge_table_path = f"{temp_dir}/edge_table.json"
+            with open(edge_table_path, "w", encoding="utf-8") as file_handle:
+                json.dump(
+                    {
+                        "metadata": {"min_count": 300, "min_avg_return_net": 0.0},
+                        "buckets": {
+                            "momentum_long|bullish|strong|near": {
+                                "valid": True,
+                                "expected_return": 0.0015,
+                                "risk_mult": 1.2,
+                                "signal_count": 420,
+                                "selected_horizon": 3,
+                            }
+                        },
+                    },
+                    file_handle,
+                )
+
+            config = make_config()
+            config.data["strategy"]["edge_selection"] = {
+                "enabled": True,
+                "table_path": edge_table_path,
+                "strong_body_threshold": 1.3,
+                "vwap_far_threshold": 0.01,
+                "min_expected_return": 0.0,
+                "default_risk_mult": 1.0,
+                "max_risk_mult": 1.5,
+            }
+            selector = EdgeSelector(config=config)
+            row = pd.Series(
+                {
+                    "breakout": True,
+                    "breakdown": False,
+                    "compression": False,
+                    "body_strength": 1.7,
+                    "close_position": 0.85,
+                    "vwap_distance_ratio": 0.002,
+                    "upper_wick_ratio": 0.2,
+                    "lower_wick_ratio": 0.2,
+                }
+            )
+            profile = selector.evaluate(row, bias="bullish", side="long")
+
+            self.assertTrue(profile["bucket_valid"])
+            self.assertEqual(profile["bucket_key_text"], "momentum_long|bullish|strong|near")
+            self.assertAlmostEqual(profile["bucket_expected_return"], 0.0015)
+            self.assertAlmostEqual(profile["bucket_risk_mult"], 1.2)
 
 
 if __name__ == "__main__":
