@@ -5,6 +5,7 @@ import pandas as pd
 from entry.breakout import BreakoutDetector
 from entry.entry_engine import EntryEngine
 from entry.exploration_engine import ExplorationEngine
+from entry.scoring import ScoreEngine
 from exit.exit_engine import ExitEngine
 from features.feature_pipeline import FeaturePipeline
 from pyramiding.pyramiding_engine import PyramidingEngine
@@ -92,6 +93,43 @@ def make_config():
             },
         },
         "strategy": {
+            "execution": {
+                "mode": "legacy",
+                "weighted": {
+                    "score_weight": 0.7,
+                    "momentum_weight": 0.3,
+                    "noise_guard_min_strength": 0.25,
+                    "min_entry_risk_multiplier": 0.25,
+                    "max_strength_multiplier": 1.5,
+                    "event_bonus": 1.1,
+                    "non_event_bonus": 1.0,
+                    "structural_floor_enabled": True,
+                    "structural_floor_anchor_column": "ema3",
+                    "bias_weights": {
+                        "bullish": 1.15,
+                        "neutral": 0.95,
+                        "bearish": 0.7,
+                    },
+                    "regime_weights": {
+                        "weak": 0.7,
+                        "moderate": 1.0,
+                        "strong": 1.2,
+                    },
+                    "momentum_component_weights": {
+                        "price_to_fast_ema": 0.35,
+                        "ema_gap": 0.25,
+                        "vwap_distance": 0.2,
+                        "macd_hist": 0.1,
+                        "atr_rising": 0.1,
+                    },
+                    "momentum_scales": {
+                        "price_to_fast_ema_ratio": 0.006,
+                        "ema_gap_ratio": 0.004,
+                        "vwap_distance_ratio": 0.004,
+                        "macd_hist_atr_ratio": 0.25,
+                    },
+                },
+            },
             "scoring": {
                 "bias_weight": 2,
                 "trend_weight": 1,
@@ -278,6 +316,57 @@ class FeaturePipelineTests(unittest.TestCase):
             "pressure_ignition_short",
         ]:
             self.assertIn(column, result.columns)
+
+
+class ScoreEngineTests(unittest.TestCase):
+    def test_score_engine_exposes_component_breakdown_and_normalized_strength(self):
+        engine = ScoreEngine(config=make_config())
+        row = pd.Series(
+            {
+                "close": 101.0,
+                "ema2": 100.0,
+                "compression": True,
+                "breakout": True,
+                "breakdown": False,
+                "body_strength": 1.8,
+                "close_position": 0.9,
+                "upper_wick_ratio": 0.2,
+                "lower_wick_ratio": 0.1,
+                "session_vwap": 100.5,
+            }
+        )
+
+        details = engine.compute_score_details(row, bias="bullish", side="long")
+
+        self.assertEqual(details["score"], 9.0)
+        self.assertAlmostEqual(details["normalized_score"], 1.0)
+        self.assertEqual(details["max_score"], 9.0)
+        self.assertTrue(details["components"]["event"]["aligned"])
+        self.assertEqual(details["components"]["event"]["points"], 2.0)
+
+    def test_score_engine_short_breakdown_uses_directional_thresholds(self):
+        engine = ScoreEngine(config=make_config())
+        row = pd.Series(
+            {
+                "close": 98.0,
+                "ema2": 99.5,
+                "compression": False,
+                "breakout": False,
+                "breakdown": True,
+                "body_strength": 1.5,
+                "close_position": 0.2,
+                "upper_wick_ratio": 0.4,
+                "lower_wick_ratio": 0.2,
+                "session_vwap": 99.0,
+            }
+        )
+
+        details = engine.compute_score_details(row, bias="bearish", side="short")
+
+        self.assertEqual(details["score"], 8.0)
+        self.assertAlmostEqual(details["normalized_score"], 8.0 / 9.0)
+        self.assertTrue(details["components"]["wick"]["aligned"])
+        self.assertLess(details["components"]["close_position"]["value"], 0.4)
 
 
 class BreakoutDetectorTests(unittest.TestCase):
@@ -601,6 +690,127 @@ class EntryEngineTests(unittest.TestCase):
         trade = engine.generate_entry(row, score=9, bias="bearish", side="short")
 
         self.assertIsNone(trade)
+
+    def test_weighted_entry_engine_builds_continuous_long_candidate(self):
+        config = make_config()
+        config.data["strategy"]["execution"]["mode"] = "weighted"
+        engine = EntryEngine(config=config)
+        row = pd.Series(
+            {
+                "close": 104.0,
+                "ema2": 102.0,
+                "ema3": 100.0,
+                "breakout": False,
+                "body_strength": 1.5,
+                "upper_wick_ratio": 0.2,
+                "close_position": 0.8,
+                "price_to_fast_ema_ratio": 0.01,
+                "ema_gap_ratio": 0.01,
+                "vwap_distance_ratio": 0.01,
+                "atr_rising": True,
+                "atr": 2.0,
+                "macd_hist": 0.6,
+                "ll2": 97.0,
+            },
+            name=pd.Timestamp("2026-01-01 00:00:00"),
+        )
+
+        profile = engine.evaluate_weighted_opportunity(
+            row,
+            score=5,
+            bias="neutral",
+            side="long",
+            regime_score=2,
+            regime_class="moderate",
+        )
+
+        self.assertTrue(profile["eligible"])
+        self.assertGreater(profile["final_strength"], 0.25)
+        self.assertIsNotNone(profile["candidate"])
+        self.assertEqual(profile["candidate"]["entry_role"], "core")
+        self.assertAlmostEqual(
+            profile["candidate"]["trade"].final_strength,
+            profile["final_strength"],
+        )
+
+    def test_weighted_entry_engine_can_use_precomputed_normalized_score(self):
+        config = make_config()
+        config.data["strategy"]["execution"]["mode"] = "weighted"
+        engine = EntryEngine(config=config)
+        row = pd.Series(
+            {
+                "close": 104.0,
+                "ema2": 102.0,
+                "ema3": 100.0,
+                "breakout": False,
+                "body_strength": 1.5,
+                "upper_wick_ratio": 0.2,
+                "close_position": 0.8,
+                "price_to_fast_ema_ratio": 0.01,
+                "ema_gap_ratio": 0.01,
+                "vwap_distance_ratio": 0.01,
+                "atr_rising": True,
+                "atr": 2.0,
+                "macd_hist": 0.6,
+                "ll2": 97.0,
+            },
+            name=pd.Timestamp("2026-01-01 00:00:00"),
+        )
+
+        profile = engine.evaluate_weighted_opportunity(
+            row,
+            score=8,
+            bias="neutral",
+            side="long",
+            regime_score=2,
+            regime_class="moderate",
+            score_details={
+                "normalized_score": 0.2,
+                "max_score": 9.0,
+                "components": {"bias": {"points": 0.0, "weight": 2.0}},
+            },
+        )
+
+        self.assertAlmostEqual(profile["score_norm"], 0.2)
+        self.assertEqual(profile["score_max"], 9.0)
+        self.assertIn("bias", profile["score_components"])
+
+    def test_weighted_entry_engine_rejects_candidate_below_structural_floor(self):
+        config = make_config()
+        config.data["strategy"]["execution"]["mode"] = "weighted"
+        engine = EntryEngine(config=config)
+        row = pd.Series(
+            {
+                "close": 98.0,
+                "ema2": 99.0,
+                "ema3": 100.0,
+                "breakout": True,
+                "body_strength": 1.5,
+                "upper_wick_ratio": 0.2,
+                "close_position": 0.8,
+                "price_to_fast_ema_ratio": -0.01,
+                "ema_gap_ratio": -0.01,
+                "vwap_distance_ratio": -0.01,
+                "atr_rising": True,
+                "atr": 2.0,
+                "macd_hist": -0.6,
+                "ll2": 95.0,
+            },
+            name=pd.Timestamp("2026-01-01 00:00:00"),
+        )
+
+        profile = engine.evaluate_weighted_opportunity(
+            row,
+            score=6,
+            bias="bullish",
+            side="long",
+            regime_score=3,
+            regime_class="strong",
+        )
+
+        self.assertFalse(profile["eligible"])
+        self.assertEqual(profile["rejection_reason"], "structural_floor")
+        self.assertIsNone(profile["candidate"])
 
 
 class ExplorationEngineTests(unittest.TestCase):

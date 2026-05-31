@@ -44,6 +44,7 @@ class Simulator:
         exit_engine=None,
         position_sizer=None,
         exploration_engine=None,
+        opportunity_logger=None,
         config=None
     ):
 
@@ -98,6 +99,10 @@ class Simulator:
         self.exit_engine = exit_engine or ExitEngine()
         self.position_sizer = position_sizer or PositionSizer()
         self.exploration_engine = exploration_engine or ExplorationEngine(config=self.config)
+        self.opportunity_logger = opportunity_logger
+        weighted_mode_getter = getattr(self.entry_engine, "is_weighted_mode", None)
+        self.weighted_entry_mode = bool(weighted_mode_getter()) if callable(weighted_mode_getter) else False
+        self._opportunity_sequence = 0
 
     @staticmethod
     def _choose_direction(candidates):
@@ -111,10 +116,13 @@ class Simulator:
             if int(candidate.get("entry_priority", 0)) == best_priority
         ]
 
-        best_score = max(float(candidate.get("score", 0)) for candidate in priority_winners)
+        best_score = max(
+            float(candidate.get("selection_value", candidate.get("score", 0)))
+            for candidate in priority_winners
+        )
         score_winners = [
             candidate for candidate in priority_winners
-            if float(candidate.get("score", 0)) == best_score
+            if float(candidate.get("selection_value", candidate.get("score", 0))) == best_score
         ]
 
         if len(score_winners) == 1:
@@ -125,6 +133,74 @@ class Simulator:
             return None
 
         return score_winners[0]
+
+    def _log_opportunity(self, payload):
+        if self.opportunity_logger is None or not payload:
+            return
+
+        log_method = getattr(self.opportunity_logger, "log_opportunity", None)
+        if callable(log_method):
+            log_method(payload)
+
+    def _assign_opportunity_id(self, payload):
+        if not payload:
+            return None
+
+        existing = payload.get("opportunity_id")
+        if existing:
+            return existing
+
+        self._opportunity_sequence += 1
+        timestamp = payload.get("timestamp")
+        if hasattr(timestamp, "isoformat"):
+            timestamp_text = timestamp.isoformat()
+        else:
+            timestamp_text = str(timestamp)
+        safe_timestamp = (
+            timestamp_text.replace(" ", "T")
+            .replace(":", "-")
+            .replace("/", "-")
+        )
+        opportunity_id = (
+            f"opp_{safe_timestamp}_{payload.get('side', 'na')}_"
+            f"{payload.get('signal_family', 'signal')}_{self._opportunity_sequence:06d}"
+        )
+        payload["opportunity_id"] = opportunity_id
+
+        candidate = payload.get("candidate")
+        if isinstance(candidate, dict):
+            candidate["opportunity_id"] = opportunity_id
+            trade = candidate.get("trade")
+            if trade is not None and hasattr(trade, "annotate_opportunity"):
+                trade.annotate_opportunity(opportunity_id)
+            elif trade is not None:
+                setattr(trade, "opportunity_id", opportunity_id)
+
+        return opportunity_id
+
+    @staticmethod
+    def _enrich_opportunity_payload(payload, bias_snapshot=None, regime_snapshot=None):
+        if not payload:
+            return payload
+        if bias_snapshot:
+            payload["bias_snapshot"] = dict(bias_snapshot)
+            payload["bias_directional_strength"] = bias_snapshot.get(
+                "directional_strength"
+            )
+            payload["bias_price_vs_ema_ratio"] = bias_snapshot.get(
+                "price_vs_ema_ratio"
+            )
+            payload["bias_ema_slope"] = bias_snapshot.get("ema_slope")
+        if regime_snapshot:
+            payload["regime_snapshot"] = dict(regime_snapshot)
+            payload["regime_max_score"] = regime_snapshot.get("max_score")
+            payload["regime_normalized_strength"] = regime_snapshot.get(
+                "normalized_strength"
+            )
+            payload["regime_macro_aligned"] = regime_snapshot.get("macro_aligned")
+            payload["regime_slope_aligned"] = regime_snapshot.get("slope_aligned")
+            payload["regime_trend_aligned"] = regime_snapshot.get("trend_aligned")
+        return payload
 
     def _close_current_trade(self, row, reason=None, exit_price=None):
         trade = self.current_trade
@@ -148,6 +224,10 @@ class Simulator:
         self.level = 0
 
     def _regime_allows_entry(self, regime_score):
+        if isinstance(regime_score, dict):
+            if "allows_entries" in regime_score:
+                return bool(regime_score["allows_entries"])
+            regime_score = regime_score.get("raw_score")
         if regime_score is None:
             return False
         allows_entries = getattr(self.regime_detector, "allows_entries", None)
@@ -156,10 +236,37 @@ class Simulator:
         return True
 
     def _regime_classification(self, regime_score):
+        if isinstance(regime_score, dict):
+            if regime_score.get("class") is not None:
+                return regime_score.get("class")
+            regime_score = regime_score.get("raw_score")
         classify = getattr(self.regime_detector, "classify", None)
         if callable(classify):
             return classify(regime_score)
         return None
+
+    def _compute_bias_snapshot(self, df_1h):
+        getter = getattr(self.bias_detector, "get_bias_snapshot", None)
+        if callable(getter):
+            snapshot = getter(df_1h)
+            if isinstance(snapshot, dict):
+                return snapshot
+        label = self.bias_detector.get_bias(df_1h)
+        return {"label": label}
+
+    def _compute_regime_snapshot(self, df_5h, df_12h, side):
+        getter = getattr(self.regime_detector, "compute_regime_snapshot", None)
+        if callable(getter):
+            snapshot = getter(df_5h, df_12h, side=side)
+            if isinstance(snapshot, dict):
+                return snapshot
+        raw_score = self.regime_detector.compute_regime(df_5h, df_12h, side=side)
+        return {
+            "side": side,
+            "raw_score": raw_score,
+            "class": self._regime_classification(raw_score),
+            "allows_entries": self._regime_allows_entry(raw_score),
+        }
 
     def _risk_for_side(self, side):
         return self.risk_per_trade_by_side.get(str(side).lower(), self.risk_per_trade)
@@ -199,6 +306,195 @@ class Simulator:
             "entry_priority": 1,
         }
 
+    def _select_weighted_candidate(
+        self,
+        row,
+        bias,
+        df_5h,
+        df_12h,
+        minimum_priority=None,
+        bias_snapshot=None,
+    ):
+        directional_candidates = []
+
+        long_regime_snapshot = (
+            self._compute_regime_snapshot(df_5h, df_12h, side="long")
+            if "long" in self.enabled_sides
+            else None
+        )
+        short_regime_snapshot = (
+            self._compute_regime_snapshot(df_5h, df_12h, side="short")
+            if "short" in self.enabled_sides
+            else None
+        )
+        long_regime = (
+            long_regime_snapshot.get("raw_score")
+            if long_regime_snapshot is not None
+            else None
+        )
+        short_regime = (
+            short_regime_snapshot.get("raw_score")
+            if short_regime_snapshot is not None
+            else None
+        )
+        long_regime_class = (
+            long_regime_snapshot.get("class")
+            if long_regime_snapshot is not None
+            else None
+        )
+        short_regime_class = (
+            short_regime_snapshot.get("class")
+            if short_regime_snapshot is not None
+            else None
+        )
+
+        candidate_builder = getattr(self.entry_engine, "build_candidate", None)
+        if not callable(candidate_builder):
+            weighted_evaluator = getattr(
+                self.entry_engine,
+                "evaluate_weighted_opportunity",
+                None,
+            )
+            if not callable(weighted_evaluator):
+                raise AttributeError(
+                    "Weighted entry mode requires build_candidate() or "
+                    "evaluate_weighted_opportunity()"
+                )
+            candidate_builder = weighted_evaluator
+
+        print("\nDirectional regime context")
+        print(f"  LONG:  {long_regime} ({long_regime_class})")
+        print(f"  SHORT: {short_regime} ({short_regime_class})")
+
+        if "long" in self.enabled_sides:
+            score_details_getter = getattr(
+                self.score_engine,
+                "compute_score_details",
+                None,
+            )
+            long_score_details = (
+                score_details_getter(row, bias, side="long")
+                if callable(score_details_getter)
+                else None
+            )
+            long_score = (
+                long_score_details["score"]
+                if long_score_details is not None
+                else self.score_engine.compute_score(row, bias, side="long")
+            )
+            long_profile = candidate_builder(
+                row,
+                long_score,
+                bias,
+                side="long",
+                regime_score=long_regime,
+                regime_class=long_regime_class,
+                score_details=long_score_details,
+            )
+            self._enrich_opportunity_payload(
+                long_profile,
+                bias_snapshot=bias_snapshot or {"label": bias},
+                regime_snapshot=long_regime_snapshot,
+            )
+            self._assign_opportunity_id(long_profile)
+            self._log_opportunity(long_profile)
+            long_candidate = long_profile.get("candidate")
+            if long_candidate is not None:
+                long_candidate["bias_snapshot"] = bias_snapshot or {"label": bias}
+                long_candidate["regime_snapshot"] = long_regime_snapshot
+                directional_candidates.append(long_candidate)
+            print(
+                "  LONG strength: "
+                f"{long_profile['final_strength']:.4f} "
+                f"(score={long_score}, eligible={long_profile['eligible']})"
+            )
+
+        if "short" in self.enabled_sides:
+            score_details_getter = getattr(
+                self.score_engine,
+                "compute_score_details",
+                None,
+            )
+            short_score_details = (
+                score_details_getter(row, bias, side="short")
+                if callable(score_details_getter)
+                else None
+            )
+            short_score = (
+                short_score_details["score"]
+                if short_score_details is not None
+                else self.score_engine.compute_score(row, bias, side="short")
+            )
+            short_profile = candidate_builder(
+                row,
+                short_score,
+                bias,
+                side="short",
+                regime_score=short_regime,
+                regime_class=short_regime_class,
+                score_details=short_score_details,
+            )
+            self._enrich_opportunity_payload(
+                short_profile,
+                bias_snapshot=bias_snapshot or {"label": bias},
+                regime_snapshot=short_regime_snapshot,
+            )
+            self._assign_opportunity_id(short_profile)
+            self._log_opportunity(short_profile)
+            short_candidate = short_profile.get("candidate")
+            if short_candidate is not None:
+                short_candidate["bias_snapshot"] = bias_snapshot or {"label": bias}
+                short_candidate["regime_snapshot"] = short_regime_snapshot
+                directional_candidates.append(short_candidate)
+            print(
+                "  SHORT strength: "
+                f"{short_profile['final_strength']:.4f} "
+                f"(score={short_score}, eligible={short_profile['eligible']})"
+            )
+
+        if long_regime is not None:
+            exploratory_long = self.exploration_engine.build_candidate(
+                row,
+                bias=bias,
+                side="long",
+                regime_score=long_regime,
+                regime_class=long_regime_class,
+            )
+            if exploratory_long is not None:
+                directional_candidates.append(exploratory_long)
+
+        if short_regime is not None:
+            exploratory_short = self.exploration_engine.build_candidate(
+                row,
+                bias=bias,
+                side="short",
+                regime_score=short_regime,
+                regime_class=short_regime_class,
+            )
+            if exploratory_short is not None:
+                directional_candidates.append(exploratory_short)
+
+        candidate = self._choose_direction(directional_candidates)
+        if candidate is None:
+            print("No entry: no weighted directional edge beat the noise guard cleanly")
+            return None
+
+        if (
+            minimum_priority is not None
+            and candidate["entry_priority"] <= int(minimum_priority)
+        ):
+            print("No entry: no higher-priority directional edge is available")
+            return None
+
+        print(f"Selected direction: {candidate['side'].upper()}")
+        print(f"Selected role: {candidate['entry_role'].upper()}")
+        print(
+            "Selected strength: "
+            f"{float(candidate.get('selection_value', candidate.get('score', 0))):.4f}"
+        )
+        print(f"Selected signal family: {candidate.get('signal_family', 'trend').upper()}")
+        return candidate
+
     def _select_directional_candidate(
         self,
         row,
@@ -206,25 +502,46 @@ class Simulator:
         df_5h,
         df_12h,
         minimum_priority=None,
+        bias_snapshot=None,
     ):
-        long_regime = (
-            self.regime_detector.compute_regime(df_5h, df_12h, side="long")
+        if self.weighted_entry_mode:
+            return self._select_weighted_candidate(
+                row,
+                bias,
+                df_5h,
+                df_12h,
+                minimum_priority=minimum_priority,
+                bias_snapshot=bias_snapshot,
+            )
+
+        long_regime_snapshot = (
+            self._compute_regime_snapshot(df_5h, df_12h, side="long")
             if "long" in self.enabled_sides
             else None
         )
-        short_regime = (
-            self.regime_detector.compute_regime(df_5h, df_12h, side="short")
+        short_regime_snapshot = (
+            self._compute_regime_snapshot(df_5h, df_12h, side="short")
             if "short" in self.enabled_sides
             else None
         )
+        long_regime = (
+            long_regime_snapshot.get("raw_score")
+            if long_regime_snapshot is not None
+            else None
+        )
+        short_regime = (
+            short_regime_snapshot.get("raw_score")
+            if short_regime_snapshot is not None
+            else None
+        )
         long_allowed = (
-            self._regime_allows_entry(long_regime)
-            if long_regime is not None
+            self._regime_allows_entry(long_regime_snapshot)
+            if long_regime_snapshot is not None
             else False
         )
         short_allowed = (
-            self._regime_allows_entry(short_regime)
-            if short_regime is not None
+            self._regime_allows_entry(short_regime_snapshot)
+            if short_regime_snapshot is not None
             else False
         )
 
@@ -235,15 +552,38 @@ class Simulator:
             )
             return None
 
+        score_details_getter = getattr(
+            self.score_engine,
+            "compute_score_details",
+            None,
+        )
+        long_score_details = (
+            score_details_getter(row, bias, side="long")
+            if "long" in self.enabled_sides and long_allowed and callable(score_details_getter)
+            else None
+        )
+        short_score_details = (
+            score_details_getter(row, bias, side="short")
+            if "short" in self.enabled_sides and short_allowed and callable(score_details_getter)
+            else None
+        )
         long_score = (
-            self.score_engine.compute_score(row, bias, side="long")
-            if "long" in self.enabled_sides and long_allowed
-            else -1
+            long_score_details["score"]
+            if long_score_details is not None
+            else (
+                self.score_engine.compute_score(row, bias, side="long")
+                if "long" in self.enabled_sides and long_allowed
+                else -1
+            )
         )
         short_score = (
-            self.score_engine.compute_score(row, bias, side="short")
-            if "short" in self.enabled_sides and short_allowed
-            else -1
+            short_score_details["score"]
+            if short_score_details is not None
+            else (
+                self.score_engine.compute_score(row, bias, side="short")
+                if "short" in self.enabled_sides and short_allowed
+                else -1
+            )
         )
         long_meta = self._entry_metadata(long_score, "long")
         short_meta = self._entry_metadata(short_score, "short")
@@ -263,7 +603,14 @@ class Simulator:
                 "side": "long",
                 "score": long_score,
                 "trade_regime": long_regime,
-                "regime_class": self._regime_classification(long_regime),
+                "regime_class": (
+                    long_regime_snapshot.get("class")
+                    if long_regime_snapshot is not None
+                    else None
+                ),
+                "score_details": long_score_details,
+                "bias_snapshot": bias_snapshot or {"label": bias},
+                "regime_snapshot": long_regime_snapshot,
                 "signal_family": "trend",
                 **long_meta,
             }
@@ -275,7 +622,14 @@ class Simulator:
                 "side": "short",
                 "score": short_score,
                 "trade_regime": short_regime,
-                "regime_class": self._regime_classification(short_regime),
+                "regime_class": (
+                    short_regime_snapshot.get("class")
+                    if short_regime_snapshot is not None
+                    else None
+                ),
+                "score_details": short_score_details,
+                "bias_snapshot": bias_snapshot or {"label": bias},
+                "regime_snapshot": short_regime_snapshot,
                 "signal_family": "trend",
                 **short_meta,
             }
@@ -287,7 +641,11 @@ class Simulator:
                 bias=bias,
                 side="long",
                 regime_score=long_regime,
-                regime_class=self._regime_classification(long_regime),
+                regime_class=(
+                    long_regime_snapshot.get("class")
+                    if long_regime_snapshot is not None
+                    else None
+                ),
             )
             if exploratory_long is not None:
                 directional_candidates.append(exploratory_long)
@@ -298,7 +656,11 @@ class Simulator:
                 bias=bias,
                 side="short",
                 regime_score=short_regime,
-                regime_class=self._regime_classification(short_regime),
+                regime_class=(
+                    short_regime_snapshot.get("class")
+                    if short_regime_snapshot is not None
+                    else None
+                ),
             )
             if exploratory_short is not None:
                 directional_candidates.append(exploratory_short)
@@ -321,18 +683,36 @@ class Simulator:
 
         trade = candidate.get("trade")
         if trade is None:
-            trade = self.entry_engine.generate_entry(
-                row,
-                candidate["score"],
-                bias,
-                side=candidate["side"],
-                regime_score=candidate["trade_regime"],
-                regime_class=candidate["regime_class"],
-            )
-            if trade is None:
-                return None
+            candidate_builder = getattr(self.entry_engine, "build_candidate", None)
+            if callable(candidate_builder):
+                profile = candidate_builder(
+                    row,
+                    candidate["score"],
+                    bias,
+                    side=candidate["side"],
+                    regime_score=candidate["trade_regime"],
+                    regime_class=candidate["regime_class"],
+                    score_details=candidate.get("score_details"),
+                )
+                built_candidate = profile.get("candidate")
+                if built_candidate is None:
+                    return None
+                candidate.update(built_candidate)
+                trade = built_candidate.get("trade")
+            else:
+                trade = self.entry_engine.generate_entry(
+                    row,
+                    candidate["score"],
+                    bias,
+                    side=candidate["side"],
+                    regime_score=candidate["trade_regime"],
+                    regime_class=candidate["regime_class"],
+                )
+                if trade is None:
+                    return None
+                candidate["trade"] = trade
 
-        candidate["trade"] = trade
+        trade = candidate.get("trade")
         candidate["entry_risk_multiplier"] = float(
             getattr(trade, "entry_risk_multiplier", candidate["entry_risk_multiplier"])
             or candidate["entry_risk_multiplier"]
@@ -350,10 +730,18 @@ class Simulator:
 
     def _open_candidate_trade(self, row, bias, candidate):
         trade = candidate["trade"]
+        opportunity_id = candidate.get("opportunity_id")
+        if opportunity_id is not None:
+            if hasattr(trade, "annotate_opportunity") and callable(trade.annotate_opportunity):
+                trade.annotate_opportunity(opportunity_id)
+            else:
+                trade.opportunity_id = opportunity_id
         selected_side = candidate["side"]
         trade_regime = candidate["trade_regime"]
         regime_class = candidate["regime_class"]
         entry_threshold = candidate["entry_threshold"]
+        bias_snapshot = candidate.get("bias_snapshot")
+        regime_snapshot = candidate.get("regime_snapshot")
 
         if hasattr(trade, "annotate_entry_context") and callable(trade.annotate_entry_context):
             trade.annotate_entry_context(
@@ -361,6 +749,8 @@ class Simulator:
                 regime_score=trade_regime,
                 regime_class=regime_class,
                 entry_threshold=entry_threshold,
+                bias_snapshot=bias_snapshot,
+                regime_snapshot=regime_snapshot,
             )
         else:
             trade.bias = bias
@@ -441,14 +831,21 @@ class Simulator:
         # 1. MARKET CONTEXT
         # --------------------------
 
-        bias = self.bias_detector.get_bias(df_1h)
+        bias_snapshot = self._compute_bias_snapshot(df_1h)
+        bias = str(bias_snapshot.get("label", "neutral"))
 
         # --------------------------
         # 2. ENTRY LOGIC
         # --------------------------
 
         if self.current_trade is None:
-            candidate = self._select_directional_candidate(row, bias, df_5h, df_12h)
+            candidate = self._select_directional_candidate(
+                row,
+                bias,
+                df_5h,
+                df_12h,
+                bias_snapshot=bias_snapshot,
+            )
             if candidate:
                 self._open_candidate_trade(row, bias, candidate)
 
@@ -474,6 +871,7 @@ class Simulator:
                     df_5h,
                     df_12h,
                     minimum_priority=current_priority,
+                    bias_snapshot=bias_snapshot,
                 )
                 if candidate is not None:
                     override_candidate = candidate

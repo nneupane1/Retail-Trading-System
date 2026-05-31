@@ -12,6 +12,7 @@ from simulation.simulator import Simulator
 from backtest.engine import BacktestEngine
 from backtest.equity_logger import EquityLogger
 from backtest.logger import TradeLogger
+from backtest.opportunity_logger import OpportunityLogger
 
 from data.downloader import load_from_csv
 from data.resampler import build_timeframes_and_save
@@ -178,6 +179,11 @@ def run_backtest(
             sim = Simulator(
                 trade_logger=TradeLogger(config=config, reset=not resume_active),
                 equity_logger=EquityLogger(config=config, reset=not resume_active),
+                opportunity_logger=(
+                    OpportunityLogger(config=config, reset=not resume_active)
+                    if config.get("backtest", "opportunity_log_enabled", default=False)
+                    else None
+                ),
                 config=config
             )
 

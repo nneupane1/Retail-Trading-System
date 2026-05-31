@@ -1,20 +1,24 @@
-"""Converts a scored setup into a Trade object when configured entry rules are satisfied."""
-
-import time
+"""Facade that routes entry conversion to legacy or weighted execution logic."""
 
 from common.debug import debug_print as print
 from config import AppConfig
-from simulation.trade import Trade
+from entry.legacy_entry_engine import LegacyEntryEngine
+from entry.weighted_opportunity_engine import WeightedOpportunityEngine
 
 
 class EntryEngine:
     """
-    Converts score and bias into an executable Trade object.
+    Thin compatibility facade for the active entry execution model.
     """
 
     def __init__(self, config=None):
         self.config = config or AppConfig.load()
         self.entry_threshold = self.config.require("entry", "score_threshold")
+        self.fast_ema_period = self.config.require("features", "ema_periods", "fast")
+        self.slow_ema_period = self.config.require("features", "ema_periods", "slow")
+        self.fast_ema_column = f"ema{self.fast_ema_period}"
+        self.slow_ema_column = f"ema{self.slow_ema_period}"
+        self.scoring_config = self.config.require("strategy", "scoring")
         getter = getattr(self.config, "get", None)
         if callable(getter):
             score_threshold_by_side = getter(
@@ -71,6 +75,11 @@ class EntryEngine:
                 "block_compression_sides",
                 default=None,
             )
+            execution_config = getter(
+                "strategy",
+                "execution",
+                default={},
+            ) or {}
         else:
             try:
                 score_threshold_by_side = self.config.require(
@@ -152,6 +161,13 @@ class EntryEngine:
                 )
             except Exception:
                 block_compression_sides = None
+            try:
+                execution_config = self.config.require(
+                    "strategy",
+                    "execution",
+                )
+            except Exception:
+                execution_config = {}
 
         self.score_threshold_by_side = {
             str(side).lower(): int(value)
@@ -211,6 +227,111 @@ class EntryEngine:
             if allowed_entry_roles is not None
             else None
         )
+        self.execution_mode = str(
+            (execution_config or {}).get("mode", "legacy")
+        ).lower()
+        weighted_config = (execution_config or {}).get("weighted", {}) or {}
+        self.weighted_score_weight = float(weighted_config.get("score_weight", 0.7))
+        self.weighted_momentum_weight = float(weighted_config.get("momentum_weight", 0.3))
+        self.weighted_noise_guard_min_strength = float(
+            weighted_config.get("noise_guard_min_strength", 0.25)
+        )
+        self.weighted_max_strength_multiplier = float(
+            weighted_config.get("max_strength_multiplier", 1.75)
+        )
+        self.weighted_min_entry_risk_multiplier = float(
+            weighted_config.get(
+                "min_entry_risk_multiplier",
+                self.weighted_noise_guard_min_strength,
+            )
+        )
+        self.weighted_event_bonus = float(weighted_config.get("event_bonus", 1.15))
+        self.weighted_non_event_bonus = float(weighted_config.get("non_event_bonus", 1.0))
+        self.weighted_structural_floor_enabled = bool(
+            weighted_config.get("structural_floor_enabled", True)
+        )
+        self.weighted_structural_floor_anchor_column = str(
+            weighted_config.get(
+                "structural_floor_anchor_column",
+                self.slow_ema_column,
+            )
+        )
+        self.weighted_bias_weights = {
+            "bullish": 1.15,
+            "neutral": 0.95,
+            "bearish": 0.70,
+        }
+        self.weighted_bias_weights.update(
+            {
+                str(label).lower(): float(value)
+                for label, value in (
+                    weighted_config.get("bias_weights", {}) or {}
+                ).items()
+            }
+        )
+        self.weighted_bias_weights_by_side = {
+            str(side).lower(): {
+                str(label).lower(): float(value)
+                for label, value in (mapping or {}).items()
+            }
+            for side, mapping in (
+                weighted_config.get("bias_weights_by_side", {}) or {}
+            ).items()
+        }
+        self.weighted_regime_weights = {
+            "weak": 0.65,
+            "moderate": 1.0,
+            "strong": 1.25,
+        }
+        self.weighted_regime_weights.update(
+            {
+                str(label).lower(): float(value)
+                for label, value in (
+                    weighted_config.get("regime_weights", {}) or {}
+                ).items()
+            }
+        )
+        self.weighted_regime_weights_by_side = {
+            str(side).lower(): {
+                str(label).lower(): float(value)
+                for label, value in (mapping or {}).items()
+            }
+            for side, mapping in (
+                weighted_config.get("regime_weights_by_side", {}) or {}
+            ).items()
+        }
+        self.weighted_momentum_component_weights = {
+            "price_to_fast_ema": 0.35,
+            "ema_gap": 0.25,
+            "vwap_distance": 0.20,
+            "macd_hist": 0.10,
+            "atr_rising": 0.10,
+        }
+        self.weighted_momentum_component_weights.update(
+            {
+                str(label): float(value)
+                for label, value in (
+                    weighted_config.get("momentum_component_weights", {}) or {}
+                ).items()
+            }
+        )
+        self.weighted_momentum_scales = {
+            "price_to_fast_ema_ratio": 0.006,
+            "ema_gap_ratio": 0.004,
+            "vwap_distance_ratio": 0.004,
+            "macd_hist_atr_ratio": 0.25,
+        }
+        self.weighted_momentum_scales.update(
+            {
+                str(label): float(value)
+                for label, value in (
+                    weighted_config.get("momentum_scales", {}) or {}
+                ).items()
+            }
+        )
+        self.max_score = self._compute_max_score()
+        self.legacy_engine = LegacyEntryEngine(self)
+        self.weighted_engine = WeightedOpportunityEngine(self)
 
     @staticmethod
     def _parse_conditional_filters(raw_filters):
@@ -239,6 +360,156 @@ class EntryEngine:
     @staticmethod
     def _metric_debug_label(metric_name):
         return metric_name.replace("_", " ")
+
+    def _compute_max_score(self):
+        weight_keys = [
+            "bias_weight",
+            "trend_weight",
+            "compression_weight",
+            "breakout_weight",
+            "body_strength_weight",
+            "close_position_weight",
+            "upper_wick_weight",
+            "vwap_weight",
+            "atr_weight",
+            "macd_weight",
+            "bollinger_weight",
+        ]
+        score = sum(float(self.scoring_config.get(key, 0)) for key in weight_keys)
+        lower_wick_weight = self.scoring_config.get("lower_wick_weight")
+        if lower_wick_weight is not None:
+            score = score - float(self.scoring_config.get("upper_wick_weight", 0)) + float(lower_wick_weight)
+        return max(float(score), 1.0)
+
+    @staticmethod
+    def _clip(value, lower=0.0, upper=1.0):
+        return max(lower, min(float(value), upper))
+
+    def is_weighted_mode(self):
+        return self.execution_mode == "weighted"
+
+    @staticmethod
+    def _aligned_value(value, side):
+        value = float(value)
+        return value if side == "long" else -value
+
+    def _bias_weight_for_side(self, bias, side):
+        side = str(side).lower()
+        side_overrides = self.weighted_bias_weights_by_side.get(side)
+        if side_overrides:
+            mapping = dict(self.weighted_bias_weights)
+            mapping.update(side_overrides)
+            return float(mapping.get(str(bias).lower(), 1.0))
+
+        if side == "short":
+            inverted = {
+                "bullish": self.weighted_bias_weights.get("bearish", 0.70),
+                "neutral": self.weighted_bias_weights.get("neutral", 0.95),
+                "bearish": self.weighted_bias_weights.get("bullish", 1.15),
+            }
+            return float(inverted.get(str(bias).lower(), 1.0))
+
+        return float(self.weighted_bias_weights.get(str(bias).lower(), 1.0))
+
+    def _regime_weight_for_side(self, regime_class, side):
+        side = str(side).lower()
+        label = str(regime_class or "weak").lower()
+        side_overrides = self.weighted_regime_weights_by_side.get(side, {})
+        if label in side_overrides:
+            return float(side_overrides[label])
+        return float(self.weighted_regime_weights.get(label, 1.0))
+
+    def _event_bonus_for_side(self, row, side):
+        event_column = "breakout" if side == "long" else "breakdown"
+        return self.weighted_event_bonus if bool(row.get(event_column, False)) else self.weighted_non_event_bonus
+
+    def _passes_weighted_structural_floor(self, row, side):
+        if not self.weighted_structural_floor_enabled:
+            return True
+
+        anchor_price = float(row.get(self.weighted_structural_floor_anchor_column, row.get("close", 0.0)))
+        close_price = float(row.get("close", 0.0))
+        if side == "short":
+            return close_price < anchor_price
+        return close_price > anchor_price
+
+    def _momentum_strength(self, row, side):
+        side = str(side).lower()
+
+        aligned_price_to_fast = self._aligned_value(
+            row.get("price_to_fast_ema_ratio", 0.0),
+            side,
+        )
+        aligned_ema_gap = self._aligned_value(
+            row.get("ema_gap_ratio", 0.0),
+            side,
+        )
+        aligned_vwap_distance = self._aligned_value(
+            row.get("vwap_distance_ratio", 0.0),
+            side,
+        )
+        atr_value = abs(float(row.get("atr", 0.0) or 0.0))
+        macd_hist = float(row.get("macd_hist", 0.0) or 0.0)
+        aligned_macd = self._aligned_value(
+            macd_hist / (atr_value + 1e-9),
+            side,
+        )
+
+        components = {
+            "price_to_fast_ema": self._clip(
+                aligned_price_to_fast /
+                self.weighted_momentum_scales["price_to_fast_ema_ratio"]
+            ),
+            "ema_gap": self._clip(
+                aligned_ema_gap /
+                self.weighted_momentum_scales["ema_gap_ratio"]
+            ),
+            "vwap_distance": self._clip(
+                aligned_vwap_distance /
+                self.weighted_momentum_scales["vwap_distance_ratio"]
+            ),
+            "macd_hist": self._clip(
+                aligned_macd /
+                self.weighted_momentum_scales["macd_hist_atr_ratio"]
+            ),
+            "atr_rising": 1.0 if bool(row.get("atr_rising", False)) else 0.0,
+        }
+
+        weighted_total = 0.0
+        weight_sum = 0.0
+        for label, value in components.items():
+            component_weight = float(
+                self.weighted_momentum_component_weights.get(label, 0.0)
+            )
+            if component_weight <= 0:
+                continue
+            weighted_total += component_weight * value
+            weight_sum += component_weight
+
+        if weight_sum <= 0:
+            return 0.0, components
+
+        return weighted_total / weight_sum, components
+
+    def evaluate_weighted_opportunity(
+        self,
+        row,
+        score,
+        bias,
+        side="long",
+        regime_score=None,
+        regime_class=None,
+        score_details=None,
+    ):
+        return self.weighted_engine.build_candidate(
+            row,
+            score,
+            bias,
+            side=side,
+            regime_score=regime_score,
+            regime_class=regime_class,
+            score_details=score_details,
+        )
 
     def _resolve_entry_risk_multiplier(self, score, side):
         configured = self.risk_multipliers_by_score.get(int(score))
@@ -377,126 +648,57 @@ class EntryEngine:
         side="long",
         regime_score=None,
         regime_class=None,
+        score_details=None,
     ):
-        start = time.time()
-        side = str(side).lower()
-
-        print("\nRunning entry engine...")
-
-        required_bias = "bullish" if side == "long" else "bearish"
-        event_column = "breakout" if side == "long" else "breakdown"
-        entry_metadata = self.preview_entry_metadata(score, side)
-        entry_threshold = entry_metadata["entry_threshold"]
-        entry_role = entry_metadata["entry_role"]
-
-        if bias != required_bias:
-            print(f"No entry: bias not {required_bias}")
-            return None
-
-        if self.allowed_entry_roles is not None and entry_role not in self.allowed_entry_roles:
-            print(
-                f"No entry: role {entry_role} blocked by channel configuration"
-            )
-            return None
-
-        if score < entry_threshold:
-            print(f"No entry: score too low ({score} < {entry_threshold})")
-            return None
-
-        side_blocked_scores = self.blocked_scores_by_side.get(side, set())
-        if score in self.blocked_scores or score in side_blocked_scores:
-            print(f"No entry: score {score} blocked by configuration")
-            return None
-
-        min_body_strength = self.min_body_strength_by_score.get(score)
-        if min_body_strength is not None:
-            body_strength = float(row.get("body_strength", 0.0))
-            if body_strength < min_body_strength:
-                print(
-                    "No entry: body strength below score-specific minimum "
-                    f"({body_strength:.4f} < {min_body_strength:.4f})"
-                )
-                return None
-
-        wick_ranges_by_score = (
-            self.blocked_upper_wick_ranges_by_score
-            if side == "long"
-            else self.blocked_lower_wick_ranges_by_score
+        profile = self.build_candidate(
+            row,
+            score,
+            bias,
+            side=side,
+            regime_score=regime_score,
+            regime_class=regime_class,
+            score_details=score_details,
         )
-        wick_metric = "upper_wick_ratio" if side == "long" else "lower_wick_ratio"
-        blocked_wick_ranges = wick_ranges_by_score.get(score, [])
-        if blocked_wick_ranges:
-            wick_ratio = float(row.get(wick_metric, 0.0))
-            for min_wick, max_wick in blocked_wick_ranges:
-                if min_wick <= wick_ratio < max_wick:
-                    print(
-                        "No entry: wick ratio falls inside blocked score-specific band "
-                        f"({wick_metric}={wick_ratio:.4f} in "
-                        f"[{min_wick:.4f}, {max_wick:.4f}))"
-                    )
-                    return None
+        candidate = profile.get("candidate")
+        if candidate is None:
+            reason = profile.get("rejection_reason")
+            if self.is_weighted_mode():
+                print(
+                    "No entry: weighted model rejected candidate "
+                    f"({reason or 'weighted_rejection'})"
+                )
+            return None
+        return candidate["trade"]
 
-        filter_context = row.to_dict()
-        if regime_score is not None:
-            filter_context["regime_score"] = regime_score
-        if regime_class is not None:
-            filter_context["regime_class"] = regime_class
-
-        directional_filters = self.directional_filters.get(side, {})
-        if not self._passes_filter_set(
-            filter_context,
-            directional_filters,
+    def build_candidate(
+        self,
+        row,
+        score,
+        bias,
+        side="long",
+        regime_score=None,
+        regime_class=None,
+        score_details=None,
+    ):
+        if self.is_weighted_mode():
+            return self.weighted_engine.build_candidate(
+                row,
+                score,
+                bias,
+                side=side,
+                regime_score=regime_score,
+                regime_class=regime_class,
+                score_details=score_details,
+            )
+        return self.legacy_engine.build_candidate(
+            row,
             score,
-            side,
-            label="directional",
-        ):
-            return None
-
-        score_filters = self.conditional_filters_by_score.get(score, {}).get(side, {})
-        if not self._passes_filter_set(
-            filter_context,
-            score_filters,
-            score,
-            side,
-            label="conditional score",
-        ):
-            return None
-
-        if not row[event_column]:
-            print(f"No entry: {event_column} event not confirmed")
-            return None
-
-        if (
-            self.block_compression
-            and side in self.block_compression_sides
-            and bool(row.get("compression", False))
-        ):
-            print("No entry: compressed setup blocked by configuration")
-            return None
-
-        # Optional: allow retest as alternative (if you want later)
-        # if not (row["breakout"] or row["retest"]):
-        #    return None
-
-        # Create trade
-        trade = Trade(row, score, side=side, config=self.config)
-        trade.entry_risk_multiplier = entry_metadata["entry_risk_multiplier"]
-        trade.entry_role = entry_role
-        trade.entry_priority = entry_metadata["entry_priority"]
-
-        print("\nENTRY SIGNAL GENERATED")
-        print(f"  Side: {side.upper()}")
-        print(f"  Time: {row.name}")
-        print(f"  Price: {row['close']:.2f}")
-        print(f"  Score: {score}")
-        print(f"  Bias: {bias}")
-        print(f"  Role: {trade.entry_role.upper()}")
-        print(f"  Risk multiplier: {trade.entry_risk_multiplier:.2f}x")
-
-        elapsed = time.time() - start
-        print(f"Elapsed: {elapsed:.4f}s")
-
-        return trade
+            bias,
+            side=side,
+            regime_score=regime_score,
+            regime_class=regime_class,
+            score_details=score_details,
+        )
 
 
 def generate_entry(row, score, bias, side="long", config=None):

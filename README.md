@@ -47,21 +47,23 @@ trade PnL.
 
 At the broadest level, the system ingests one-minute Binance candles, rebuilds
 the strategy's higher timeframes, computes all derived features, waits for a
-closed 15-minute execution candle, and then lets the simulator evaluate whether
-the market context supports a long entry, whether a setup is strong enough to
-trade, how large the position should be, whether an open trade can be added to,
-and when that trade should be exited.
+closed 15-minute execution candle, and then lets the simulator evaluate which
+directional opportunities exist, how strong they are, how much capital they
+deserve, whether an open trade can be added to, and when that trade should be
+exited.
 
-The locked production-style research baseline is currently long-only. The
-repository now also contains a side-aware directional engine that can evaluate
-long and short candidates on the same candle, but that short branch remains
-under validation rather than promoted as the default baseline.
+The repository now carries two architecture layers on purpose:
 
-The active long baseline uses a higher-timeframe directional bias, a regime
-score that blocks weak environments, an event-based breakout trigger, a
-point-based setup score, risk-based sizing, staged pyramiding, a tolerant
-trend-health check for holding winners, and a hard structural stop for capital
-protection.
+- a locked, long-only, gated baseline that remains preserved for historical
+  comparison and validation
+- an active weighted directional path that is looser in participation, logs all
+  weighted opportunities, and is being refactored toward higher daily trade
+  frequency and smarter capital allocation
+
+The working config therefore no longer treats `bias`, `regime`, and
+`breakout/breakdown` purely as permissions in every mode. In the weighted path,
+they act as strength modifiers and exposure shapers, while the legacy gated
+path remains available for comparison.
 
 The same simulator core is reused in both historical backtesting and near-live
 simulation. That is an important architectural choice: the system does not keep
@@ -75,15 +77,15 @@ decision engine and changes only the data source and execution loop.
 | Venue | Binance spot-style OHLCV market data |
 | Source granularity | `1m` base candles |
 | Execution clock | Closed `15m` candles only |
-| Direction | Locked baseline: long-only; research engine: long + short capable |
-| Bias filter | `1h` price vs EMA and relative EMA slope |
-| Regime filter | `12h` macro + `5h` trend confirmation |
-| Entry trigger | Event-based breakout above prior rolling high |
+| Direction | Working config: weighted long + short capable; locked baseline: long-only |
+| Bias context | `1h` price vs EMA, EMA slope, and continuous directional-strength snapshot |
+| Regime context | `12h` macro + `5h` trend confirmation, with normalized strength snapshot |
+| Entry model | Legacy gated engine plus weighted continuous opportunity engine |
 | Sizing model | Risk per trade as a fraction of equity |
-| Scaling model | Add to winners at configured `+R` levels |
-| Soft exit | Trend health deterioration |
+| Scaling model | Add to winners at configured `+R` levels with quality-gated pyramiding |
+| Soft exit | State-aware trailing and trend-behavior decay detection |
 | Hard exit | Intrabar touch of structural stop, executed at stop price |
-| Audit trail | Trade CSVs and equity CSVs |
+| Audit trail | Trade, equity, opportunity, validation, and robustness CSVs |
 | Debug control | Global `app.debug` flag in config |
 
 ## Architectural Philosophy
@@ -132,6 +134,7 @@ This event-driven style reduces late entries and repeated signals.
 | `main_live.py` | CLI entry point for near-live polling and execution |
 | `main_walkforward.py` | CLI entry point for walk-forward validation and controlled branch testing |
 | `main_monte_carlo.py` | CLI entry point for Monte Carlo and trade-concentration robustness analysis |
+| `main_calibrate.py` | CLI entry point for opportunity-to-trade calibration reports |
 
 ## High-Level Operating Model
 
@@ -184,10 +187,11 @@ than assuming everything starts from `main_backtest.py`.
 | --- | --- | --- |
 | `1` | `python main_download.py` | Download and checkpoint local `1m` history from Binance |
 | `2` | `python main_resample.py` | Optional: materialize `15m`, `1h`, `5h`, and `12h` CSVs for inspection |
-| `3` | `python main_backtest.py` | Run the full historical strategy pipeline with Rich progress UI and resume support |
-| `4` | `python main_walkforward.py --scheme multifold --branch-spec ...` | Run controlled multi-fold validation across candidate branches |
-| `5` | `python main_monte_carlo.py ...` | Stress-test completed trades with bootstrap and concentration analysis |
-| `6` | `python main_live.py` | Run near-live simulation using local warmup history plus fresh Binance `1m` candles |
+| `3` | `python main_backtest.py` | Run the historical strategy pipeline with trade, equity, and opportunity logging |
+| `4` | `python main_calibrate.py` | Build opportunity-to-trade calibration reports from the latest backtest outputs |
+| `5` | `python main_walkforward.py --scheme multifold --branch-spec ...` | Run controlled multi-fold validation across candidate branches |
+| `6` | `python main_monte_carlo.py ...` | Stress-test completed trades with bootstrap and concentration analysis |
+| `7` | `python main_live.py` | Run near-live simulation using local warmup history plus fresh Binance `1m` candles |
 
 Two practical clarifications matter:
 
@@ -243,19 +247,22 @@ not scattered across the codebase.
 | --- | --- |
 | `app` | Default symbol and debug switch |
 | `account` | Initial equity and risk per trade |
-| `backtest` | Backtest output directory |
+| `backtest` | Output, checkpoint, opportunity logging, and calibration-report settings |
 | `binance` | Network, retry, timeout, and request behavior |
 | `downloads.history` | Checkpointing and resume behavior |
-| `entry` | Score threshold required to convert a setup into a trade |
-| `features` | EMA periods, structure windows, compression windows, candle metrics |
+| `entry` | Legacy score-threshold compatibility plus score-specific refinement hooks |
+| `features` | EMA periods, structure windows, compression, pressure-model, and candle-metric settings |
 | `history` | Backtest date range |
 | `live_sim` | Live output directory and polling interval |
 | `position` | Minimum stop-distance safeguards and optional size caps |
 | `storage` | Base data directory |
+| `strategy.directional` | Enabled sides for the active directional engine |
+| `strategy.execution` | Legacy gated vs weighted execution mode and weighted-strength settings |
+| `strategy.exploration` | Early pressure/ignition probe settings for the exploratory signal family |
 | `strategy.bias` | Bias EMA and slope threshold |
 | `strategy.regime` | Regime weights, slope threshold, and regime bands |
 | `strategy.scoring` | Entry score weights and candle-quality thresholds |
-| `strategy.sniffing` | Hold/exit thresholds for trend health |
+| `strategy.sniffing` | State-based trailing, decay detection, and side-aware hold logic |
 | `strategy.pyramiding` | Add levels and total risk budget |
 | `timeframes` | Base, execution, direction, trend, macro, resample settings |
 
@@ -290,67 +297,85 @@ between development verbosity and a fully structured logging framework.
 
 ## Current Research Baseline
 
-The repository now contains a materially refined research baseline rather than
-only the original breakout skeleton. The locked baseline remains fully
-rule-based and inspectable, and it now sits beside a larger research harness
-for controlled branches, walk-forward drift analysis, Monte Carlo robustness,
-and an experimental long+short engine.
+The repository now carries two distinct strategy layers that should not be
+confused:
 
-### Active entry refinements
+- a locked long-only gated baseline that remains the historical comparison
+  anchor
+- an active weighted directional working config that is looser in participation,
+  logs every opportunity, and is being refactored toward calibration and
+  portfolio-style allocation
 
-The current baseline keeps the additive score model, then applies narrow
-config-driven filters in the entry-conversion layer:
+### Locked baseline snapshot
 
-| Refinement | Active behavior |
+The locked baseline is the older, intentionally selective path:
+
+- long-only
+- additive score model with threshold conversion
+- breakout-led entry confirmation
+- elite-only pyramiding expansion
+- state-based trailing and hard-stop execution
+
+Its job now is to remain a stable benchmark while the weighted refactor grows
+into a broader, higher-frequency opportunity engine.
+
+### Active weighted working config
+
+`config/settings.json` now defaults to the weighted directional path rather than
+the locked gated baseline.
+
+| Capability | Current behavior |
 | --- | --- |
-| Score threshold | `entry.score_threshold = 4` |
-| Compression filter | `entry.block_compression = true` |
-| Score bucket exclusion | `entry.blocked_scores = [7]` |
+| Execution mode | `strategy.execution.mode = "weighted"` |
+| Enabled sides | `strategy.directional.enabled_sides = ["long", "short"]` |
+| Bias handling | Continuous multiplier, not a hard blocker |
+| Regime handling | Continuous multiplier, not a hard blocker |
+| Event handling | Breakout/breakdown remain bonuses, not universal requirements |
+| Opportunity logging | Enabled by default into `backtest/output/opportunities.csv` |
+| Exploration layer | Implemented but `strategy.exploration.enabled = false` by default |
+
+The weighted path is intentionally looser than the locked baseline. The design
+goal is to allow many more candidates to exist, then scale capital by measured
+strength instead of relying on compounded hard gates.
+
+### Active refinement hooks
+
+The refinement hooks are still available, but the live weighted config keeps
+them lighter than the locked baseline:
+
+| Refinement | Current working-config behavior |
+| --- | --- |
+| Score threshold | `entry.score_threshold = 4` remains for legacy compatibility |
+| Compression filter | `entry.block_compression = false` |
+| Score bucket exclusion | `entry.blocked_scores = []` |
 | Score-specific body filter | Score `8` requires `body_strength >= 2.0` |
 | Score-specific wick filter | Score `8` rejects `0.1 <= upper_wick_ratio < 0.3` |
 
-### Directional research extensions
+### Directional and exploratory research extensions
 
-The codebase now supports a unified directional engine even though the locked
-baseline still runs long-only by default.
-
-Directional research additions include:
+The research harness now supports both directional competition and an optional
+pressure-probe layer.
 
 | Capability | Current implementation |
 | --- | --- |
-| Unified side selection | Competing `LONG` vs `SHORT` scores on the same `15m` candle |
-| Bearish structure events | `breakdown` event below prior rolling low |
-| Side-aware trade math | Shared `Trade` object with `side`, mirrored stops, mirrored PnL |
+| Unified side selection | Competing `long` vs `short` weighted candidates on the same `15m` candle |
+| Bearish structure events | `breakdown` below prior rolling low |
+| Side-aware trade math | Shared `Trade` object with mirrored stops, mirrored PnL, and side-aware risk |
 | Side-aware regime scoring | Bullish and bearish `12h` / `5h` environment scoring |
-| Side-aware hold logic | Short trades use mirrored wick/close logic and a VWAP guard |
-| Side-aware hard stops | Long exits on `low <= stop`; short exits on `high >= stop` |
-| Side-aware pyramiding | Mirrored `-R` event triggers for shorts |
+| Exploratory pressure layer | Pressure score plus ignition event via `entry/exploration_engine.py` |
+| Opportunity calibration seam | Logged opportunities can be linked back to executed trades by `opportunity_id` |
 
-These directional branches are intentionally treated as research candidates, not
-as a silently promoted replacement for the stronger locked long baseline.
+### Active trailing and pyramiding behavior
 
-### Active winner-retention behavior
+The working architecture now uses:
 
-The current baseline uses profit-aware soft-exit relaxation:
-
-| Stage | Active behavior |
-| --- | --- |
-| Base hold logic | Price must hold above the fast EMA and pass candle-quality confirmation rules |
-| Proven winner | After `+1R`, candle-quality confirmations can relax to `0` |
-| Elite winner | After `+1.5R`, the anchor can switch from the fast EMA to the slow EMA |
-
-### Active selective pyramiding behavior
-
-Pyramiding is no longer a blanket add-to-winner rule. It is now quality-gated.
-
-For a trade to qualify for elite pyramiding, the open position must already be
-at least `+1R`, and the current execution candle must satisfy enough of these
-conditions:
-
-- `body_strength >= 1.5`
-- `upper_wick_ratio <= 0.6`
-- `close_position >= 0.75`
-- at least `2` confirmations across those conditions
+- a state-based trailing engine with `init`, `confirmation`, `expansion`,
+  `decay`, and `exit` phases
+- a distinct `active_stop` that ratchets over time without rewriting the
+  original structural stop used for `R` math
+- side-aware short behavior that tightens faster than the long side
+- quality-gated pyramiding that still references the original entry and shared
+  structural stop
 
 Current configured add structure:
 
@@ -359,26 +384,9 @@ Current configured add structure:
 | `1` | `+1R` cross | `0.5` | Standard |
 | `2` | `+2R` cross | `0.5` | Multiplied by `1.5`, so effective add size is `0.75` |
 
-Risk budgets are also split:
+### Latest validated locked-baseline snapshot
 
-| Case | Max total stop-risk budget |
-| --- | --- |
-| Normal trade | `1.0x` configured trade risk |
-| Elite pyramiding trade | `2.5x` configured trade risk |
-
-### Active hard-stop model
-
-The stop model is now internally consistent and materially more realistic than
-the original implementation:
-
-```text
-trigger: low <= stop_price
-execution: exit at stop_price
-```
-
-### Latest validated backtest snapshot
-
-Using the current locked long baseline on the configured historical range
+Using the locked long baseline on the configured historical range
 `2018-01-01 -> 2026-05-22`, the latest full rerun produced:
 
 | Metric | Latest result |
@@ -392,9 +400,9 @@ Using the current locked long baseline on the configured historical range
 | Average `pnl_R_initial` | `0.1124` |
 | Max drawdown | `-12.17%` |
 
-This is a research snapshot, not a live-performance claim. Its importance is
-that the current system is now behaving like a concentrated profit-distribution
-engine rather than a flat, overtrading breakout script.
+This is a research snapshot, not a live-performance claim. It should not be
+confused with the current weighted default config. It remains useful because it
+is the strongest preserved benchmark for historical comparison.
 
 ### Controlled validation state
 
@@ -509,9 +517,11 @@ pyramiding, and exit logic.
 1. trend EMAs
 2. rolling structure highs and lows
 3. compression ranges
-4. event-based breakout columns
+4. event-based breakout and breakdown columns
 5. candle-quality metrics
-6. NaN cleanup on all required feature columns
+6. VWAP, ATR, MACD, and Bollinger context
+7. pressure-model features for exploratory instability probes
+8. NaN cleanup on all required feature columns
 
 ### Derived columns
 
@@ -524,12 +534,21 @@ pyramiding, and exit logic.
 | `compression` | Whether short range is compressed relative to long range |
 | `prev_close` | Prior close, used for event logic |
 | `hh20_prev` | Prior structural high |
+| `ll10_prev` | Prior structural low |
 | `above_breakout_level` | State flag: current close above prior high |
 | `breakout` | Event flag: current close crossed above prior high |
+| `below_breakdown_level` | State flag: current close below prior low |
+| `breakdown` | Event flag: current close crossed below prior low |
 | `body_strength` | Candle body normalized by rolling average body |
 | `upper_wick_ratio` | Upper wick relative to body |
 | `lower_wick_ratio` | Lower wick relative to body |
 | `close_position` | Where the close sits inside the candle's range |
+| `session_vwap`, `vwap_distance_ratio` | Session mean-reversion anchor and normalized distance |
+| `atr`, `atr_rising` | Volatility level and expansion flag |
+| `macd_hist` | Momentum histogram |
+| `bb_upper`, `bb_lower` | Bollinger breakout context |
+| `pressure_score_long`, `pressure_score_short` | Exploratory instability scores |
+| `pressure_ignition_long`, `pressure_ignition_short` | Pressure-release trigger events |
 
 ### Indicator helpers
 
@@ -580,16 +599,20 @@ creating false signals during warm-up periods.
 
 ## Context Layer
 
-The context layer answers two different questions:
+The context layer answers two related questions:
 
-1. Should the system even consider the long side'
-2. Is the broader market environment strong enough to permit entries'
+1. Which direction currently has the stronger structural context'
+2. How much should that context influence exposure or candidate ranking'
 
-These are separate concerns, handled by `BiasDetector` and `RegimeDetector`.
+These concerns are handled by `BiasDetector` and `RegimeDetector`. In the
+legacy gated path they can still behave like permissions. In the weighted path
+they primarily feed continuous context snapshots.
 
 ### BiasDetector
 
 `bias/bias_detector.py` determines directional bias from the `1h` timeframe.
+It now exposes both a categorical label and a richer snapshot for the weighted
+path.
 
 The logic is:
 
@@ -609,10 +632,20 @@ That makes the calculation scale-independent and avoids the problem where the
 same shape would produce different slope magnitudes on assets at different price
 levels.
 
+The weighted path consumes:
+
+- `label`
+- `price_vs_ema_ratio`
+- `ema_slope`
+- `distance_strength`
+- `slope_strength`
+- `directional_strength`
+
 ### RegimeDetector
 
 `regime/regime_detector.py` scores the broader market environment using the
-`12h` macro timeframe and the `5h` confirmation timeframe.
+`12h` macro timeframe and the `5h` confirmation timeframe. It now exposes both
+legacy score/class outputs and a richer regime snapshot.
 
 Current scoring inputs:
 
@@ -624,39 +657,51 @@ Current scoring inputs:
 
 Current bands:
 
-| Score band | Interpretation | Entry permission |
+| Score band | Interpretation | Weighted-path meaning |
 | --- | --- | --- |
-| `>= strong_score` | Strong | Allowed |
-| `>= moderate_score` and `< strong_score` | Moderate | Allowed |
-| `< moderate_score` | Weak | Blocked |
+| `>= strong_score` | Strong | Highest regime multiplier |
+| `>= moderate_score` and `< strong_score` | Moderate | Neutral baseline multiplier |
+| `< moderate_score` | Weak | Penalty, not automatic rejection |
 
-The regime module is intentionally conservative in scope. It currently acts as
-an entry gate only. It does not yet modify exits, pyramiding, or risk per trade.
+The weighted path consumes:
+
+- `raw_score`
+- `max_score`
+- `class`
+- `normalized_strength`
+- directional alignment flags
+
+The runtime still does not use regime as a full portfolio allocator. That
+larger refactor is still in progress.
 
 ## Entry Layer
 
-The entry layer converts a context-supported execution candle into a tradable
-idea.
+The entry layer converts a context-enriched execution candle into either a
+legacy gated trade or a weighted opportunity candidate.
 
 ### ScoreEngine
 
-`entry/scoring.py` builds a transparent additive score rather than using one
-giant all-or-nothing condition. That is consistent with the broader philosophy
-of reducing unnecessary strategy friction.
+`entry/scoring.py` still builds a transparent additive score, but the refactor
+now exposes that score as decomposed components rather than only as one opaque
+integer.
 
 Current scoring components:
 
 | Component | Default Weight | Condition |
 | --- | --- | --- |
-| Bias alignment | `2` | `bias == bullish` |
-| Trend confirmation | `1` | `15m close > ema20` |
-| Compression | `1` | `compression == True` |
-| Breakout event | `2` | `breakout == True` |
+| Bias alignment | `2` | Direction aligned with the side being scored |
+| Trend confirmation | `1` | `15m` trend aligned with the side being scored |
+| VWAP alignment | `1` | Price location favorable relative to VWAP |
+| Compression | `1` | Compressed structure present |
+| Breakout / breakdown event | `2` | Structural event fired in the scored direction |
 | Strong body | `1` | `body_strength > body_strength_min` |
-| Strong close position | `1` | `close_position > close_position_min` |
-| Low upper wick | `1` | `upper_wick_ratio < upper_wick_max` |
+| Strong close position | `1` | Close is favorable for the scored direction |
+| Clean wick structure | `1` | Wick profile supports the scored direction |
+| ATR / volatility context | `1` | Volatility expansion is supportive |
+| MACD / momentum context | `1` | Momentum confirms the side |
+| Bollinger breakout context | `1` | Band context supports expansion |
 
-The entry threshold currently lives under:
+The score threshold still exists for legacy compatibility:
 
 ```text
 entry.score_threshold = 4
@@ -671,14 +716,32 @@ a looser fallback.
 
 ### EntryEngine
 
-`entry/entry_engine.py` is intentionally simple. A trade is created only if:
+`entry/entry_engine.py` is now a facade over two paths:
 
-1. bias is bullish
-2. score meets the configured threshold
-3. breakout event is true
+- `entry/legacy_entry_engine.py`
+- `entry/weighted_opportunity_engine.py`
 
-If those rules pass, the engine converts the row into a `Trade` object. It does
-not size the trade. Position sizing remains a separate responsibility.
+The legacy path still behaves like the older selective system:
+
+1. bias check
+2. score threshold check
+3. structural event check
+4. trade conversion
+
+The weighted path behaves differently:
+
+1. compute score details and normalized score
+2. blend score with continuous momentum features
+3. apply bias, regime, and event modifiers
+4. produce a weighted candidate with:
+   - `signal_strength`
+   - `final_strength`
+   - `entry_risk_multiplier`
+   - `selection_value`
+5. let the simulator decide whether that candidate deserves capital
+
+This distinction is important. The refactor goal is broader participation with
+smarter sizing, not re-creating the old gate stack in a fancier form.
 
 ### Current refinement filters
 
@@ -696,7 +759,9 @@ These are intentionally placed in the entry-conversion layer rather than inside
 the scoring engine. That keeps the score model interpretable while allowing
 surgical filtering of weak subpopulations discovered during research.
 
-The currently active research baseline uses all four of these refinement hooks.
+The locked baseline historically used more of these hooks. The current weighted
+working config keeps them intentionally lighter so the engine stays broad enough
+to generate a higher daily opportunity count.
 
 ### RetestDetector
 
@@ -768,45 +833,45 @@ trades that have earned additional capital concentration.
 
 ### TrendSniffer
 
-`sniffing/trend_sniffer.py` is the system's soft-exit intelligence. It asks:
+`sniffing/trend_sniffer.py` is now a state-based trailing engine rather than a
+simple confirmation counter. It asks:
 
-> Is the trend still healthy enough to deserve being held'
+> What phase is this trade in, and how aggressively should protection tighten'
 
-Current logic:
+Current phases:
 
-```text
-trend_alive =
-    base:
-        (close > fast_ema)
-        and confirmations >= min_confirmations
+| State | Intent |
+| --- | --- |
+| `init` | Tight invalidation while the hypothesis is still unproven |
+| `confirmation` | Moderate room while the move starts to organize |
+| `expansion` | Wider structural trailing so strong trends can breathe |
+| `decay` | Active tightening when behavior deteriorates |
+| `exit` | Force the trade out when the move no longer makes sense |
 
-    after +1R:
-        (close > fast_ema)
-        and confirmations >= relaxed_min_confirmations
+The trailing engine does this with:
 
-    after +1.5R:
-        (close > slow_ema)
-        and confirmations >= relaxed_min_confirmations
-```
+- EMA-anchor selection by state
+- ATR buffers by state
+- momentum and decay scoring
+- VWAP and wick behavior checks
+- side-aware short settings that tighten faster than the long side
 
-This is deliberately profit-aware. Ordinary trades still need the fast EMA
-anchor. Proven winners get more tolerance, and elite winners can be held
-against the slower EMA anchor. That lets the system keep trend exposure longer
-without weakening hard-stop discipline.
+The original structural stop is still preserved for risk sizing and `R`
+accounting. The trailing system manages a separate ratcheting `active_stop`.
 
 ### ExitEngine
 
-`exit/exit_engine.py` currently handles hard exits only. Its job is simple and
-intentionally separate from trend-health logic:
+`exit/exit_engine.py` still handles hard exits only. Its job remains separate
+from trend-health logic:
 
 ```text
 exit if low <= stop_price
 hold otherwise
 ```
 
-When a hard stop is triggered, the simulator now executes the exit at
-`stop_price`, not at the candle close. That keeps realized loss aligned with
-the stop-based sizing model and makes the backtest materially more honest.
+When a hard stop is triggered, the simulator exits at the active stop already in
+force for that candle. Newly tightened trailing stops only become active on the
+next candle, which avoids same-candle lookahead.
 
 The separation between `TrendSniffer` and `ExitEngine` is intentional:
 
@@ -815,8 +880,9 @@ The separation between `TrendSniffer` and `ExitEngine` is intentional:
 
 ## Simulation Core
 
-The simulator is the orchestrator that turns all module outputs into one
-deterministic trade lifecycle.
+The simulator is the orchestrator that turns all module outputs into one trade
+lifecycle. It currently supports both the legacy gated path and the weighted
+candidate path, but it still runs through a single open-position lane.
 
 ### Decision sequence inside `Simulator.step()`
 
@@ -824,24 +890,22 @@ deterministic trade lifecycle.
 flowchart TD
     A[Current 15m row] --> B[BiasDetector on 1h slice]
     A --> C[RegimeDetector on 5h and 12h slices]
-    B --> D{Open trade'}
-    C --> D
-    D -- No --> E{Regime allows entries'}
-    E -- No --> Z[Log equity and finish]
-    E -- Yes --> F[ScoreEngine]
-    F --> G[EntryEngine]
-    G --> H{Trade created'}
-    H -- No --> Z
-    H -- Yes --> I[PositionSizer]
-    I --> J{Size > 0'}
-    J -- No --> Z
+    A --> F[ScoreEngine or ExplorationEngine]
+    B --> G[Continuous context snapshots]
+    C --> G
+    G --> D{Open trade'}
+    F --> D
+    D -- No --> H[Build legacy or weighted candidates]
+    H --> I[Directional competition on selection value]
+    I --> J{Candidate survives sizing and risk floors'}
+    J -- No --> Z[Log equity and finish]
     J -- Yes --> K[Add first trade entry]
     K --> Z
-    D -- Yes --> L[TrendSniffer]
+    D -- Yes --> L[TrendSniffer state update]
     L --> M[ExitEngine]
     M --> N{Hard exit'}
     N -- Yes --> O[Close trade]
-    N -- No --> P{Trend weakened'}
+    N -- No --> P{Soft exit / decay exit'}
     P -- Yes --> O
     P -- No --> Q[PyramidingEngine]
     Q --> R{Add triggered'}
@@ -855,22 +919,23 @@ flowchart TD
 
 If there is no open trade, the simulator:
 
-1. computes bias and regime
-2. blocks weak regimes before entry scoring
-3. scores the execution candle
-4. asks the entry engine to create a trade
-5. sizes that trade
-6. skips invalid zero-size trades
-7. opens the trade by adding the first entry layer
+1. computes bias and regime snapshots
+2. scores the execution candle, and optionally exploratory pressure
+3. builds weighted or legacy candidates depending on mode
+4. logs weighted opportunities for later calibration
+5. compares candidates on `selection_value`
+6. sizes the winner
+7. skips invalid zero-size or floor-failed candidates
+8. opens the trade by adding the first entry layer
 
 ### Management path
 
 If there is already an open trade, the simulator:
 
-1. evaluates `trend_ok`
-2. evaluates the hard stop
+1. checks the currently active hard stop
+2. updates trailing state, momentum, decay, and the next `active_stop`
 3. exits on hard-stop breach
-4. exits on trend weakness if hard stop did not fire
+4. exits on state-based decay if hard stop did not fire
 5. only then checks pyramiding
 
 That ordering reflects the current implementation and keeps all trade management
@@ -884,8 +949,11 @@ Key stored state:
 
 | Field | Meaning |
 | --- | --- |
+| `trade_id`, `opportunity_id` | Stable trade identifier plus optional link back to the originating logged opportunity |
+| `signal_family` | `trend` or `exploratory` |
 | `entry_time`, `entry_price` | Original setup timing and execution price |
 | `stop` | Structural stop based on rolling low |
+| `active_stop` | Current ratcheting protective stop managed by the trailing engine |
 | `R` | Initial absolute risk unit from first entry price to stop |
 | `entries` | All entry layers, including pyramids |
 | `conditions` | Why the trade was taken |
@@ -895,6 +963,9 @@ Key stored state:
 | `pnl_R_initial` | Profit relative to first-entry stop-risk |
 | `initial_risk_amount` | Risk from the initial entry only |
 | `total_risk_amount` | Total risk across all layers to the shared stop |
+| `equity_return_fraction` | Realized trade return relative to equity at trade entry |
+| `score_norm`, `final_strength` | Weighted-path calibration fields |
+| `trail_state` and trailing telemetry | State-machine diagnostics for forensic review |
 
 This dual-R reporting matters because pyramiding changes total deployed risk.
 The repository now preserves both interpretations explicitly.
@@ -930,7 +1001,8 @@ python main_backtest.py
 2. build `15m`, `1h`, `5h`, and `12h` timeframes
 3. compute features on all strategy timeframes
 4. instantiate the simulator and CSV loggers
-5. hand everything to `BacktestEngine`
+5. optionally enable the opportunity logger
+6. hand everything to `BacktestEngine`
 
 The backtest always uses the configured `1m` history as the canonical source,
 then rebuilds the higher timeframes from that source during the run. Prebuilt
@@ -969,11 +1041,19 @@ By default:
 ```text
 backtest/output/trades.csv
 backtest/output/equity.csv
+backtest/output/opportunities.csv
 backtest/output/_checkpoints/<symbol>_backtest_<start>_to_<end>.checkpoint.json
 ```
 
 Because output filenames embed the configured start and end dates, changing the
 configured historical range produces a different output and checkpoint family.
+
+When `main_calibrate.py` is run after a backtest, the default calibration
+reports are written under:
+
+```text
+backtest/output/calibration/
+```
 
 ## Live Simulation Mode
 
@@ -1034,18 +1114,23 @@ They are designed to explain not just what happened, but why it happened.
 
 | Column | Meaning |
 | --- | --- |
+| `trade_id`, `opportunity_id` | Unique trade identifier and optional back-link to `opportunities.csv` |
 | `side` | `long` or `short` |
+| `signal_family` | `trend` or `exploratory` |
 | `entry_time` | First entry timestamp |
 | `exit_time` | Exit timestamp |
 | `entry_price` | First entry price |
 | `exit_price` | Exit price |
 | `stop_price` | Shared structural stop used by the trade |
+| `active_stop_price` | Ratcheting stop that was active when the trade closed |
 | `pnl` | Quote-currency profit or loss |
 | `pnl_R` | Compatibility alias for total-risk R |
 | `pnl_R_total` | PnL divided by total deployed risk |
 | `pnl_R_initial` | PnL divided by initial entry risk |
+| `equity_return_fraction` | Trade PnL normalized by account equity at entry |
 | `initial_risk_amount` | Risk of the first layer |
 | `total_risk_amount` | Total risk of all layers to stop |
+| `entry_risk_multiplier` | Weighted-path capital scaling applied at entry |
 | `bias` | Directional bias at entry |
 | `regime_score` | Higher-timeframe regime score at entry |
 | `regime_class` | Regime label such as `strong` or `moderate` |
@@ -1066,6 +1151,40 @@ They are designed to explain not just what happened, but why it happened.
 | `ema_gap_ratio` | Fast/slow EMA separation at entry |
 | `atr` | ATR value at entry |
 | `macd_hist` | MACD histogram at entry |
+| `score_norm`, `momentum_strength`, `final_strength` | Weighted-path strength diagnostics |
+| `trail_state`, `trail_anchor_column`, `trail_anchor_price` | Trailing state-machine telemetry |
+
+### Opportunity log
+
+`backtest/output/opportunities.csv` is the calibration-grade log for the
+weighted path. It records candidates whether or not they become trades.
+
+Important columns include:
+
+| Column | Meaning |
+| --- | --- |
+| `opportunity_id` | Stable identifier later reused by the trade log when executed |
+| `timestamp`, `side`, `signal_family` | Candidate timing and direction |
+| `raw_score`, `score_norm`, `score_max` | Score-engine outputs |
+| `momentum_strength`, `signal_strength`, `final_strength` | Weighted-path ranking fields |
+| `bias_weight`, `regime_weight`, `event_bonus` | Context multipliers |
+| `entry_risk_multiplier` | Proposed capital scaling |
+| `eligible`, `rejection_reason` | Whether the candidate survived the weighted path |
+| `bias_*`, `regime_*` fields | Continuous context snapshots used by the weighted engine |
+| `*_points` component fields | Score-component breakdown for later calibration |
+
+### Calibration outputs
+
+`main_calibrate.py` turns the opportunity log and trade log into calibration
+reports such as:
+
+| File | Purpose |
+| --- | --- |
+| `opportunity_trade_join.csv` | Opportunity-to-trade linkage table |
+| `strength_bucket_summary.csv` | Realized performance by weighted-strength bucket |
+| `signal_family_summary.csv` | Performance split by side and signal family |
+| `daily_frequency_summary.csv` | Opportunity and execution frequency by day |
+| `calibration_overview.csv` | Aggregate execution-rate and expectancy overview |
 
 ### Equity log
 
@@ -1089,13 +1208,15 @@ The repository includes a focused `unittest` suite under `tests/`.
 | Test area | Purpose |
 | --- | --- |
 | Breakout logic | Verify event-based breakout timing |
-| Directional regime logic | Verify mirrored bearish environment scoring |
+| Bias snapshots | Verify categorical labels plus continuous bias-strength payload |
+| Directional regime logic | Verify mirrored bearish environment scoring and normalized snapshots |
 | Feature pipeline | Verify state-transition breakout marking and NaN cleanup |
-| Trend sniffer | Verify tolerant hold logic |
+| Trend sniffer | Verify state-based trailing and side-aware decay logic |
 | Pyramiding | Verify event-based adds and trend gating |
 | Position sizing | Verify stop-floor safeguards and caps |
-| Regime detector | Verify relative slope, thresholds, and classification |
-| Simulator management | Verify entry blocking, exit ordering, and pyramiding path |
+| Score decomposition | Verify normalized score and component breakdowns |
+| Opportunity calibration | Verify opportunity-to-trade joins and calibration report generation |
+| Simulator management | Verify weighted candidate routing, exit ordering, and pyramiding path |
 | Trade metrics | Verify total-risk and initial-risk `R` calculations |
 | Loggers | Verify file creation, headers, and appended rows |
 | Debug control | Verify `app.debug` actually suppresses output |
@@ -1135,11 +1256,14 @@ deliberate incompleteness.
 ### Strategy scope
 
 - The locked baseline is currently long-only.
-- The repo also contains an experimental long+short engine that has not yet
-  beaten the locked baseline in multi-fold validation.
+- The active working config is weighted and long+short capable, but the locked
+  historical benchmark is still the older long-only baseline.
+- The repo also contains an experimental exploratory pressure layer that is
+  disabled by default.
 - `entry/retest.py` exists but is not part of the active entry path.
-- Regime currently acts only as an entry gate.
-- Regime does not yet reduce sizing or pyramiding in weaker-but-allowed markets.
+- The runtime simulator still operates through a single open-position lane.
+- True multi-position and multi-asset portfolio execution are still planned
+  refactors, not completed runtime behavior.
 
 ### Execution realism
 
@@ -1156,6 +1280,8 @@ deliberate incompleteness.
   candle of the dataset.
 - Output files are not versioned automatically per run; a fresh completed run
   rewrites `backtest/output/trades.csv` and `backtest/output/equity.csv`.
+- Calibration reports depend on the latest `opportunities.csv` and `trades.csv`
+  and therefore also reflect the most recent completed run.
 
 ### Logging
 
@@ -1255,6 +1381,10 @@ If you extend the configured end date later, rerunning `main_download.py` will
 reuse the latest compatible completed CSV as a bootstrap source before
 requesting only the missing candles.
 
+The local workspace can already hold multiple symbols under `data_storage/`.
+That is useful for upcoming multi-asset research even though the current runtime
+simulator still executes one open position at a time.
+
 ### 5. Optionally materialize higher timeframe CSVs
 
 ```bash
@@ -1274,13 +1404,23 @@ The backtest:
 
 - rebuilds `15m`, `1h`, `5h`, and `12h` candles from the local `1m` history
 - computes features on all strategy timeframes
-- applies the active entry refinements, winner-retention rules, and selective pyramiding logic
+- applies the active weighted or legacy execution path, trailing logic, and selective pyramiding rules
 - runs the shared simulator
 - writes trade and equity CSVs
+- writes `opportunities.csv` when `backtest.opportunity_log_enabled = true`
 - shows a Rich progress dashboard
 - saves checkpoints so interrupted runs can resume
 
-### 7. Run live simulation
+### 7. Calibrate the opportunity engine
+
+```bash
+python main_calibrate.py
+```
+
+This command links `opportunities.csv` back to executed trades and produces
+bucketed calibration reports under `backtest/output/calibration/`.
+
+### 8. Run live simulation
 
 ```bash
 python main_live.py

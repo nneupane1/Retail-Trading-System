@@ -63,6 +63,14 @@ class BlockingRegimeDetector:
         return False
 
 
+class WeakContextRegimeDetector:
+    def compute_regime(self, df_5h, df_12h, side="long"):
+        return 1
+
+    def classify(self, regime_score):
+        return "weak"
+
+
 class StaticScoreEngine:
     def compute_score(self, row, bias, side="long"):
         return 0
@@ -81,6 +89,11 @@ class MixedThresholdScoreEngine:
 class OverrideScoreEngine:
     def compute_score(self, row, bias, side="long"):
         return 6 if side == "long" else 0
+
+
+class LowScoreEngine:
+    def compute_score(self, row, bias, side="long"):
+        return 2 if side == "long" else 1
 
 
 class NullEntryEngine:
@@ -193,6 +206,119 @@ class OverrideAwareEntryEngine:
         trade.entry_role = "support" if trade.entry_risk_multiplier < 1.0 else "core"
         trade.entry_priority = 0 if trade.entry_role == "support" else 1
         return trade
+
+
+class WeightedEntryEngine:
+    def is_weighted_mode(self):
+        return True
+
+    def build_candidate(
+        self,
+        row,
+        score,
+        bias,
+        side="long",
+        regime_score=None,
+        regime_class=None,
+        score_details=None,
+    ):
+        return self.evaluate_weighted_opportunity(
+            row,
+            score,
+            bias,
+            side=side,
+            regime_score=regime_score,
+            regime_class=regime_class,
+            score_details=score_details,
+        )
+
+    def evaluate_weighted_opportunity(
+        self,
+        row,
+        score,
+        bias,
+        side="long",
+        regime_score=None,
+        regime_class=None,
+        score_details=None,
+    ):
+        if side != "long":
+            return {
+                "timestamp": row.name,
+                "side": side,
+                "signal_family": "trend",
+                "bias": bias,
+                "regime_score": regime_score,
+                "regime_class": regime_class,
+                "raw_score": float(score),
+                "score_norm": 0.1,
+                "momentum_strength": 0.1,
+                "signal_strength": 0.1,
+                "bias_weight": 1.0,
+                "regime_weight": 0.7,
+                "event_bonus": 1.0,
+                "final_strength": 0.1,
+                "entry_risk_multiplier": 0.0,
+                "entry_role": "core",
+                "eligible": False,
+                "rejection_reason": "noise_guard",
+                "structural_floor_passed": True,
+                "breakout_event": False,
+                "price_to_fast_ema_ratio": 0.0,
+                "ema_gap_ratio": 0.0,
+                "vwap_distance_ratio": 0.0,
+                "atr_rising": False,
+                "macd_hist": 0.0,
+                "momentum_components": {},
+                "candidate": None,
+            }
+
+        trade = DummyTrade()
+        trade.side = "long"
+        trade.entry_risk_multiplier = 0.55
+        trade.entry_role = "core"
+        trade.entry_priority = 1
+        return {
+            "timestamp": row.name,
+            "side": side,
+            "signal_family": "trend",
+            "bias": bias,
+            "regime_score": regime_score,
+            "regime_class": regime_class,
+            "raw_score": float(score),
+            "score_norm": 0.25,
+            "momentum_strength": 0.8,
+            "signal_strength": 0.55,
+            "bias_weight": 0.95,
+            "regime_weight": 0.7,
+            "event_bonus": 1.0,
+            "final_strength": 0.55,
+            "entry_risk_multiplier": 0.55,
+            "entry_role": "core",
+            "eligible": True,
+            "rejection_reason": None,
+            "structural_floor_passed": True,
+            "breakout_event": False,
+            "price_to_fast_ema_ratio": 0.01,
+            "ema_gap_ratio": 0.01,
+            "vwap_distance_ratio": 0.01,
+            "atr_rising": True,
+            "macd_hist": 0.5,
+            "momentum_components": {},
+            "candidate": {
+                "side": side,
+                "score": float(score),
+                "selection_value": 0.55,
+                "trade": trade,
+                "trade_regime": regime_score,
+                "regime_class": regime_class,
+                "entry_threshold": 0.25,
+                "entry_risk_multiplier": 0.55,
+                "entry_role": "core",
+                "entry_priority": 1,
+                "signal_family": "trend",
+            },
+        }
 
 
 class ExplorationEnabledConfig(DummyConfig):
@@ -670,6 +796,32 @@ class SimulatorManagementTests(unittest.TestCase):
         self.assertIsNotNone(simulator.current_trade)
         self.assertEqual(simulator.current_trade.signal_family, "exploratory")
         self.assertEqual(simulator.current_trade.entry_role, "support")
+
+    def test_weighted_mode_can_open_low_score_trade_without_regime_gate(self):
+        simulator = Simulator(
+            initial_equity=1000.0,
+            risk_per_trade=0.01,
+            trade_logger=None,
+            equity_logger=None,
+            entry_engine=WeightedEntryEngine(),
+            score_engine=LowScoreEngine(),
+            bias_detector=StaticBiasDetector(),
+            regime_detector=WeakContextRegimeDetector(),
+            pyramiding_engine=RecordingPyramidingEngine(0, []),
+            trend_sniffer=RecordingTrendSniffer(True, []),
+            exit_engine=RecordingExitEngine(False, []),
+            position_sizer=RecordingPositionSizer(),
+            config=DummyConfig(),
+        )
+
+        row = self._make_row(close=104.0)
+        empty_df = pd.DataFrame()
+
+        simulator.step(row, empty_df, empty_df, empty_df)
+
+        self.assertIsNotNone(simulator.current_trade)
+        self.assertEqual(simulator.current_trade.side, "long")
+        self.assertAlmostEqual(simulator.current_trade.entry_risk_multiplier, 0.55)
 
 
 if __name__ == "__main__":

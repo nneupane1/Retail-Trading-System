@@ -9,6 +9,7 @@ from config import AppConfig
 
 TRADE_LOG_FIELDS = [
     "trade_id",
+    "opportunity_id",
     "side",
     "signal_family",
     "entry_time",
@@ -34,6 +35,12 @@ TRADE_LOG_FIELDS = [
     "entry_threshold",
     "exit_reason",
     "pressure_score",
+    "score_norm",
+    "momentum_strength",
+    "final_strength",
+    "bias_weight",
+    "regime_weight",
+    "event_bonus",
     "trail_state",
     "trail_anchor_column",
     "trail_anchor_price",
@@ -68,6 +75,7 @@ def trade_to_log_record(trade):
 
     return {
         "trade_id": getattr(trade, "trade_id", None),
+        "opportunity_id": getattr(trade, "opportunity_id", conditions.get("opportunity_id")),
         "side": getattr(trade, "side", conditions.get("side")),
         "signal_family": getattr(trade, "signal_family", conditions.get("signal_family")),
         "entry_time": getattr(trade, "entry_time", None),
@@ -93,6 +101,12 @@ def trade_to_log_record(trade):
         "entry_threshold": getattr(trade, "entry_threshold", conditions.get("entry_threshold")),
         "exit_reason": getattr(trade, "exit_reason", conditions.get("exit_reason")),
         "pressure_score": getattr(trade, "pressure_score", conditions.get("pressure_score")),
+        "score_norm": getattr(trade, "score_norm", conditions.get("score_norm")),
+        "momentum_strength": getattr(trade, "momentum_strength", conditions.get("momentum_strength")),
+        "final_strength": getattr(trade, "final_strength", conditions.get("final_strength")),
+        "bias_weight": getattr(trade, "bias_weight", conditions.get("bias_weight")),
+        "regime_weight": getattr(trade, "regime_weight", conditions.get("regime_weight")),
+        "event_bonus": getattr(trade, "event_bonus", conditions.get("event_bonus")),
         "trail_state": getattr(trade, "trail_state", conditions.get("trail_state")),
         "trail_anchor_column": getattr(trade, "trail_anchor_column", conditions.get("trail_anchor_column")),
         "trail_anchor_price": getattr(trade, "trail_anchor_price", conditions.get("trail_anchor_price")),
@@ -167,6 +181,7 @@ class Trade:
         self.entry_price = row["close"]
         self.score = score
         self.trade_id = f"{self.side}_{_serialize_time(self.entry_time)}"
+        self.opportunity_id = None
 
         # Structure
         self.stop = row[self.stop_column]
@@ -198,6 +213,12 @@ class Trade:
         self.effective_risk_fraction = None
         self.equity_return_fraction = None
         self.pressure_score = None
+        self.score_norm = None
+        self.momentum_strength = None
+        self.final_strength = None
+        self.bias_weight = None
+        self.regime_weight = None
+        self.event_bonus = None
         self.bias = None
         self.regime_score = None
         self.regime_class = None
@@ -213,6 +234,7 @@ class Trade:
         self.conditions = {
             "side": side,
             "signal_family": self.signal_family,
+            "opportunity_id": None,
             "score": score,
             "body_strength": row.get("body_strength", None),
             "close_position": row.get("close_position", None),
@@ -227,6 +249,12 @@ class Trade:
             "atr": row.get("atr", None),
             "macd_hist": row.get("macd_hist", None),
             "pressure_score": None,
+            "score_norm": None,
+            "momentum_strength": None,
+            "final_strength": None,
+            "bias_weight": None,
+            "regime_weight": None,
+            "event_bonus": None,
         }
 
         print(f"Trade created at {self.entry_time}")
@@ -346,18 +374,35 @@ class Trade:
         bias=None,
         regime_score=None,
         regime_class=None,
-        entry_threshold=None
+        entry_threshold=None,
+        bias_snapshot=None,
+        regime_snapshot=None,
     ):
         self.bias = bias
         self.regime_score = regime_score
         self.regime_class = regime_class
         self.entry_threshold = entry_threshold
-        self.conditions.update({
+        updates = {
             "bias": bias,
             "regime_score": regime_score,
             "regime_class": regime_class,
             "entry_threshold": entry_threshold,
-        })
+        }
+        if bias_snapshot:
+            updates.update({
+                "bias_price_vs_ema_ratio": bias_snapshot.get("price_vs_ema_ratio"),
+                "bias_ema_slope": bias_snapshot.get("ema_slope"),
+                "bias_directional_strength": bias_snapshot.get("directional_strength"),
+            })
+        if regime_snapshot:
+            updates.update({
+                "regime_max_score": regime_snapshot.get("max_score"),
+                "regime_normalized_strength": regime_snapshot.get("normalized_strength"),
+                "regime_macro_aligned": regime_snapshot.get("macro_aligned"),
+                "regime_slope_aligned": regime_snapshot.get("slope_aligned"),
+                "regime_trend_aligned": regime_snapshot.get("trend_aligned"),
+            })
+        self.conditions.update(updates)
 
     def annotate_exit(self, reason=None):
         self.exit_reason = reason
@@ -388,6 +433,35 @@ class Trade:
         self.conditions.update({
             "signal_family": signal_family,
             "pressure_score": pressure_score,
+        })
+
+    def annotate_opportunity(self, opportunity_id=None):
+        self.opportunity_id = opportunity_id
+        self.conditions["opportunity_id"] = opportunity_id
+
+    def annotate_weighted_context(
+        self,
+        *,
+        score_norm=None,
+        momentum_strength=None,
+        final_strength=None,
+        bias_weight=None,
+        regime_weight=None,
+        event_bonus=None,
+    ):
+        self.score_norm = score_norm
+        self.momentum_strength = momentum_strength
+        self.final_strength = final_strength
+        self.bias_weight = bias_weight
+        self.regime_weight = regime_weight
+        self.event_bonus = event_bonus
+        self.conditions.update({
+            "score_norm": score_norm,
+            "momentum_strength": momentum_strength,
+            "final_strength": final_strength,
+            "bias_weight": bias_weight,
+            "regime_weight": regime_weight,
+            "event_bonus": event_bonus,
         })
 
     def update_trailing_state(
@@ -437,6 +511,7 @@ class Trade:
             "entry_price": self.entry_price,
             "score": self.score,
             "trade_id": self.trade_id,
+            "opportunity_id": self.opportunity_id,
             "stop": self.stop,
             "active_stop": self.active_stop,
             "R": self.R,
@@ -465,6 +540,12 @@ class Trade:
             "effective_risk_fraction": self.effective_risk_fraction,
             "equity_return_fraction": self.equity_return_fraction,
             "pressure_score": self.pressure_score,
+            "score_norm": self.score_norm,
+            "momentum_strength": self.momentum_strength,
+            "final_strength": self.final_strength,
+            "bias_weight": self.bias_weight,
+            "regime_weight": self.regime_weight,
+            "event_bonus": self.event_bonus,
             "bias": self.bias,
             "regime_score": self.regime_score,
             "regime_class": self.regime_class,
@@ -496,6 +577,7 @@ class Trade:
         trade.entry_price = snapshot.get("entry_price")
         trade.score = snapshot.get("score")
         trade.trade_id = snapshot.get("trade_id") or f"{trade.side}_{_serialize_time(trade.entry_time)}"
+        trade.opportunity_id = snapshot.get("opportunity_id")
         trade.stop = snapshot.get("stop")
         trade.active_stop = snapshot.get("active_stop", trade.stop)
         trade.R = snapshot.get("R")
@@ -521,6 +603,12 @@ class Trade:
         trade.effective_risk_fraction = snapshot.get("effective_risk_fraction")
         trade.equity_return_fraction = snapshot.get("equity_return_fraction")
         trade.pressure_score = snapshot.get("pressure_score")
+        trade.score_norm = snapshot.get("score_norm")
+        trade.momentum_strength = snapshot.get("momentum_strength")
+        trade.final_strength = snapshot.get("final_strength")
+        trade.bias_weight = snapshot.get("bias_weight")
+        trade.regime_weight = snapshot.get("regime_weight")
+        trade.event_bonus = snapshot.get("event_bonus")
         trade.bias = snapshot.get("bias")
         trade.regime_score = snapshot.get("regime_score")
         trade.regime_class = snapshot.get("regime_class")

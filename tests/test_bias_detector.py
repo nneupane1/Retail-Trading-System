@@ -93,6 +93,36 @@ class BiasDetectorTests(unittest.TestCase):
 
         self.assertEqual(bias, "bearish")
 
+    def test_bias_snapshot_includes_continuous_strength_fields(self):
+        df = pd.DataFrame(
+            {
+                "close": [100.5, 100.8, 101.0, 101.5],
+                "ema50": [100.0, 100.2, 100.4, 100.8],
+            }
+        )
+
+        snapshot = BiasDetector(config=make_config(slope_threshold=0.0005)).get_bias_snapshot(df)
+
+        self.assertEqual(snapshot["label"], "bullish")
+        self.assertGreater(snapshot["price_vs_ema_ratio"], 0.0)
+        self.assertGreater(snapshot["ema_slope"], 0.0)
+        self.assertGreater(snapshot["directional_strength"], 0.0)
+        self.assertIn("distance_strength", snapshot)
+        self.assertIn("slope_strength", snapshot)
+
+    def test_bias_snapshot_can_express_negative_directional_strength(self):
+        df = pd.DataFrame(
+            {
+                "close": [99.5, 99.2, 99.0, 98.5],
+                "ema50": [100.0, 99.8, 99.6, 99.2],
+            }
+        )
+
+        snapshot = BiasDetector(config=make_config(slope_threshold=0.0005)).get_bias_snapshot(df)
+
+        self.assertEqual(snapshot["label"], "bearish")
+        self.assertLess(snapshot["directional_strength"], 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()

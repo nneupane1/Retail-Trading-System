@@ -5,10 +5,16 @@
   },
   "account": {
     "initial_equity": 20000,
-    "risk_per_trade": 0.01
+    "risk_per_trade": 0.01,
+    "risk_per_trade_by_side": {
+      "short": 0.006
+    }
   },
   "backtest": {
     "output_dir": "backtest/output",
+    "opportunity_log_enabled": true,
+    "opportunity_log_filename": "opportunities.csv",
+    "calibration_output_dir": "backtest/output/calibration",
     "checkpoint_dir": "_checkpoints",
     "checkpoint_suffix": ".checkpoint.json",
     "resume_enabled": true,
@@ -43,9 +49,9 @@
   },
   "entry": {
     "score_threshold": 4,
-    "block_compression": true,
+    "block_compression": false,
     "block_compression_sides": ["long"],
-    "blocked_scores": [7],
+    "blocked_scores": [],
     "min_body_strength_by_score": {
       "8": 2.0
     },
@@ -119,7 +125,44 @@
   },
   "strategy": {
     "directional": {
-      "enabled_sides": ["long"]
+      "enabled_sides": ["long", "short"]
+    },
+    "execution": {
+      "mode": "weighted",
+      "weighted": {
+        "score_weight": 0.7,
+        "momentum_weight": 0.3,
+        "noise_guard_min_strength": 0.28,
+        "min_entry_risk_multiplier": 0.28,
+        "max_strength_multiplier": 1.6,
+        "event_bonus": 1.12,
+        "non_event_bonus": 1.0,
+        "structural_floor_enabled": true,
+        "structural_floor_anchor_column": "ema50",
+        "bias_weights": {
+          "bullish": 1.15,
+          "neutral": 0.95,
+          "bearish": 0.7
+        },
+        "regime_weights": {
+          "weak": 0.7,
+          "moderate": 1.0,
+          "strong": 1.25
+        },
+        "momentum_component_weights": {
+          "price_to_fast_ema": 0.35,
+          "ema_gap": 0.25,
+          "vwap_distance": 0.2,
+          "macd_hist": 0.1,
+          "atr_rising": 0.1
+        },
+        "momentum_scales": {
+          "price_to_fast_ema_ratio": 0.006,
+          "ema_gap_ratio": 0.004,
+          "vwap_distance_ratio": 0.004,
+          "macd_hist_atr_ratio": 0.25
+        }
+      }
     },
     "exploration": {
       "enabled": false,

@@ -118,6 +118,52 @@ class RegimeDetectorTests(unittest.TestCase):
 
         self.assertEqual(regime, 4)
 
+    def test_regime_snapshot_includes_normalized_strength_and_component_flags(self):
+        detector = RegimeDetector(config=make_config(slope_threshold=0.0005))
+        df_12h = pd.DataFrame(
+            {
+                "close": [100.5, 100.8, 101.0, 101.5],
+                "ema50": [100.0, 100.2, 100.4, 100.8],
+            }
+        )
+        df_5h = pd.DataFrame(
+            {
+                "close": [100.1, 100.3, 100.5, 100.9],
+                "ema50": [100.0, 100.1, 100.2, 100.4],
+            }
+        )
+
+        snapshot = detector.compute_regime_snapshot(df_5h, df_12h, side="long")
+
+        self.assertEqual(snapshot["raw_score"], 4)
+        self.assertEqual(snapshot["class"], "strong")
+        self.assertAlmostEqual(snapshot["normalized_strength"], 1.0)
+        self.assertTrue(snapshot["macro_aligned"])
+        self.assertTrue(snapshot["slope_aligned"])
+        self.assertTrue(snapshot["trend_aligned"])
+
+    def test_regime_snapshot_keeps_directional_metrics_signed_for_short_side(self):
+        detector = RegimeDetector(config=make_config(slope_threshold=0.0005))
+        df_12h = pd.DataFrame(
+            {
+                "close": [99.0, 98.5, 98.0, 97.5],
+                "ema50": [100.0, 99.8, 99.5, 99.0],
+            }
+        )
+        df_5h = pd.DataFrame(
+            {
+                "close": [99.5, 99.0, 98.5, 98.0],
+                "ema50": [100.0, 99.9, 99.6, 99.2],
+            }
+        )
+
+        snapshot = detector.compute_regime_snapshot(df_5h, df_12h, side="short")
+
+        self.assertEqual(snapshot["class"], "strong")
+        self.assertGreater(snapshot["directional_macro_distance"], 0.0)
+        self.assertGreater(snapshot["directional_trend_distance"], 0.0)
+        self.assertGreater(snapshot["directional_slope"], 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()

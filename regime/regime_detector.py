@@ -58,7 +58,7 @@ class RegimeDetector:
     def allows_entries(self, score, side="long"):
         return score >= self.moderate_score
 
-    def compute_regime(self, df_5h, df_12h, side="long"):
+    def compute_regime_snapshot(self, df_5h, df_12h, side="long"):
         start = time.time()
         side = str(side).lower()
         direction = "bullish" if side == "long" else "bearish"
@@ -67,8 +67,21 @@ class RegimeDetector:
 
         score = 0
 
-        close_12h = df_12h["close"].iloc[-1]
-        ema_12h = df_12h[self.ema_column].iloc[-1]
+        close_12h = float(df_12h["close"].iloc[-1])
+        ema_12h = float(df_12h[self.ema_column].iloc[-1])
+        close_5h = float(df_5h["close"].iloc[-1])
+        ema_5h = float(df_5h[self.ema_column].iloc[-1])
+
+        macro_price_vs_ema_ratio = (
+            (close_12h - ema_12h) / ema_12h
+            if ema_12h
+            else 0.0
+        )
+        trend_price_vs_ema_ratio = (
+            (close_5h - ema_5h) / ema_5h
+            if ema_5h
+            else 0.0
+        )
 
         macro_aligned = close_12h > ema_12h if side == "long" else close_12h < ema_12h
         if macro_aligned:
@@ -77,9 +90,11 @@ class RegimeDetector:
         else:
             print(f"Macro not {direction}")
 
-        slope_12h = _compute_slope(
-            df_12h[self.ema_column],
-            lookback=self.slope_lookback
+        slope_12h = float(
+            _compute_slope(
+                df_12h[self.ema_column],
+                lookback=self.slope_lookback,
+            )
         )
         slope_aligned = (
             slope_12h > self.slope_threshold
@@ -97,8 +112,6 @@ class RegimeDetector:
         else:
             print("Macro EMA slope not strong enough")
 
-        close_5h = df_5h["close"].iloc[-1]
-        ema_5h = df_5h[self.ema_column].iloc[-1]
         trend_aligned = close_5h > ema_5h if side == "long" else close_5h < ema_5h
         if trend_aligned:
             score += self.trend_weight
@@ -127,8 +140,41 @@ class RegimeDetector:
         else:
             print("Weak / choppy market")
 
-        return score
+        return {
+            "side": side,
+            "raw_score": int(score),
+            "max_score": int(max_score),
+            "class": regime_classification,
+            "normalized_strength": float(score / max_score) if max_score else 0.0,
+            "allows_entries": bool(self.allows_entries(score, side=side)),
+            "macro_aligned": bool(macro_aligned),
+            "slope_aligned": bool(slope_aligned),
+            "trend_aligned": bool(trend_aligned),
+            "macro_price_vs_ema_ratio": float(macro_price_vs_ema_ratio),
+            "trend_price_vs_ema_ratio": float(trend_price_vs_ema_ratio),
+            "directional_macro_distance": float(
+                macro_price_vs_ema_ratio if side == "long" else -macro_price_vs_ema_ratio
+            ),
+            "directional_trend_distance": float(
+                trend_price_vs_ema_ratio if side == "long" else -trend_price_vs_ema_ratio
+            ),
+            "ema_slope": float(slope_12h),
+            "directional_slope": float(slope_12h if side == "long" else -slope_12h),
+            "slope_threshold": float(self.slope_threshold),
+            "ema_column": self.ema_column,
+        }
+
+    def compute_regime(self, df_5h, df_12h, side="long"):
+        return self.compute_regime_snapshot(df_5h, df_12h, side=side)["raw_score"]
 
 
 def compute_regime(df_5h, df_12h, side="long", config=None):
     return RegimeDetector(config=config).compute_regime(df_5h, df_12h, side=side)
+
+
+def compute_regime_snapshot(df_5h, df_12h, side="long", config=None):
+    return RegimeDetector(config=config).compute_regime_snapshot(
+        df_5h,
+        df_12h,
+        side=side,
+    )
