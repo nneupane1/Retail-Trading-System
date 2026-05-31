@@ -124,6 +124,33 @@ class TradeMetricsTests(unittest.TestCase):
         self.assertEqual(trade.pnl, 8.0)
         self.assertEqual(trade.pnl_R_initial, 1.6)
 
+    def test_trade_can_track_edge_execution_profile_and_bar_age(self):
+        entry_row = pd.Series(
+            {
+                "close": 100.0,
+                "ll2": 95.0,
+            },
+            name=pd.Timestamp("2026-01-01 00:00:00"),
+        )
+
+        trade = Trade(entry_row, score=5, config=DummyConfig())
+        trade.annotate_edge_execution_profile(
+            max_hold_candles=6,
+            disable_pyramiding=True,
+            disable_trailing=True,
+            profit_lock_trigger_r=1.5,
+            profit_lock_stop_r=0.25,
+        )
+        trade.advance_bar()
+        trade.advance_bar()
+
+        self.assertEqual(trade.bars_held, 2)
+        self.assertEqual(trade.max_hold_candles, 6)
+        self.assertTrue(trade.disable_pyramiding)
+        self.assertTrue(trade.disable_trailing)
+        self.assertEqual(trade.profit_lock_trigger_r, 1.5)
+        self.assertEqual(trade.profit_lock_stop_r, 0.25)
+
 
 if __name__ == "__main__":
     unittest.main()

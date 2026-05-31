@@ -391,29 +391,103 @@ The bucket structure remains intentionally small:
 That keeps the lab explainable while changing the quality of the underlying
 signals rather than exploding bucket complexity.
 
-Latest local BTC/ETH/SOL run:
+Latest wider local run:
 
 ```bash
-python main_edge_lab.py --symbols BTCUSDT ETHUSDT SOLUSDT --horizons 1 3 5 --bucket-min-count 150 --bucket-min-avg-return-net 0.0
+python main_edge_lab.py --symbols AAVEUSDT AVAXUSDT BNBUSDT BTCUSDT ETHUSDT LINKUSDT SOLUSDT TRXUSDT XRPUSDT --horizons 1 3 5 --bucket-min-count 150 --bucket-min-avg-return-net 0.0
 ```
 
 What that run showed:
 
 - broad refined breakout families are still mostly fee-negative
-- `impulse_breakout` improved materially versus the older generic breakout pool,
-  but still did not clear fees at this resolution
 - `pressure_breakout` remained negative across the tested horizons
-- exactly one bucket survived the current fee-aware filter:
-  - `breakout_pullback|neutral|strong|far`
-  - `selected_horizon = 3`
-  - `signal_count = 234`
-  - `avg_return_net = 0.000037`
+- `breakout_pullback` did not survive once the universe widened
+- exactly one bucket survived the current fee-aware filter with real sample
+  depth:
+  - `impulse_breakout|neutral|strong|far`
+  - `selected_horizon = 5`
+  - `signal_count = 4029`
+  - `avg_return_net = 0.000212`
+  - `win_rate_net ≈ 44.85%`
 
-That result matters because it is the first narrow breakout-derived bucket in
-the current workflow that stayed positive after the configured round-trip fee.
-It is still too small and too narrow to promote as a production selector on its
-own, but it is now a real pocket of measurable edge rather than a plausible
-story.
+That matters because it is the first breakout-derived bucket in this repo that
+stayed positive after the configured `0.1%` round-trip fee across the wider
+9-symbol local universe.
+
+### Production edge candidate
+
+The repo now includes an explicit production-candidate table for that edge:
+
+- `config/edge_tables/impulse_breakout_production.json`
+
+And a controlled branch-comparison spec:
+
+- `config/branches/impulse_breakout_production_candidates.json`
+
+That branch does **not** add more filters. It does four simple things:
+
+1. enables edge selection with `bucket_only` sizing authority
+2. restricts the branch to the discovered long-side impulse bucket
+3. lowers base risk to `0.25%`
+4. applies an edge-specific execution profile:
+   - `max_hold_candles = 6`
+   - pyramiding disabled
+   - trailing disabled
+   - light profit lock only after `+1.5R`
+
+This keeps the runtime aligned with the edge's measured behavior rather than
+forcing it through the slower generic trend-management path.
+
+### Deployment result
+
+The first honest branch comparison is now available under:
+
+- `backtest/output/validation/weighted_impulse_breakout_compare/branch_comparison__impulse_breakout_production_candidates.csv`
+- `backtest/output/validation/weighted_impulse_breakout_fullrange/branch_comparison__impulse_breakout_production_candidates.csv`
+
+What that comparison showed:
+
+- the impulse bucket **does** improve per-trade quality materially
+- it also **reduces** drawdown materially
+- but in the current one-slot runtime it cuts trade flow and total PnL too much
+
+Single split (`BTCUSDT`, current runtime config):
+
+- `weighted_broad_current`
+  - train PF `1.084`, avg R `0.0190`, DD `-27.45%`, trades `22502`
+  - test PF `1.062`, avg R `0.0080`, DD `-24.27%`, trades `25719`
+- `impulse_breakout_production`
+  - train PF `1.160`, avg R `0.0350`, DD `-6.65%`, trades `15335`
+  - test PF `1.123`, avg R `0.0283`, DD `-4.78%`, trades `15277`
+
+Full range:
+
+- `weighted_broad_current`
+  - net PnL `+141440.09`
+  - PF `1.069`
+  - avg R `0.0132`
+  - DD `-33.53%`
+  - trades `48221`
+- `impulse_breakout_production`
+  - net PnL `+25485.73`
+  - PF `1.166`
+  - avg R `0.0351`
+  - DD `-6.65%`
+  - trades `22232`
+
+So the conclusion is precise:
+
+- the bucket is a **real deployable edge**
+- it is **better quality** than the broad weighted flow
+- but as a standalone selector inside the current one-position simulator it is
+  too narrow to replace the broader engine as the main growth path
+
+That means the right next use is:
+
+- keep it as a protected production candidate
+- use it as a high-quality sub-engine
+- later combine it with multi-position / multi-asset allocation instead of
+  forcing it to become the only trade source
 
 ### Active refinement hooks
 
@@ -1571,7 +1645,7 @@ bucketed calibration reports under `backtest/output/calibration/`.
 ### 8. Run the refined breakout edge lab
 
 ```bash
-python main_edge_lab.py --symbols BTCUSDT ETHUSDT SOLUSDT --horizons 1 3 5 --bucket-min-count 150 --bucket-min-avg-return-net 0.0
+python main_edge_lab.py --symbols AAVEUSDT AVAXUSDT BNBUSDT BTCUSDT ETHUSDT LINKUSDT SOLUSDT TRXUSDT XRPUSDT --horizons 1 3 5 --bucket-min-count 150 --bucket-min-avg-return-net 0.0
 ```
 
 This is the current lean edge-discovery loop. It isolates three refined
@@ -1583,7 +1657,10 @@ breakout populations:
 
 It then builds `edge_bucket_summary.csv` and `edge_table.json` so you can see
 whether any fee-aware breakout subpopulation is strong enough to justify the
-optional runtime selector.
+optional runtime selector. The latest wider-universe run produced one
+deployable bucket:
+
+- `impulse_breakout|neutral|strong|far`
 
 ### 9. Run live simulation
 

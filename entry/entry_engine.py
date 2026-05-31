@@ -332,6 +332,14 @@ class EntryEngine:
         )
         self.max_score = self._compute_max_score()
         self.edge_selector = EdgeSelector(config=self.config)
+        edge_selection_config = (
+            getter("strategy", "edge_selection", default={})
+            if callable(getter)
+            else {}
+        ) or {}
+        self.edge_selection_risk_mode = str(
+            edge_selection_config.get("risk_mode", "blend")
+        ).strip().lower()
         self.legacy_engine = LegacyEntryEngine(self)
         self.weighted_engine = WeightedOpportunityEngine(self)
 

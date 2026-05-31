@@ -404,6 +404,7 @@ class DummyTrade:
         self.side = "long"
         self.entry_price = 100.0
         self.stop = 95.0
+        self.active_stop = 95.0
         self.R = 5.0
         self.entry_risk_multiplier = 1.0
         self.entry_role = "core"
@@ -414,12 +415,22 @@ class DummyTrade:
         self.added_entries = []
         self.exit_price = None
         self.exit_time = None
+        self.bars_held = 0
+        self.max_hold_candles = None
+        self.disable_pyramiding = False
+        self.disable_trailing = False
+        self.profit_lock_trigger_r = None
+        self.profit_lock_stop_r = None
 
     def total_risk_to_stop(self):
         return 0.0
 
     def add_entry(self, price, size):
         self.added_entries.append((price, size))
+
+    def advance_bar(self):
+        self.bars_held += 1
+        return self.bars_held
 
     def close(self, row, exit_price=None):
         self.closed = True
@@ -504,6 +515,22 @@ class SimulatorManagementTests(unittest.TestCase):
         self.assertIsNotNone(simulator.current_trade)
         self.assertEqual(simulator.level, 1)
         self.assertEqual(simulator.current_trade.added_entries, [(110.0, 0.5)])
+
+    def test_edge_profile_can_force_time_exit_before_pyramiding(self):
+        simulator, calls = self._make_simulator(
+            trend_ok=True,
+            hard_exit=False,
+            next_level=1,
+        )
+        simulator.current_trade.max_hold_candles = 1
+
+        row = self._make_row(close=110.0)
+        empty_df = pd.DataFrame()
+
+        simulator.step(row, empty_df, empty_df, empty_df)
+
+        self.assertIsNone(simulator.current_trade)
+        self.assertNotIn("pyramid", calls)
 
     def test_hard_exit_prevents_pyramiding(self):
         simulator, calls = self._make_simulator(

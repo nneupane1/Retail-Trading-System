@@ -54,6 +54,8 @@ TRADE_LOG_FIELDS = [
     "trail_open_r_multiple",
     "trail_momentum_score",
     "trail_decay_score",
+    "bars_held",
+    "max_hold_candles",
     "entry_layer_count",
     "pyramid_level",
     "score",
@@ -127,6 +129,8 @@ def trade_to_log_record(trade):
         "trail_open_r_multiple": getattr(trade, "trail_open_r_multiple", conditions.get("trail_open_r_multiple")),
         "trail_momentum_score": getattr(trade, "trail_momentum_score", conditions.get("trail_momentum_score")),
         "trail_decay_score": getattr(trade, "trail_decay_score", conditions.get("trail_decay_score")),
+        "bars_held": getattr(trade, "bars_held", conditions.get("bars_held")),
+        "max_hold_candles": getattr(trade, "max_hold_candles", conditions.get("max_hold_candles")),
         "entry_layer_count": entry_layer_count,
         "pyramid_level": getattr(trade, "pyramid_level", conditions.get("pyramid_level", 0)),
         "score": conditions.get("score"),
@@ -250,6 +254,12 @@ class Trade:
         self.trail_open_r_multiple = 0.0
         self.trail_momentum_score = 0
         self.trail_decay_score = 0
+        self.bars_held = 0
+        self.max_hold_candles = None
+        self.disable_pyramiding = False
+        self.disable_trailing = False
+        self.profit_lock_trigger_r = None
+        self.profit_lock_stop_r = None
 
         # Store WHY trade happened (very important)
         self.conditions = {
@@ -282,6 +292,8 @@ class Trade:
             "bias_weight": None,
             "regime_weight": None,
             "event_bonus": None,
+            "bars_held": 0,
+            "max_hold_candles": None,
         }
 
         print(f"Trade created at {self.entry_time}")
@@ -519,6 +531,41 @@ class Trade:
             "bucket_risk_mult": bucket_risk_mult,
         })
 
+    def annotate_edge_execution_profile(
+        self,
+        *,
+        max_hold_candles=None,
+        disable_pyramiding=False,
+        disable_trailing=False,
+        profit_lock_trigger_r=None,
+        profit_lock_stop_r=None,
+    ):
+        self.max_hold_candles = (
+            None if max_hold_candles in (None, "") else int(max_hold_candles)
+        )
+        self.disable_pyramiding = bool(disable_pyramiding)
+        self.disable_trailing = bool(disable_trailing)
+        self.profit_lock_trigger_r = (
+            None if profit_lock_trigger_r in (None, "") else float(profit_lock_trigger_r)
+        )
+        self.profit_lock_stop_r = (
+            None if profit_lock_stop_r in (None, "") else float(profit_lock_stop_r)
+        )
+        self.conditions.update(
+            {
+                "max_hold_candles": self.max_hold_candles,
+                "disable_pyramiding": self.disable_pyramiding,
+                "disable_trailing": self.disable_trailing,
+                "profit_lock_trigger_r": self.profit_lock_trigger_r,
+                "profit_lock_stop_r": self.profit_lock_stop_r,
+            }
+        )
+
+    def advance_bar(self):
+        self.bars_held = int(self.bars_held or 0) + 1
+        self.conditions["bars_held"] = self.bars_held
+        return self.bars_held
+
     def update_trailing_state(
         self,
         *,
@@ -611,6 +658,12 @@ class Trade:
             "trail_open_r_multiple": self.trail_open_r_multiple,
             "trail_momentum_score": self.trail_momentum_score,
             "trail_decay_score": self.trail_decay_score,
+            "bars_held": self.bars_held,
+            "max_hold_candles": self.max_hold_candles,
+            "disable_pyramiding": self.disable_pyramiding,
+            "disable_trailing": self.disable_trailing,
+            "profit_lock_trigger_r": self.profit_lock_trigger_r,
+            "profit_lock_stop_r": self.profit_lock_stop_r,
             "conditions": dict(self.conditions),
         }
 
@@ -674,5 +727,11 @@ class Trade:
         trade.trail_open_r_multiple = snapshot.get("trail_open_r_multiple", 0.0)
         trade.trail_momentum_score = snapshot.get("trail_momentum_score", 0)
         trade.trail_decay_score = snapshot.get("trail_decay_score", 0)
+        trade.bars_held = snapshot.get("bars_held", 0)
+        trade.max_hold_candles = snapshot.get("max_hold_candles")
+        trade.disable_pyramiding = snapshot.get("disable_pyramiding", False)
+        trade.disable_trailing = snapshot.get("disable_trailing", False)
+        trade.profit_lock_trigger_r = snapshot.get("profit_lock_trigger_r")
+        trade.profit_lock_stop_r = snapshot.get("profit_lock_stop_r")
         trade.conditions = dict(snapshot.get("conditions", {}))
         return trade

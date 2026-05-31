@@ -373,6 +373,46 @@ class Simulator:
             "entry_priority": 1,
         }
 
+    def _edge_execution_profile(self, edge_type):
+        getter = getattr(self.config, "get", None)
+        if not callable(getter):
+            return {}
+        profiles = getter("strategy", "edge_profiles", default={}) or {}
+        profile = profiles.get(str(edge_type)) or {}
+        return dict(profile) if isinstance(profile, dict) else {}
+
+    @staticmethod
+    def _open_r_multiple(price, trade):
+        if trade is None or not getattr(trade, "R", None):
+            return 0.0
+        if getattr(trade, "side", "long") == "short":
+            return (float(trade.entry_price) - float(price)) / float(trade.R)
+        return (float(price) - float(trade.entry_price)) / float(trade.R)
+
+    def _apply_profit_lock(self, trade, price):
+        trigger_r = getattr(trade, "profit_lock_trigger_r", None)
+        stop_r = getattr(trade, "profit_lock_stop_r", None)
+        if trigger_r is None or stop_r is None:
+            return
+
+        open_r_multiple = self._open_r_multiple(price, trade)
+        if open_r_multiple < float(trigger_r):
+            return
+
+        if getattr(trade, "side", "long") == "short":
+            proposed_stop = float(trade.entry_price) - (float(stop_r) * float(trade.R))
+            trade.active_stop = min(float(trade.active_stop), proposed_stop)
+        else:
+            proposed_stop = float(trade.entry_price) + (float(stop_r) * float(trade.R))
+            trade.active_stop = max(float(trade.active_stop), proposed_stop)
+
+    @staticmethod
+    def _time_exit_due(trade):
+        max_hold_candles = getattr(trade, "max_hold_candles", None)
+        if max_hold_candles is None:
+            return False
+        return int(getattr(trade, "bars_held", 0) or 0) >= int(max_hold_candles)
+
     def _select_weighted_candidate(
         self,
         row,
@@ -845,6 +885,15 @@ class Simulator:
                 bucket_expected_return=candidate.get("bucket_expected_return"),
                 bucket_risk_mult=candidate.get("bucket_risk_mult"),
             )
+        edge_profile = self._edge_execution_profile(candidate.get("edge_type"))
+        if edge_profile and hasattr(trade, "annotate_edge_execution_profile"):
+            trade.annotate_edge_execution_profile(
+                max_hold_candles=edge_profile.get("max_hold_candles"),
+                disable_pyramiding=edge_profile.get("disable_pyramiding", False),
+                disable_trailing=edge_profile.get("disable_trailing", False),
+                profit_lock_trigger_r=edge_profile.get("profit_lock_trigger_r"),
+                profit_lock_stop_r=edge_profile.get("profit_lock_stop_r"),
+            )
 
         print("\nEXECUTING NEW TRADE")
         base_side_risk_per_trade = self._risk_for_side(selected_side)
@@ -994,8 +1043,18 @@ class Simulator:
                     print(f"Override entry skipped: {block_reason}")
 
             else:
+                trade.advance_bar()
+                price = row["close"]
+                self._apply_profit_lock(trade, price)
+
                 evaluate = getattr(self.trend_sniffer, "evaluate", None)
-                if callable(evaluate):
+                if getattr(trade, "disable_trailing", False):
+                    trend_ok = True
+                    soft_exit_signal = False
+                    allow_pyramiding = not bool(
+                        getattr(trade, "disable_pyramiding", False)
+                    )
+                elif callable(evaluate):
                     trailing_signal = evaluate(row, trade=trade)
                     trend_ok = bool(trailing_signal["trend_alive"])
                     soft_exit_signal = bool(trailing_signal["should_exit"])
@@ -1019,6 +1078,13 @@ class Simulator:
                     soft_exit_signal = not trend_ok
                     allow_pyramiding = trend_ok
 
+                if self._time_exit_due(trade):
+                    self._close_current_trade(row, reason="time exit")
+                    if self.equity_logger:
+                        self.equity_logger.log(row.name, self.account.equity)
+                    print("=" * 60 + "\n")
+                    return
+
                 if soft_exit_signal:
                     exit_reason = "state exit" if getattr(trade, "trail_state", None) == "exit" else "trend weakness"
                     self._close_current_trade(row, reason=exit_reason)
@@ -1033,12 +1099,13 @@ class Simulator:
                     print("=" * 60 + "\n")
                     return
 
-                price = row["close"]
                 # Pyramiding is allowed only while the trade remains valid.
                 pyramid_quality_ok = self.pyramiding_engine.qualifies_for_pyramiding(
                     row=row,
                     trade=trade,
                 )
+                if getattr(trade, "disable_pyramiding", False):
+                    pyramid_quality_ok = False
                 new_level = self.pyramiding_engine.check_pyramiding(
                     price=price,
                     entry_price=trade.entry_price,

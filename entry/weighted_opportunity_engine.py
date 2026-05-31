@@ -80,13 +80,27 @@ class WeightedOpportunityEngine:
             bucket_risk_mult = float(
                 bucket_profile.get("bucket_risk_mult", 1.0) or 1.0
             )
-            entry_risk_multiplier = max(
-                self.owner.weighted_min_entry_risk_multiplier,
-                min(
-                    final_strength * bucket_risk_mult,
-                    self.owner.weighted_max_strength_multiplier,
-                ),
-            )
+            if (
+                bucket_profile.get("edge_selector_enabled")
+                and bucket_profile.get("edge_selector_active")
+                and bucket_profile.get("bucket_valid")
+                and getattr(self.owner, "edge_selection_risk_mode", "blend") == "bucket_only"
+            ):
+                entry_risk_multiplier = max(
+                    self.owner.weighted_min_entry_risk_multiplier,
+                    min(
+                        bucket_risk_mult,
+                        self.owner.weighted_max_strength_multiplier,
+                    ),
+                )
+            else:
+                entry_risk_multiplier = max(
+                    self.owner.weighted_min_entry_risk_multiplier,
+                    min(
+                        final_strength * bucket_risk_mult,
+                        self.owner.weighted_max_strength_multiplier,
+                    ),
+                )
             trade = Trade(row, score, side=side, config=self.owner.config)
             trade.entry_risk_multiplier = entry_risk_multiplier
             trade.entry_role = "core"

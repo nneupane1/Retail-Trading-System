@@ -6,13 +6,43 @@ import unittest
 from pathlib import Path
 
 from backtest.validation import (
+    _history_source_path,
     build_default_validation_windows,
     build_expanding_yearly_windows,
     load_branch_specs,
 )
+from config import AppConfig
 
 
 class ValidationHelpersTests(unittest.TestCase):
+    def test_history_source_path_resolves_timestamped_storage_file(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base_path = Path(temp_dir) / "data_storage"
+            history_dir = base_path / "BTCUSDT" / "1m"
+            history_dir.mkdir(parents=True, exist_ok=True)
+            timestamped = history_dir / (
+                "BTCUSDT_1m_2018-01-01T00.00.00_to_2026-05-23T00.00.00.csv"
+            )
+            timestamped.write_text("timestamp,open,high,low,close,volume\n", encoding="utf-8")
+
+            config = AppConfig(
+                data={
+                    "app": {"default_symbol": "BTCUSDT"},
+                    "storage": {"base_path": str(base_path)},
+                    "history": {
+                        "start_date": "2018-01-01",
+                        "end_date": "2026-05-22",
+                    },
+                    "timeframes": {"base": {"label": "1m"}},
+                },
+                config_path=Path(temp_dir) / "validation_test.json",
+                root_dir=Path(temp_dir),
+            )
+
+            resolved = _history_source_path(config)
+
+        self.assertEqual(resolved, timestamped)
+
     def test_build_default_validation_windows_supports_full_range_scheme(self):
         windows = build_default_validation_windows(
             start_date="2018-01-01",

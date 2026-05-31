@@ -1,0 +1,21 @@
+{
+  "branches": [
+    {
+      "name": "weighted_broad_current",
+      "overrides": {}
+    },
+    {
+      "name": "impulse_breakout_production",
+      "overrides": {
+        "strategy.directional.enabled_sides": ["long"],
+        "strategy.edge_selection.enabled": true,
+        "strategy.edge_selection.table_path": "config/edge_tables/impulse_breakout_production.json",
+        "strategy.edge_selection.risk_mode": "bucket_only",
+        "account.risk_per_trade": 0.0025,
+        "position.min_stop_distance_ratio": 0.003,
+        "strategy.daily_controls.max_daily_risk": 0.03,
+        "strategy.exploration.enabled": false
+      }
+    }
+  ]
+}

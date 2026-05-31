@@ -19,6 +19,52 @@ from simulation.simulator import Simulator
 from simulation.trade import TRADE_LOG_FIELDS
 
 
+def _parse_storage_timestamp(value):
+    return pd.Timestamp(str(value).replace("T", " ").replace(".", ":"))
+
+
+def _resolve_base_history_file(base_folder, symbol, base_label, start_date, end_date):
+    exact_path = base_folder / f"{symbol}_{base_label}_{start_date}_to_{end_date}.csv"
+    if exact_path.exists():
+        return exact_path
+
+    requested_start = pd.Timestamp(start_date)
+    requested_end = pd.Timestamp(end_date)
+    candidates = []
+    for candidate in Path(base_folder).glob(f"{symbol}_{base_label}_*.csv"):
+        if candidate.name.endswith("_live_runtime.csv"):
+            continue
+
+        stem = candidate.stem
+        prefix = f"{symbol}_{base_label}_"
+        if not stem.startswith(prefix) or "_to_" not in stem:
+            continue
+
+        remainder = stem[len(prefix):]
+        start_text, end_text = remainder.split("_to_", 1)
+        try:
+            candidate_start = _parse_storage_timestamp(start_text)
+            candidate_end = _parse_storage_timestamp(end_text)
+        except Exception:
+            continue
+
+        if candidate_start <= requested_start:
+            candidates.append(
+                (
+                    candidate_end >= requested_end,
+                    candidate_end,
+                    -candidate_start.value,
+                    candidate,
+                )
+            )
+
+    if not candidates:
+        raise FileNotFoundError(f"CSV file not found: {exact_path}")
+
+    candidates.sort(reverse=True)
+    return candidates[0][3]
+
+
 def _set_nested(mapping, dotted_path, value):
     parts = dotted_path.split(".")
     node = mapping
@@ -152,11 +198,13 @@ def _history_source_path(config):
     start_date = config.require("history", "start_date")
     end_date = config.require("history", "end_date")
     base_tf = config.require("timeframes", "base")
-    return (
-        base_path
-        / symbol
-        / base_tf["label"]
-        / f"{symbol}_{base_tf['label']}_{start_date}_to_{end_date}.csv"
+    base_folder = base_path / symbol / base_tf["label"]
+    return _resolve_base_history_file(
+        base_folder=base_folder,
+        symbol=symbol,
+        base_label=base_tf["label"],
+        start_date=start_date,
+        end_date=end_date,
     )
 
 

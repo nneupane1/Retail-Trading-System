@@ -1,0 +1,32 @@
+{
+  "metadata": {
+    "source": "multi_asset_refined_breakout_edge_lab",
+    "symbols": [
+      "AAVEUSDT",
+      "AVAXUSDT",
+      "BNBUSDT",
+      "BTCUSDT",
+      "ETHUSDT",
+      "LINKUSDT",
+      "SOLUSDT",
+      "TRXUSDT",
+      "XRPUSDT"
+    ],
+    "start_date": "2018-01-01",
+    "end_date": "2026-05-22",
+    "min_count": 150,
+    "min_avg_return_net": 0.0,
+    "fee_rate": 0.001
+  },
+  "buckets": {
+    "impulse_breakout|neutral|strong|far": {
+      "valid": true,
+      "expected_return": 0.000212,
+      "risk_mult": 1.1,
+      "signal_count": 4029,
+      "selected_horizon": 5,
+      "win_rate_net": 0.448498,
+      "reason": "production_edge"
+    }
+  }
+}
