@@ -34,7 +34,7 @@ LIVE_SIGNAL_LOG_FIELDS = [
 
 
 class _CsvLoggerBase:
-    def __init__(self, filepath, fieldnames):
+    def __init__(self, filepath, fieldnames, reset=False):
         self.filepath = filepath
         self.fieldnames = list(fieldnames)
 
@@ -42,7 +42,7 @@ class _CsvLoggerBase:
         if directory:
             os.makedirs(directory, exist_ok=True)
 
-        if not os.path.exists(self.filepath):
+        if reset or not os.path.exists(self.filepath):
             with open(self.filepath, "w", newline="", encoding="utf-8") as file_handle:
                 writer = csv.writer(file_handle)
                 writer.writerow(self.fieldnames)
@@ -97,14 +97,14 @@ class LiveTradeLogger:
 class LiveSignalLogger:
     """Logs scored live candidates before portfolio selection."""
 
-    def __init__(self, filepath=None, config=None):
+    def __init__(self, filepath=None, config=None, reset=False):
         self.config = config or AppConfig.load()
         if filepath is not None:
             self.filepath = filepath
         else:
             output_dir = self.config.require("live_sim", "output_dir")
             self.filepath = os.path.join(output_dir, "signals.csv")
-        self._base = _CsvLoggerBase(self.filepath, LIVE_SIGNAL_LOG_FIELDS)
+        self._base = _CsvLoggerBase(self.filepath, LIVE_SIGNAL_LOG_FIELDS, reset=reset)
 
     def log_signal(self, payload):
         if not payload:

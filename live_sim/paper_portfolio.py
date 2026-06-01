@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from datetime import datetime
 
 from common.debug import debug_print as print
 from config import AppConfig
@@ -62,6 +63,7 @@ class LivePaperPortfolio:
         self.max_total_risk_fraction = float(raw.get("max_total_risk_fraction", 0.04))
         self.max_trades_per_asset = int(raw.get("max_trades_per_asset", 2))
         self.max_same_direction_positions = int(raw.get("max_same_direction_positions", 6))
+        self.max_new_positions_per_step = int(raw.get("max_new_positions_per_step", 3))
         self.min_risk_per_trade = float(raw.get("min_risk_per_trade", 0.0025))
         self.max_risk_per_trade = float(raw.get("max_risk_per_trade", 0.0060))
         self.trailing_activation_r = float(raw.get("trailing_activation_r", 1.2))
@@ -69,6 +71,23 @@ class LivePaperPortfolio:
         self.slow_grind_max_bars = int(raw.get("slow_grind_max_bars", 8))
         self.slow_grind_open_r_max = float(raw.get("slow_grind_open_r_max", 1.0))
         self.weight_update_min_trades = int(raw.get("weight_update_min_trades", 30))
+        raw_bucket_multipliers = dict(
+            raw.get(
+                "score_bucket_risk_multipliers",
+                {
+                    "0.9-1.0": 1.0,
+                    "0.8-0.9": 0.35,
+                    "0.7-0.8": 0.0,
+                    "0.6-0.7": 0.0,
+                    "<0.6": 0.0,
+                },
+            )
+            or {}
+        )
+        self.score_bucket_risk_multipliers = {
+            str(bucket): float(multiplier)
+            for bucket, multiplier in raw_bucket_multipliers.items()
+        }
         self.allowed_sides = {
             str(side).lower()
             for side in (raw.get("allowed_sides") or ["long"])
@@ -122,6 +141,15 @@ class LivePaperPortfolio:
             clamp(score) * (self.max_risk_per_trade - self.min_risk_per_trade)
         )
         return min(self.max_risk_per_trade, max(0.0, base * float(risk_mult or 1.0)))
+
+    def _score_bucket_risk_multiplier(self, score_bucket):
+        return float(
+            self.score_bucket_risk_multipliers.get(
+                str(score_bucket or "<0.6"),
+                0.0,
+            )
+            or 0.0
+        )
 
     def _active_risk_fraction(self):
         equity = float(self.account.equity or 0.0)
@@ -330,6 +358,114 @@ class LivePaperPortfolio:
         print(f"  Avg realized PnL/day: {avg_daily_pnl:.2f}")
         print(f"  Current threshold: {self.current_threshold:.2f}")
 
+    def snapshot_state(self):
+        return {
+            "account": self.account.snapshot(),
+            "current_threshold": self.current_threshold,
+            "score_weights": dict(self.scorer.weights),
+            "current_trading_day": (
+                None if self.current_trading_day is None else str(self.current_trading_day)
+            ),
+            "day_start_equity": self.day_start_equity,
+            "daily_entries_taken": self.daily_entries_taken,
+            "daily_closed_trades": self.daily_closed_trades,
+            "daily_closed_pnl": self.daily_closed_pnl,
+            "daily_history": [
+                {
+                    **dict(row),
+                    "date": str(row.get("date")) if row.get("date") is not None else None,
+                }
+                for row in self.daily_history
+            ],
+            "score_stats": {
+                bucket: dict(values)
+                for bucket, values in self.score_stats.items()
+            },
+            "feature_stats": {
+                feature: dict(values)
+                for feature, values in self.feature_stats.items()
+            },
+            "last_top_symbols": list(self.last_top_symbols),
+            "open_positions": [
+                trade.snapshot()
+                for trade in self.open_positions
+            ],
+        }
+
+    def restore_state(self, snapshot):
+        if not snapshot:
+            return
+
+        account_snapshot = snapshot.get("account")
+        if account_snapshot:
+            self.account.restore(account_snapshot)
+
+        self.current_threshold = float(
+            snapshot.get("current_threshold", self.current_threshold)
+        )
+        raw_weights = snapshot.get("score_weights") or {}
+        if raw_weights:
+            self.scorer.weights.update(
+                {
+                    key: float(value)
+                    for key, value in raw_weights.items()
+                    if key in self.scorer.weights
+                }
+            )
+        current_trading_day = snapshot.get("current_trading_day")
+        if current_trading_day:
+            self.current_trading_day = datetime.fromisoformat(
+                str(current_trading_day)
+            ).date()
+        else:
+            self.current_trading_day = None
+        self.day_start_equity = float(
+            snapshot.get("day_start_equity", self.day_start_equity)
+        )
+        self.daily_entries_taken = int(
+            snapshot.get("daily_entries_taken", self.daily_entries_taken)
+        )
+        self.daily_closed_trades = int(
+            snapshot.get("daily_closed_trades", self.daily_closed_trades)
+        )
+        self.daily_closed_pnl = float(
+            snapshot.get("daily_closed_pnl", self.daily_closed_pnl)
+        )
+        self.daily_history = [
+            {
+                **dict(row),
+                "date": (
+                    None
+                    if row.get("date") in (None, "")
+                    else datetime.fromisoformat(str(row.get("date"))).date()
+                ),
+            }
+            for row in (snapshot.get("daily_history") or [])
+        ]
+        self.score_stats = defaultdict(
+            lambda: {"count": 0, "wins": 0, "total_R": 0.0, "total_pnl": 0.0}
+        )
+        for bucket, values in (snapshot.get("score_stats") or {}).items():
+            self.score_stats[str(bucket)] = {
+                "count": int(values.get("count", 0) or 0),
+                "wins": int(values.get("wins", 0) or 0),
+                "total_R": float(values.get("total_R", 0.0) or 0.0),
+                "total_pnl": float(values.get("total_pnl", 0.0) or 0.0),
+            }
+        self.feature_stats = defaultdict(
+            lambda: {"sum_pos": 0.0, "sum_neg": 0.0}
+        )
+        for feature, values in (snapshot.get("feature_stats") or {}).items():
+            self.feature_stats[str(feature)] = {
+                "sum_pos": float(values.get("sum_pos", 0.0) or 0.0),
+                "sum_neg": float(values.get("sum_neg", 0.0) or 0.0),
+            }
+        self.last_top_symbols = list(snapshot.get("last_top_symbols") or [])
+        self.open_positions = [
+            Trade.from_snapshot(trade_snapshot, config=self.config)
+            for trade_snapshot in (snapshot.get("open_positions") or [])
+        ]
+
     def close_trade(self, trade, row, *, reason, exit_price=None):
         trade.annotate_exit(reason=reason)
         trade.close(row, exit_price=exit_price)
@@ -406,16 +542,23 @@ class LivePaperPortfolio:
             key=lambda item: float(item.get("score", 0.0)),
             reverse=True,
         )
+        opened_this_step = 0
 
         for candidate in ordered:
             reason = "score_below_threshold"
             selected = False
             score = float(candidate.get("score", 0.0) or 0.0)
+            score_bucket = candidate.get("score_bucket")
+            score_bucket_risk_mult = self._score_bucket_risk_multiplier(score_bucket)
 
             if candidate.get("side") not in self.allowed_sides:
                 reason = "side_disabled"
+            elif score_bucket_risk_mult <= 0.0:
+                reason = "score_bucket_filtered"
             elif score < threshold:
                 reason = "score_below_threshold"
+            elif opened_this_step >= self.max_new_positions_per_step:
+                reason = "step_position_cap"
             elif self._asset_open_count(candidate["symbol"]) >= self.max_trades_per_asset:
                 reason = "asset_cap"
             elif self._direction_open_count(candidate["side"]) >= self.max_same_direction_positions:
@@ -423,7 +566,10 @@ class LivePaperPortfolio:
             else:
                 risk_fraction = self._risk_fraction_for_score(
                     score,
-                    risk_mult=candidate.get("risk_mult", 1.0),
+                    risk_mult=(
+                        float(candidate.get("risk_mult", 1.0) or 1.0)
+                        * score_bucket_risk_mult
+                    ),
                 )
                 projected_total_risk = self._active_risk_fraction() + risk_fraction
                 if projected_total_risk > self.max_total_risk_fraction:
@@ -485,6 +631,7 @@ class LivePaperPortfolio:
                         trade.add_entry(row["close"], size)
                         self.open_positions.append(trade)
                         self.daily_entries_taken += 1
+                        opened_this_step += 1
                         selected = True
                         reason = "opened"
 

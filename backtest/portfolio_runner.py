@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
+import json
 
 import numpy as np
 import pandas as pd
 
+from backtest.checkpoint import BacktestCheckpointStore
 from bias.bias_detector import BiasDetector
 from common.debug import configure_debug, debug_print as print
 from config import AppConfig
@@ -15,6 +17,7 @@ from data.downloader import load_from_csv
 from data.resampler import TimeframeBuilder
 from entry.edge_buckets import build_signal_bucket
 from entry.edge_selector import EdgeSelector
+from entry.opportunity_ranking import OpportunityScorer
 from features.feature_pipeline import compute_features
 from live_sim.logger import LivePortfolioStateLogger, LiveSignalLogger
 from live_sim.paper_portfolio import LivePaperPortfolio
@@ -116,6 +119,275 @@ def _discover_portfolio_symbols(config):
         if path.is_dir()
     )
     return symbols or [config.require("app", "default_symbol")]
+
+
+def _build_checkpoint_store(config, output_dir, symbols):
+    if not config.get("backtest", "resume_enabled", default=True):
+        return None
+
+    checkpoint_dir_value = config.get("backtest", "checkpoint_dir", default="_checkpoints")
+    checkpoint_dir = Path(checkpoint_dir_value)
+    if not checkpoint_dir.is_absolute():
+        checkpoint_dir = Path(output_dir) / checkpoint_dir
+
+    suffix = config.get("backtest", "checkpoint_suffix", default=".checkpoint.json")
+    start_date = config.require("history", "start_date")
+    end_date = config.require("history", "end_date")
+    symbol_key = f"{len(symbols)}symbols"
+    checkpoint_path = checkpoint_dir / (
+        f"portfolio_replay_{symbol_key}_{start_date}_to_{end_date}{suffix}"
+    )
+    return BacktestCheckpointStore(checkpoint_path)
+
+
+def _resume_metadata(config, symbols):
+    return {
+        "mode": "portfolio_replay",
+        "symbols": [str(symbol).upper() for symbol in symbols],
+        "start_date": config.require("history", "start_date"),
+        "end_date": config.require("history", "end_date"),
+        "interval": config.require("binance", "default_interval"),
+    }
+
+
+def _resume_metadata_matches(payload, expected_metadata):
+    if not payload:
+        return False
+
+    metadata = payload.get("metadata", {}) or {}
+    return all(metadata.get(key) == value for key, value in expected_metadata.items())
+
+
+def _payload_next_index(payload):
+    if not payload:
+        return -1
+    try:
+        return int(payload.get("next_index", -1) or -1)
+    except (TypeError, ValueError):
+        return -1
+
+
+def _load_existing_rows(path):
+    path = Path(path)
+    if not path.exists():
+        return pd.DataFrame()
+    return pd.read_csv(path)
+
+
+def _safe_float(value, default=0.0):
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return float(default)
+
+    if pd.isna(numeric):
+        return float(default)
+    return numeric
+
+
+def _load_equity_rows(path):
+    path = Path(path)
+    if not path.exists():
+        return pd.DataFrame(columns=["timestamp", "equity"])
+
+    frame = pd.read_csv(
+        path,
+        usecols=["timestamp", "equity"],
+        on_bad_lines="skip",
+        engine="python",
+    )
+    if "timestamp" in frame.columns:
+        frame["timestamp"] = pd.to_datetime(frame["timestamp"], errors="coerce")
+        frame["equity"] = pd.to_numeric(frame["equity"], errors="coerce")
+        frame = (
+            frame.dropna(subset=["timestamp", "equity"])
+            .sort_values("timestamp")
+            .reset_index(drop=True)
+        )
+    return frame
+
+
+def _build_score_stats_from_trades(trades_df):
+    score_stats = {}
+    if trades_df.empty or "score_bucket" not in trades_df.columns:
+        return score_stats
+
+    working = trades_df.copy()
+    working["score_bucket"] = working["score_bucket"].fillna("<0.6").astype(str)
+    working["pnl"] = pd.to_numeric(working.get("pnl"), errors="coerce").fillna(0.0)
+    working["pnl_R_initial"] = pd.to_numeric(
+        working.get("pnl_R_initial"),
+        errors="coerce",
+    ).fillna(0.0)
+
+    for bucket, group in working.groupby("score_bucket"):
+        score_stats[str(bucket)] = {
+            "count": int(len(group)),
+            "wins": int((group["pnl"] > 0).sum()),
+            "total_R": float(group["pnl_R_initial"].sum()),
+            "total_pnl": float(group["pnl"].sum()),
+        }
+
+    return score_stats
+
+
+def _build_feature_stats_from_trades(trades_df, scorer):
+    feature_stats = {
+        feature: {"sum_pos": 0.0, "sum_neg": 0.0}
+        for feature in scorer.weights
+    }
+    if trades_df.empty:
+        return feature_stats
+
+    required_columns = {"body_strength", "close_position", "vwap_bucket", "momentum_rank", "pnl_R_initial"}
+    missing = [column for column in required_columns if column not in trades_df.columns]
+    if missing:
+        return feature_stats
+
+    for _, trade_row in trades_df.iterrows():
+        pseudo_row = {
+            "body_strength": _safe_float(
+                pd.to_numeric(trade_row.get("body_strength"), errors="coerce"),
+                default=0.0,
+            ),
+            "close_position": _safe_float(
+                pd.to_numeric(trade_row.get("close_position"), errors="coerce"),
+                default=0.0,
+            ),
+        }
+        components = scorer.compute_components(
+            row=pseudo_row,
+            momentum_rank=_safe_float(
+                pd.to_numeric(trade_row.get("momentum_rank"), errors="coerce"),
+                default=0.5,
+            ),
+            vwap_bucket=trade_row.get("vwap_bucket"),
+            edge_type=trade_row.get("edge_type"),
+            is_top_mover=False,
+        )
+        positive = _safe_float(
+            pd.to_numeric(trade_row.get("pnl_R_initial"), errors="coerce"),
+            default=0.0,
+        ) > 0.0
+        for feature in scorer.weights:
+            bucket = "sum_pos" if positive else "sum_neg"
+            feature_stats[feature][bucket] += float(components.get(feature, 0.0) or 0.0)
+
+    return feature_stats
+
+
+def _build_artifact_resume_payload(output_dir, common_index, config):
+    output_dir = Path(output_dir)
+    equity_path = output_dir / "equity.csv"
+    status_path = output_dir / "portfolio_status.json"
+    if not equity_path.exists() or not status_path.exists():
+        return None
+
+    equity_df = _load_equity_rows(equity_path)
+    if equity_df.empty:
+        return None
+
+    common_index = pd.Index(common_index)
+    last_timestamp = pd.Timestamp(equity_df["timestamp"].iloc[-1])
+    next_index = int(common_index.searchsorted(last_timestamp, side="right"))
+    if next_index <= 0:
+        return None
+
+    with status_path.open(encoding="utf-8") as file_handle:
+        status = json.load(file_handle)
+    if int(status.get("open_positions", 0) or 0) > 0:
+        return None
+
+    trades_df = _load_existing_rows(output_dir / "trades.csv")
+    daily_df = _load_existing_rows(output_dir / "daily_summary.csv")
+    if not daily_df.empty and "date" in daily_df.columns:
+        daily_df["date"] = pd.to_datetime(daily_df["date"], errors="coerce").dt.date
+
+    scorer = OpportunityScorer(config=config)
+    current_day = last_timestamp.date()
+    day_start_equity = None
+    if "daily_closed_pnl" in status and "equity" in status:
+        try:
+            day_start_equity = float(status["equity"]) - float(status["daily_closed_pnl"] or 0.0)
+        except (TypeError, ValueError):
+            day_start_equity = None
+    if day_start_equity is None:
+        current_day_rows = equity_df.loc[equity_df["timestamp"].dt.date == current_day]
+        if not current_day_rows.empty:
+            day_start_equity = float(current_day_rows["equity"].iloc[0])
+    if day_start_equity is None:
+        day_start_equity = float(status.get("equity", config.require("account", "initial_equity")))
+
+    account_snapshot = {
+        "initial_equity": _safe_float(
+            status.get("initial_equity", config.require("account", "initial_equity")),
+            default=config.require("account", "initial_equity"),
+        ),
+        "equity": _safe_float(
+            status.get("equity", config.require("account", "initial_equity")),
+            default=config.require("account", "initial_equity"),
+        ),
+        "trade_count": int(len(trades_df)),
+        "win_count": (
+            int((pd.to_numeric(trades_df["pnl"], errors="coerce").fillna(0.0) > 0).sum())
+            if (not trades_df.empty and "pnl" in trades_df.columns)
+            else 0
+        ),
+        "loss_count": (
+            int((pd.to_numeric(trades_df["pnl"], errors="coerce").fillna(0.0) <= 0).sum())
+            if (not trades_df.empty and "pnl" in trades_df.columns)
+            else 0
+        ),
+    }
+
+    portfolio_state = {
+        "account": account_snapshot,
+        "current_threshold": _safe_float(status.get("current_threshold", 0.0), default=0.0),
+        "score_weights": dict(status.get("score_weights") or {}),
+        "current_trading_day": str(current_day),
+        "day_start_equity": _safe_float(day_start_equity, default=account_snapshot["equity"]),
+        "daily_entries_taken": int(status.get("daily_entries_taken", 0) or 0),
+        "daily_closed_trades": int(status.get("daily_closed_trades", 0) or 0),
+        "daily_closed_pnl": _safe_float(status.get("daily_closed_pnl", 0.0), default=0.0),
+        "daily_history": (
+            daily_df.to_dict("records")
+            if not daily_df.empty
+            else []
+        ),
+        "score_stats": _build_score_stats_from_trades(trades_df),
+        "feature_stats": _build_feature_stats_from_trades(trades_df, scorer),
+        "last_top_symbols": list(status.get("top_symbols") or []),
+        "open_positions": [],
+    }
+    return {
+        "version": 1,
+        "next_index": next_index,
+        "next_candle_time": (
+            None if next_index >= len(common_index) else common_index[next_index]
+        ),
+        "portfolio_state": portfolio_state,
+        "metadata": _resume_metadata(config, _discover_portfolio_symbols(config)),
+        "resume_source": "artifacts",
+    }
+
+
+def _save_checkpoint(*, checkpoint_store, next_index, common_index, portfolio_state, metadata):
+    if checkpoint_store is None:
+        return
+
+    next_candle_time = None
+    if 0 <= int(next_index) < len(common_index):
+        next_candle_time = common_index[int(next_index)]
+
+    payload = {
+        "version": 1,
+        "updated_at": pd.Timestamp.now(tz="UTC"),
+        "next_index": max(0, int(next_index)),
+        "next_candle_time": next_candle_time,
+        "portfolio_state": portfolio_state,
+        "metadata": dict(metadata or {}),
+    }
+    checkpoint_store.save(payload)
 
 
 def _build_strategy_timeframes(df_1m, config):
@@ -236,6 +508,8 @@ def run_portfolio_backtest(config=None):
     configure_debug(config=config)
 
     interval = config.require("binance", "default_interval")
+    start_date = config.require("history", "start_date")
+    end_date = config.require("history", "end_date")
     getter = getattr(config, "get", None)
     close_open_positions = bool(
         getter("backtest", "portfolio_replay", "close_open_positions_at_end", default=True)
@@ -258,8 +532,20 @@ def run_portfolio_backtest(config=None):
         if callable(getter)
         else "signals.csv"
     )
+    checkpoint_every_steps = int(
+        getter("backtest", "save_every_steps", default=250)
+        if callable(getter)
+        else 250
+    )
+    resume_enabled = bool(
+        getter("backtest", "resume_enabled", default=True)
+        if callable(getter)
+        else True
+    )
 
     symbols = _discover_portfolio_symbols(config)
+    checkpoint_store = _build_checkpoint_store(config, output_dir, symbols)
+    expected_resume_metadata = _resume_metadata(config, symbols)
     print("\nSTARTING PORTFOLIO BACKTEST REPLAY\n")
     print(f"Universe: {', '.join(symbols)}")
 
@@ -290,11 +576,44 @@ def run_portfolio_backtest(config=None):
     momentum_scores = closes.pct_change(momentum_lookback_bars)
     momentum_ranks = momentum_scores.rank(axis=1, pct=True, ascending=True)
 
-    trade_logger = TradeLogger(config=config, reset=True)
-    equity_logger = EquityLogger(config=config, reset=True)
+    checkpoint_candidate = None
+    if checkpoint_store is not None and checkpoint_store.exists():
+        candidate = checkpoint_store.load()
+        if _resume_metadata_matches(candidate, expected_resume_metadata):
+            checkpoint_candidate = candidate
+        else:
+            checkpoint_store.clear()
+
+    artifact_candidate = None
+    if resume_enabled:
+        try:
+            candidate = _build_artifact_resume_payload(output_dir, common_index, config)
+        except Exception as exc:
+            print(f"Artifact resume ignored due to parse error: {exc}")
+            candidate = None
+        if _resume_metadata_matches(candidate, expected_resume_metadata):
+            artifact_candidate = candidate
+
+    resume_payload = None
+    resume_index = 0
+    resume_active = False
+    resume_source = None
+    for source_name, candidate in (
+        ("checkpoint", checkpoint_candidate),
+        ("artifacts", artifact_candidate),
+    ):
+        if _payload_next_index(candidate) > resume_index:
+            resume_payload = candidate
+            resume_index = _payload_next_index(candidate)
+            resume_active = resume_index > 0
+            resume_source = candidate.get("resume_source", source_name)
+
+    trade_logger = TradeLogger(config=config, reset=not resume_active)
+    equity_logger = EquityLogger(config=config, reset=not resume_active)
     signal_logger = LiveSignalLogger(
         filepath=str(output_dir / signal_log_filename),
         config=config,
+        reset=not resume_active,
     )
     state_logger = LivePortfolioStateLogger(output_dir=output_dir, config=config)
     portfolio = LivePaperPortfolio(
@@ -303,77 +622,137 @@ def run_portfolio_backtest(config=None):
         state_logger=state_logger,
         config=config,
     )
+    if resume_active and resume_payload:
+        portfolio.restore_state(resume_payload.get("portfolio_state"))
+        print(
+            f"Resuming portfolio replay from {resume_source} at index "
+            f"{resume_index:,}/{len(common_index):,}"
+        )
     edge_selector = EdgeSelector(config=config)
 
     latest_rows_by_symbol = {}
     start_time = time.time()
+    if resume_index >= len(common_index):
+        if checkpoint_store is not None:
+            checkpoint_store.clear()
+        portfolio.backtest_completed = True
+        portfolio.source_paths = source_paths
+        return portfolio
 
-    for step_index, timestamp in enumerate(common_index, start=1):
-        portfolio.reset_daily_state_if_needed(timestamp)
+    last_stable_state = portfolio.snapshot_state()
+    last_completed_index = max(-1, resume_index - 1)
+    try:
+        for step_index in range(resume_index, len(common_index)):
+            timestamp = common_index[step_index]
+            portfolio.reset_daily_state_if_needed(timestamp)
 
-        candidates = []
-        latest_rows_by_symbol = {}
-        rank_row = (
-            momentum_ranks.loc[timestamp]
-            if timestamp in momentum_ranks.index
-            else pd.Series(dtype=float)
-        )
-        score_row = (
-            momentum_scores.loc[timestamp]
-            if timestamp in momentum_scores.index
-            else pd.Series(dtype=float)
-        )
-        top_symbols = list(score_row.dropna().sort_values(ascending=False).head(3).index)
-
-        for symbol, df_15m in execution_frames.items():
-            if timestamp not in df_15m.index:
-                continue
-
-            row = df_15m.loc[timestamp]
-            latest_rows_by_symbol[symbol] = row
-
-        if latest_rows_by_symbol:
-            portfolio.manage_open_positions(latest_rows_by_symbol)
-
-        for symbol, row in latest_rows_by_symbol.items():
-            bias_frame = bias_frames[symbol]
-            if timestamp not in bias_frame.index:
-                continue
-            bias_snapshot = bias_frame.loc[timestamp].to_dict()
-            if pd.isna(bias_snapshot.get("label")):
-                continue
-            candidate = _build_candidate(
-                symbol=symbol,
-                row=row,
-                bias_snapshot=bias_snapshot,
-                momentum_rank=float(rank_row.get(symbol, 0.5) or 0.5),
-                top_symbols=top_symbols,
-                edge_selector=edge_selector,
-                portfolio=portfolio,
-                config=config,
+            candidates = []
+            latest_rows_by_symbol = {}
+            rank_row = (
+                momentum_ranks.loc[timestamp]
+                if timestamp in momentum_ranks.index
+                else pd.Series(dtype=float)
             )
-            if candidate is not None:
-                candidates.append(candidate)
-
-        if candidates:
-            portfolio.select_and_open(candidates, timestamp)
-        else:
-            portfolio.flush_state()
-
-        equity_logger.log(timestamp, portfolio.account.equity)
-
-        if step_index == 1 or step_index % 500 == 0 or step_index == len(common_index):
-            elapsed = time.time() - start_time
-            print(
-                "\nPORTFOLIO BACKTEST PROGRESS\n"
-                f"  Step: {step_index:,}/{len(common_index):,}\n"
-                f"  Candle: {timestamp}\n"
-                f"  Equity: {portfolio.account.equity:.2f}\n"
-                f"  Open positions: {len(portfolio.open_positions)}\n"
-                f"  Entries today: {portfolio.daily_entries_taken}\n"
-                f"  Threshold: {portfolio.current_threshold:.2f}\n"
-                f"  Elapsed: {elapsed:.2f}s"
+            score_row = (
+                momentum_scores.loc[timestamp]
+                if timestamp in momentum_scores.index
+                else pd.Series(dtype=float)
             )
+            top_symbols = list(score_row.dropna().sort_values(ascending=False).head(3).index)
+
+            for symbol, df_15m in execution_frames.items():
+                if timestamp not in df_15m.index:
+                    continue
+
+                row = df_15m.loc[timestamp]
+                latest_rows_by_symbol[symbol] = row
+
+            if latest_rows_by_symbol:
+                portfolio.manage_open_positions(latest_rows_by_symbol)
+
+            for symbol, row in latest_rows_by_symbol.items():
+                bias_frame = bias_frames[symbol]
+                if timestamp not in bias_frame.index:
+                    continue
+                bias_snapshot = bias_frame.loc[timestamp].to_dict()
+                if pd.isna(bias_snapshot.get("label")):
+                    continue
+                candidate = _build_candidate(
+                    symbol=symbol,
+                    row=row,
+                    bias_snapshot=bias_snapshot,
+                    momentum_rank=float(rank_row.get(symbol, 0.5) or 0.5),
+                    top_symbols=top_symbols,
+                    edge_selector=edge_selector,
+                    portfolio=portfolio,
+                    config=config,
+                )
+                if candidate is not None:
+                    candidates.append(candidate)
+
+            if candidates:
+                portfolio.select_and_open(candidates, timestamp)
+            else:
+                portfolio.flush_state()
+
+            equity_logger.log(timestamp, portfolio.account.equity)
+            last_completed_index = step_index
+            last_stable_state = portfolio.snapshot_state()
+
+            processed_steps = (step_index - resume_index) + 1
+            if (
+                checkpoint_store is not None
+                and checkpoint_every_steps > 0
+                and (
+                    processed_steps == 1
+                    or processed_steps % checkpoint_every_steps == 0
+                )
+            ):
+                _save_checkpoint(
+                    checkpoint_store=checkpoint_store,
+                    next_index=step_index + 1,
+                    common_index=common_index,
+                    portfolio_state=last_stable_state,
+                    metadata=expected_resume_metadata,
+                )
+
+            if (
+                processed_steps == 1
+                or processed_steps % 500 == 0
+                or step_index == len(common_index) - 1
+            ):
+                elapsed = time.time() - start_time
+                print(
+                    "\nPORTFOLIO BACKTEST PROGRESS\n"
+                    f"  Step: {step_index + 1:,}/{len(common_index):,}\n"
+                    f"  Candle: {timestamp}\n"
+                    f"  Equity: {portfolio.account.equity:.2f}\n"
+                    f"  Open positions: {len(portfolio.open_positions)}\n"
+                    f"  Entries today: {portfolio.daily_entries_taken}\n"
+                    f"  Threshold: {portfolio.current_threshold:.2f}\n"
+                    f"  Elapsed: {elapsed:.2f}s"
+                )
+    except KeyboardInterrupt:
+        _save_checkpoint(
+            checkpoint_store=checkpoint_store,
+            next_index=max(0, last_completed_index + 1),
+            common_index=common_index,
+            portfolio_state=last_stable_state,
+            metadata=expected_resume_metadata,
+        )
+        print("\nPORTFOLIO BACKTEST PAUSED")
+        print("Checkpoint saved. Re-run the same command to resume.")
+        portfolio.backtest_completed = False
+        return portfolio
+    except Exception:
+        _save_checkpoint(
+            checkpoint_store=checkpoint_store,
+            next_index=max(0, last_completed_index + 1),
+            common_index=common_index,
+            portfolio_state=last_stable_state,
+            metadata=expected_resume_metadata,
+        )
+        raise
 
     portfolio.finalize_backtest(
         latest_rows_by_symbol=latest_rows_by_symbol,
@@ -383,6 +762,8 @@ def run_portfolio_backtest(config=None):
         final_timestamp = max(latest_rows_by_symbol.values(), key=lambda row: row.name).name
         equity_logger.log(final_timestamp, portfolio.account.equity)
 
+    if checkpoint_store is not None:
+        checkpoint_store.clear()
     portfolio.backtest_completed = True
     portfolio.source_paths = source_paths
     return portfolio

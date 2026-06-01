@@ -1,5 +1,6 @@
 import unittest
 from tempfile import TemporaryDirectory
+from unittest import mock
 
 import pandas as pd
 
@@ -198,6 +199,28 @@ class BacktestEngineTests(unittest.TestCase):
                 second_simulator.calls[1]["time"],
                 pd.Timestamp("2018-01-02 04:15:00"),
             )
+
+    def test_checkpoint_store_retries_when_replace_hits_transient_missing_temp_file(self):
+        with TemporaryDirectory() as temp_dir:
+            checkpoint_store = BacktestCheckpointStore(
+                f"{temp_dir}/backtest.checkpoint.json"
+            )
+
+            original_replace = type(checkpoint_store.path).replace
+            call_count = {"count": 0}
+
+            def flaky_replace(path_obj, target):
+                call_count["count"] += 1
+                if call_count["count"] == 1:
+                    raise FileNotFoundError("transient temp-file race")
+                return original_replace(path_obj, target)
+
+            with mock.patch.object(type(checkpoint_store.path), "replace", new=flaky_replace):
+                checkpoint_store.save({"next_index": 123, "metadata": {"symbol": "BTCUSDT"}})
+
+            self.assertTrue(checkpoint_store.exists())
+            payload = checkpoint_store.load()
+            self.assertEqual(payload["next_index"], 123)
 
 
 if __name__ == "__main__":

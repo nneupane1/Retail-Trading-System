@@ -2,9 +2,11 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import pandas as pd
 
+import backtest.portfolio_runner as portfolio_runner
 from backtest.runner import run_backtest
 
 
@@ -211,6 +213,30 @@ def _write_symbol_history(folder, symbol):
 
 
 class PortfolioBacktestRunnerTests(unittest.TestCase):
+    def test_portfolio_replay_ignores_broken_artifact_resume_payload(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            storage_dir = Path(temp_dir) / "data_storage"
+            output_dir = Path(temp_dir) / "backtest_output"
+            for symbol in ("BTCUSDT", "ETHUSDT"):
+                symbol_dir = storage_dir / symbol / "1m"
+                symbol_dir.mkdir(parents=True, exist_ok=True)
+                _write_symbol_history(symbol_dir, symbol)
+
+            config = DummyConfig(
+                storage_base_path=str(storage_dir),
+                output_dir=str(output_dir),
+            )
+
+            with mock.patch.object(
+                portfolio_runner,
+                "_build_artifact_resume_payload",
+                side_effect=ValueError("bad artifacts"),
+            ):
+                result = run_backtest(config=config)
+
+            self.assertTrue(getattr(result, "backtest_completed", False))
+            self.assertTrue((output_dir / "portfolio_status.json").exists())
+
     def test_run_backtest_dispatches_to_portfolio_replay_and_writes_artifacts(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             storage_dir = Path(temp_dir) / "data_storage"
@@ -238,6 +264,46 @@ class PortfolioBacktestRunnerTests(unittest.TestCase):
             with (output_dir / "portfolio_status.json").open(encoding="utf-8") as file_handle:
                 payload = json.load(file_handle)
             self.assertIn("equity", payload)
+
+    def test_portfolio_replay_saves_checkpoint_on_interrupt_and_resumes(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            storage_dir = Path(temp_dir) / "data_storage"
+            output_dir = Path(temp_dir) / "backtest_output"
+            for symbol in ("BTCUSDT", "ETHUSDT"):
+                symbol_dir = storage_dir / symbol / "1m"
+                symbol_dir.mkdir(parents=True, exist_ok=True)
+                _write_symbol_history(symbol_dir, symbol)
+
+            config = DummyConfig(
+                storage_base_path=str(storage_dir),
+                output_dir=str(output_dir),
+            )
+
+            original_flush_state = portfolio_runner.LivePaperPortfolio.flush_state
+            interrupted = {"done": False}
+
+            def interrupt_once(self):
+                if not interrupted["done"]:
+                    interrupted["done"] = True
+                    raise KeyboardInterrupt()
+                return original_flush_state(self)
+
+            with mock.patch.object(
+                portfolio_runner.LivePaperPortfolio,
+                "flush_state",
+                new=interrupt_once,
+            ):
+                first_result = run_backtest(config=config)
+
+            checkpoint_files = list((output_dir / "_checkpoints").glob("*.checkpoint.json"))
+            self.assertFalse(getattr(first_result, "backtest_completed", False))
+            self.assertEqual(len(checkpoint_files), 1)
+
+            resumed_result = run_backtest(config=config)
+
+            self.assertTrue(getattr(resumed_result, "backtest_completed", False))
+            self.assertFalse(checkpoint_files[0].exists())
+            self.assertTrue((output_dir / "portfolio_status.json").exists())
 
 
 if __name__ == "__main__":

@@ -220,6 +220,113 @@ class LivePaperPortfolioTests(unittest.TestCase):
             self.assertLess(threshold, portfolio.current_threshold)
             self.assertGreaterEqual(threshold, portfolio.min_threshold)
 
+    def test_low_score_bucket_candidate_is_filtered_before_open(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            portfolio = LivePaperPortfolio(config=DummyConfig(output_dir=temp_dir))
+            timestamp = pd.Timestamp("2026-01-01 12:00:00")
+            row = pd.Series(
+                {
+                    "close": 105.0,
+                    "low": 104.0,
+                    "high": 106.0,
+                    "ll2": 100.0,
+                    "ema2": 104.0,
+                    "ema3": 103.0,
+                    "atr": 1.5,
+                },
+                name=timestamp,
+            )
+
+            portfolio.reset_daily_state_if_needed(timestamp)
+            portfolio.select_and_open(
+                [
+                    {
+                        "symbol": "BTCUSDT",
+                        "timestamp": timestamp,
+                        "side": "long",
+                        "row": row,
+                        "bias": "neutral",
+                        "edge_type": "impulse_breakout",
+                        "body_bucket": "strong",
+                        "vwap_bucket": "far",
+                        "bucket_key_text": "impulse_breakout|neutral|strong|far",
+                        "bucket_valid": True,
+                        "bucket_expected_return": 0.000212,
+                        "bucket_risk_mult": 1.0,
+                        "risk_mult": 1.0,
+                        "momentum_rank": 0.75,
+                        "is_top_mover": False,
+                        "score": 0.72,
+                        "score_bucket": "0.7-0.8",
+                        "feature_values": {
+                            "body_strength": 0.7,
+                            "close_position": 0.7,
+                            "vwap_score": 1.0,
+                            "momentum": 0.75,
+                        },
+                    }
+                ],
+                timestamp,
+            )
+
+            self.assertEqual(len(portfolio.open_positions), 0)
+
+    def test_max_new_positions_per_step_limits_same_candle_opens(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config = DummyConfig(output_dir=temp_dir)
+            config.data["live_sim"]["paper_portfolio"]["max_new_positions_per_step"] = 1
+            portfolio = LivePaperPortfolio(config=config)
+            timestamp = pd.Timestamp("2026-01-01 12:00:00")
+
+            def build_candidate(symbol, score):
+                return {
+                    "symbol": symbol,
+                    "timestamp": timestamp,
+                    "side": "long",
+                    "row": pd.Series(
+                        {
+                            "close": 105.0,
+                            "low": 104.0,
+                            "high": 106.0,
+                            "ll2": 100.0,
+                            "ema2": 104.0,
+                            "ema3": 103.0,
+                            "atr": 1.5,
+                        },
+                        name=timestamp,
+                    ),
+                    "bias": "neutral",
+                    "edge_type": "impulse_breakout",
+                    "body_bucket": "strong",
+                    "vwap_bucket": "far",
+                    "bucket_key_text": "impulse_breakout|neutral|strong|far",
+                    "bucket_valid": True,
+                    "bucket_expected_return": 0.000212,
+                    "bucket_risk_mult": 1.0,
+                    "risk_mult": 1.0,
+                    "momentum_rank": 0.95,
+                    "is_top_mover": True,
+                    "score": score,
+                    "score_bucket": "0.9-1.0",
+                    "feature_values": {
+                        "body_strength": 0.95,
+                        "close_position": 0.95,
+                        "vwap_score": 1.0,
+                        "momentum": 0.95,
+                    },
+                }
+
+            portfolio.reset_daily_state_if_needed(timestamp)
+            portfolio.select_and_open(
+                [
+                    build_candidate("BTCUSDT", 0.95),
+                    build_candidate("ETHUSDT", 0.94),
+                ],
+                timestamp,
+            )
+
+            self.assertEqual(len(portfolio.open_positions), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

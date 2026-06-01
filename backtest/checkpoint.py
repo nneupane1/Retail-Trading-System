@@ -27,15 +27,14 @@ class BacktestCheckpointStore:
     def save(self, payload):
         normalized = self._normalize(payload)
         temp_path = Path(f"{self.path}.tmp")
-
-        with temp_path.open("w") as file_handle:
-            json.dump(normalized, file_handle, indent=2)
-
         for attempt in range(8):
             try:
+                self.path.parent.mkdir(parents=True, exist_ok=True)
+                with temp_path.open("w") as file_handle:
+                    json.dump(normalized, file_handle, indent=2)
                 temp_path.replace(self.path)
                 return
-            except PermissionError:
+            except (PermissionError, FileNotFoundError):
                 if attempt == 7:
                     raise
                 time.sleep(0.05 * (attempt + 1))

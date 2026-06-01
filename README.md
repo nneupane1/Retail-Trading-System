@@ -353,6 +353,72 @@ The weighted path is intentionally looser than the locked baseline. The design
 goal is to allow many more candidates to exist, then scale capital by measured
 strength instead of relying on compounded hard gates.
 
+### Validated portfolio replay status
+
+The most important current result is no longer "can this engine make money?"
+That is already answered. The real question now is whether the current
+multi-asset, live-style portfolio architecture can support the intended income
+model:
+
+- roughly `>= 10` entries per day
+- positive median daily PnL
+- approximately `EUR 10k/month`
+- approximately `EUR 100k/year`
+- materially lower drawdown than the loose broad allocator
+
+Three full 9-symbol historical portfolio replays now define the current state:
+
+| Branch | Final Equity | Trades | PF | Avg R | Max DD | Avg Entries/Day | Median Daily PnL |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Broad weighted baseline | `EUR 185,355` | `26,369` | `1.037` | `0.0172` | `-52.64%` | `8.60` | `-EUR 70.51` |
+| Quality allocator (`0.8-0.9 -> 0.35`) | `EUR 177,645` | `21,829` | `1.057` | `0.0195` | `-40.03%` | `7.12` | `-EUR 46.51` |
+| Quality allocator (`0.8-0.9 -> 0.25`) | `EUR 176,690` | `24,595` | `1.038` | `0.0164` | `-38.89%` | `8.02` | `-EUR 45.24` |
+
+What this proves:
+
+- the broad weighted allocator compounds strongly, but the path is too noisy
+  and too deep in drawdown to be treated as an income engine
+- the quality allocator materially improves edge quality and drawdown, but the
+  cleaner branch is still too selective for the target daily distribution
+- reintroducing the `0.8-0.9` bucket at a smaller `0.25` support weight
+  restores some flow, but it does not fix the business objective
+
+Monthly and yearly distribution are still far below target:
+
+- broad weighted baseline:
+  - average monthly realized PnL `EUR 1,637`
+  - median monthly realized PnL `EUR 809`
+  - months `>= EUR 10k`: `16.8%`
+  - years `>= EUR 100k`: `0%`
+- quality allocator (`0.35` support):
+  - average monthly realized PnL `EUR 1,561`
+  - median monthly realized PnL `EUR 532`
+  - months `>= EUR 10k`: `11.9%`
+  - years `>= EUR 100k`: `0%`
+- quality allocator (`0.25` support):
+  - average monthly realized PnL `EUR 1,235`
+  - median monthly realized PnL `EUR 554`
+  - months `>= EUR 10k`: `10.9%`
+  - years `>= EUR 100k`: `0%`
+
+The correct interpretation is not that the system failed. It is that unstable,
+regime-dependent edge has now been stripped out. The drop from the looser
+`~EUR 250k` style equity spike toward the cleaner `~EUR 180k` regime is the removal
+of unstable amplification, not the destruction of value.
+
+The current engine is therefore more valuable than the unstable peak version
+because it reveals what is actually repeatable:
+
+- `0.9-1.0` remains the true core profit bucket
+- `0.8-0.9` can act as support flow only if it stays genuinely positive
+- daily and monthly distribution are still the main unsolved problem
+
+In one line:
+
+> The drop from `EUR 250k` toward `~EUR 180k` is not failure; it is the removal of
+> unstable edge, and the system is now more useful because it exposes what is
+> actually real, repeatable, and worth scaling deliberately.
+
 ### Lean edge-selection layer
 
 The repo now includes a deliberately small edge-selection seam built for
@@ -417,7 +483,7 @@ What that run showed:
   - `selected_horizon = 5`
   - `signal_count = 4029`
   - `avg_return_net = 0.000212`
-  - `win_rate_net ≈ 44.85%`
+  - `win_rate_net ~= 44.85%`
 
 That matters because it is the first breakout-derived bucket in this repo that
 stayed positive after the configured `0.1%` round-trip fee across the wider
@@ -497,6 +563,10 @@ That means the right next use is:
 - use it as a high-quality sub-engine
 - later combine it with multi-position / multi-asset allocation instead of
   forcing it to become the only trade source
+
+That remains true after the newer portfolio-style validations. The impulse
+bucket is still a real, high-quality sub-engine, but it is too narrow to be
+the only production driver for the intended monthly-income objective.
 
 ### Active refinement hooks
 
@@ -1260,8 +1330,9 @@ evaluation.
 
 ### Backtest checkpointing
 
-The legacy `single_symbol` backtest is resumable. If the process is interrupted, the engine
-stores:
+Both historical modes are now resumable, but they do it differently.
+
+The legacy `single_symbol` backtest stores:
 
 | Artifact | Purpose |
 | --- | --- |
@@ -1269,12 +1340,30 @@ stores:
 | `backtest/output/trades.csv` | Trade log continued safely on resume |
 | `backtest/output/equity.csv` | Equity log continued safely on resume |
 
-On a fresh `single_symbol` run, the output CSVs are recreated from scratch. On a resume, the
-current checkpoint and output files are reused so the run can continue from the
-last saved execution step.
+On a fresh `single_symbol` run, the output CSVs are recreated from scratch. On
+a resume, the current checkpoint and output files are reused so the run can
+continue from the last saved execution step.
 
-The newer `portfolio_replay` mode currently writes a full fresh report per run
-and does not yet use the checkpoint store.
+The newer `portfolio_replay` mode is now resumable too. It stores:
+
+| Artifact | Purpose |
+| --- | --- |
+| `backtest/output/_checkpoints/portfolio_replay_*.checkpoint.json` | Next common-index step and full `LivePaperPortfolio` state snapshot |
+| `backtest/output/equity.csv` | Equity curve that can also act as a stable artifact resume source |
+| `backtest/output/trades.csv` | Closed trades preserved across restarts |
+| `backtest/output/daily_summary.csv` | Completed daily summaries preserved across restarts |
+| `backtest/output/portfolio_status.json` | Current threshold, score weights, open-position count, and equity |
+
+The portfolio replay resume path is intentionally defensive:
+
+- if a valid checkpoint exists, it restores the portfolio state directly
+- if a checkpoint lags behind but the artifact files are further ahead, the
+  replay can resume from the furthest stable point instead
+- malformed partial artifacts are ignored rather than aborting the run
+
+This matters because long 9-symbol, multi-year replays can run for hours. The
+portfolio replay path is now operationally safe to resume instead of forcing a
+full rerun after every interruption.
 
 ### Backtest outputs
 
@@ -1646,9 +1735,12 @@ deliberate incompleteness.
   bucket at `min_count = 150`, so the selector is still too narrow to act as a
   global production gate by default.
 - `entry/retest.py` exists but is not part of the active entry path.
-- The runtime simulator still operates through a single open-position lane.
-- True multi-position and multi-asset portfolio execution are still planned
-  refactors, not completed runtime behavior.
+- The live paper portfolio and historical `portfolio_replay` already support
+  multi-position, multi-asset execution with shared equity.
+- The older legacy simulator is still a separate single-lane compatibility
+  path.
+- The current validated branches are still not deployable for the intended
+  `EUR 10k/month` / `EUR 100k/year` income model.
 
 ### Execution realism
 
@@ -1666,9 +1758,13 @@ deliberate incompleteness.
 - The current engine does not explicitly force-close an open trade at the final
   candle of the dataset.
 - Output files are not versioned automatically per run; a fresh completed run
-  rewrites `backtest/output/trades.csv` and `backtest/output/equity.csv`.
+  rewrites the target `backtest/output/...` files unless you change the output
+  directory.
 - Calibration reports depend on the latest `opportunities.csv` and `trades.csv`
   and therefore also reflect the most recent completed run.
+- The current support-flow problem is not solved by simply loosening the
+  existing `0.8-0.9` bucket. The validated `0.25` support-weight replay still
+  fails the intended daily and monthly income distribution targets.
 
 ### Logging
 
