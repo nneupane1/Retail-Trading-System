@@ -327,6 +327,81 @@ class LivePaperPortfolioTests(unittest.TestCase):
 
             self.assertEqual(len(portfolio.open_positions), 1)
 
+    def test_moonshot_candidate_uses_override_risk_and_strategy_metadata(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            portfolio = LivePaperPortfolio(config=DummyConfig(output_dir=temp_dir))
+            timestamp = pd.Timestamp("2026-01-01 12:00:00")
+            row = pd.Series(
+                {
+                    "close": 105.0,
+                    "low": 104.0,
+                    "high": 106.0,
+                    "ll2": 100.0,
+                    "ema2": 104.0,
+                    "ema3": 103.0,
+                    "atr": 1.5,
+                    "range_expansion_factor": 2.2,
+                },
+                name=timestamp,
+            )
+
+            portfolio.reset_daily_state_if_needed(timestamp)
+            portfolio.select_and_open(
+                [
+                    {
+                        "symbol": "BTCUSDT",
+                        "timestamp": timestamp,
+                        "side": "long",
+                        "row": row,
+                        "bias": "neutral",
+                        "edge_type": "impulse_breakout",
+                        "body_bucket": "strong",
+                        "vwap_bucket": "far",
+                        "bucket_key_text": "impulse_breakout|neutral|strong|far",
+                        "bucket_valid": True,
+                        "bucket_expected_return": 0.000212,
+                        "bucket_risk_mult": 1.1,
+                        "risk_mult": 1.1,
+                        "momentum_rank": 0.95,
+                        "is_top_mover": True,
+                        "score": 0.90,
+                        "selection_score": 0.97,
+                        "score_bucket": "0.9-1.0",
+                        "strategy_type": "intraday_moonshot",
+                        "signal_family": "moonshot",
+                        "risk_group": "intraday_moonshot",
+                        "group_risk_cap": 0.015,
+                        "risk_fraction_override": 0.0045,
+                        "moonshot_score": 0.94,
+                        "range_expansion_factor": 2.2,
+                        "execution_profile": {
+                            "disable_pyramiding": True,
+                            "profit_lock_trigger_r": 1.0,
+                            "profit_lock_stop_r": 0.15,
+                            "trailing_activation_r": 1.5,
+                            "slow_grind_max_bars": 12,
+                            "slow_grind_open_r_max": 0.8,
+                        },
+                        "feature_values": {
+                            "body_strength": 0.9,
+                            "close_position": 0.9,
+                            "vwap_score": 1.0,
+                            "momentum": 0.95,
+                        },
+                    }
+                ],
+                timestamp,
+            )
+
+            self.assertEqual(len(portfolio.open_positions), 1)
+            trade = portfolio.open_positions[0]
+            self.assertEqual(trade.strategy_type, "intraday_moonshot")
+            self.assertEqual(trade.risk_group, "intraday_moonshot")
+            self.assertAlmostEqual(trade.intended_risk_per_trade, 0.0045, places=7)
+            self.assertAlmostEqual(trade.selection_score, 0.97, places=7)
+            self.assertAlmostEqual(trade.range_expansion_factor, 2.2, places=7)
+            self.assertAlmostEqual(trade.trailing_activation_r, 1.5, places=7)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -12,6 +12,7 @@ from data.downloader import fetch_recent, load_from_csv
 from data.resampler import TimeframeBuilder
 from entry.edge_buckets import build_signal_bucket
 from entry.edge_selector import EdgeSelector
+from entry.moonshot import MoonshotOverlay, build_swing_snapshots
 from features.feature_pipeline import compute_features
 from live_sim.candle_clock import is_new_15m_candle
 from live_sim.logger import (
@@ -73,12 +74,46 @@ def _required_live_warmup_minutes(config):
     direction_minutes = int(pd.Timedelta(direction_rule).total_seconds() // 60)
     trend_minutes = int(pd.Timedelta(trend_rule).total_seconds() // 60)
     macro_minutes = int(pd.Timedelta(macro_rule).total_seconds() // 60)
+    getter = getattr(config, "get", None)
+    moonshot_enabled = bool(
+        getter("strategy", "moonshots", "enabled", default=False)
+        if callable(getter)
+        else False
+    )
+    if moonshot_enabled:
+        swing_daily_lookback = int(
+            getter("strategy", "moonshots", "swing", "daily_breakout_lookback", default=20)
+            if callable(getter)
+            else 20
+        )
+        swing_weekly_lookback = int(
+            getter("strategy", "moonshots", "swing", "weekly_breakout_lookback", default=8)
+            if callable(getter)
+            else 8
+        )
+        swing_daily_momentum = int(
+            getter("strategy", "moonshots", "swing", "daily_momentum_lookback", default=10)
+            if callable(getter)
+            else 10
+        )
+        swing_weekly_momentum = int(
+            getter("strategy", "moonshots", "swing", "weekly_momentum_lookback", default=4)
+            if callable(getter)
+            else 4
+        )
+        swing_minutes = max(
+            (swing_daily_lookback + swing_daily_momentum + 5) * 24 * 60,
+            (swing_weekly_lookback + swing_weekly_momentum + 2) * 7 * 24 * 60,
+        )
+    else:
+        swing_minutes = 0
 
     return max(
         execution_bars * execution_minutes,
         direction_bars * direction_minutes,
         trend_bars * trend_minutes,
         macro_bars * macro_minutes,
+        swing_minutes,
     )
 
 
@@ -203,12 +238,16 @@ def _build_live_timeframes(df_1m, builder, config):
     df_1h = builder.resample(df_1m, direction_rule)
     df_5h = builder.resample(df_1m, trend_rule)
     df_12h = builder.resample(df_1m, macro_rule)
+    df_1d = builder.resample(df_1m, "1D")
+    df_1w = builder.resample(df_1m, "1W")
 
     df_15m = compute_features(df_15m, config=config)
     df_1h = compute_features(df_1h, config=config)
     df_5h = compute_features(df_5h, config=config)
     df_12h = compute_features(df_12h, config=config)
-    return df_15m, df_1h, df_5h, df_12h
+    df_1d = compute_features(df_1d, config=config)
+    df_1w = compute_features(df_1w, config=config)
+    return df_15m, df_1h, df_5h, df_12h, df_1d, df_1w
 
 
 def _momentum_ranks(execution_frames, lookback_bars):
@@ -316,7 +355,9 @@ def _build_live_candidate(
     top_symbols,
     bias_detector,
     edge_selector,
+    moonshot_overlay,
     portfolio,
+    swing_snapshot=None,
     config,
 ):
     bias_snapshot = bias_detector.get_bias_snapshot(df_1h)
@@ -345,7 +386,7 @@ def _build_live_candidate(
     )
     bucket_risk_mult = selector_profile.get("bucket_risk_mult", 1.0) or 1.0
 
-    return {
+    candidate = {
         "symbol": symbol,
         "timestamp": row.name,
         "side": "long",
@@ -364,6 +405,13 @@ def _build_live_candidate(
         "is_top_mover": is_top_mover,
         "score": float(score_info["score"]),
         "score_bucket": score_info["score_bucket"],
+        "selection_score": float(score_info["score"]),
+        "strategy_type": "core",
+        "signal_family": "live_paper",
+        "risk_group": "core",
+        "moonshot_score": None,
+        "range_expansion_factor": float(row.get("range_expansion_factor", 0.0) or 0.0),
+        "execution_profile": {},
         "feature_values": {
             "body_strength": score_info["components"]["body_strength"],
             "close_position": score_info["components"]["close_position"],
@@ -371,6 +419,7 @@ def _build_live_candidate(
             "momentum": score_info["components"]["momentum"],
         },
     }
+    return moonshot_overlay.apply_to_candidate(candidate, swing_snapshot=swing_snapshot)
 
 
 def _run_portfolio_live_paper_sim(config=None):
@@ -419,6 +468,7 @@ def _run_portfolio_live_paper_sim(config=None):
     builder = TimeframeBuilder(config=config)
     bias_detector = BiasDetector(config=config)
     edge_selector = EdgeSelector(config=config)
+    moonshot_overlay = MoonshotOverlay(config=config)
     portfolio = LivePaperPortfolio(
         trade_logger=LiveTradeLogger(config=config),
         signal_logger=LiveSignalLogger(config=config),
@@ -432,6 +482,7 @@ def _run_portfolio_live_paper_sim(config=None):
         cycle_count += 1
         cycle_start = time.time()
         execution_frames = {}
+        swing_snapshots = {}
         latest_rows_by_symbol = {}
         new_symbols = []
 
@@ -443,12 +494,18 @@ def _run_portfolio_live_paper_sim(config=None):
                 df_recent=df_recent,
                 warmup_minutes=warmup_minutes,
             )
-            df_15m, df_1h, df_5h, df_12h = _build_live_timeframes(
+            df_15m, df_1h, df_5h, df_12h, df_1d, df_1w = _build_live_timeframes(
                 states[symbol],
                 builder=builder,
                 config=config,
             )
             execution_frames[symbol] = df_15m
+            swing_snapshots[symbol] = build_swing_snapshots(
+                df_15m.index,
+                df_1d,
+                df_1w,
+                config=config,
+            )
             is_new, last_candle_times[symbol] = is_new_15m_candle(
                 df_15m,
                 last_candle_times[symbol],
@@ -463,6 +520,11 @@ def _run_portfolio_live_paper_sim(config=None):
                         "df_1h": df_1h.loc[:row.name],
                         "df_5h": df_5h.loc[:row.name],
                         "df_12h": df_12h.loc[:row.name],
+                        "swing_snapshot": (
+                            swing_snapshots[symbol].loc[row.name].to_dict()
+                            if row.name in swing_snapshots[symbol].index
+                            else {}
+                        ),
                     }
                 )
 
@@ -490,7 +552,9 @@ def _run_portfolio_live_paper_sim(config=None):
                     top_symbols=top_symbols,
                     bias_detector=bias_detector,
                     edge_selector=edge_selector,
+                    moonshot_overlay=moonshot_overlay,
                     portfolio=portfolio,
+                    swing_snapshot=item.get("swing_snapshot"),
                     config=config,
                 )
                 if candidate is not None:

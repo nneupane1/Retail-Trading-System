@@ -44,12 +44,16 @@ class FeaturePipeline:
         self.compression_ratio = self.config.require("features", "compression", "ratio")
         indicator_config = self.config.get("features", "indicators", default={}) or {}
         pressure_config = self.config.get("features", "pressure", default={}) or {}
+        expansion_config = self.config.get("features", "expansion", default={}) or {}
         self.atr_period = int(indicator_config.get("atr_period", 14))
         self.macd_fast_period = int(indicator_config.get("macd_fast_period", 12))
         self.macd_slow_period = int(indicator_config.get("macd_slow_period", 26))
         self.macd_signal_period = int(indicator_config.get("macd_signal_period", 9))
         self.bollinger_period = int(indicator_config.get("bollinger_period", 20))
         self.bollinger_std_dev = float(indicator_config.get("bollinger_std_dev", 2.0))
+        self.expansion_lookback_period = int(
+            expansion_config.get("lookback_period", 20)
+        )
         self.pressure_atr_baseline_period = int(
             pressure_config.get("atr_baseline_period", 20)
         )
@@ -225,6 +229,13 @@ class FeaturePipeline:
         )
         df["fast_ema_slope_ratio"] = (
             df[fast_ema_column].pct_change().fillna(0.0)
+        )
+        df["candle_range"] = df["high"] - df["low"]
+        df["avg_candle_range"] = df["candle_range"].rolling(
+            self.expansion_lookback_period
+        ).mean()
+        df["range_expansion_factor"] = (
+            df["candle_range"] / (df["avg_candle_range"] + 1e-9)
         )
 
         print(f"Directional indicators computed | Time: {time.time() - t0:.2f}s\n")

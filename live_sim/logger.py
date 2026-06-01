@@ -23,7 +23,12 @@ LIVE_SIGNAL_LOG_FIELDS = [
     "is_top_mover",
     "momentum_rank",
     "score",
+    "selection_score",
     "score_bucket",
+    "strategy_type",
+    "risk_group",
+    "moonshot_score",
+    "range_expansion_factor",
     "threshold",
     "selected",
     "selection_reason",
@@ -154,6 +159,21 @@ class LivePortfolioStateLogger:
             "entries_taken",
             "closed_trades",
             "threshold",
+        ]
+        with target.open("w", newline="", encoding="utf-8") as file_handle:
+            writer = csv.DictWriter(file_handle, fieldnames=fieldnames)
+            writer.writeheader()
+            for row in rows:
+                writer.writerow({field: row.get(field) for field in fieldnames})
+
+    def write_strategy_layer_summary(self, rows):
+        target = self.output_dir / "strategy_layer_summary.csv"
+        fieldnames = [
+            "strategy_type",
+            "count",
+            "win_rate",
+            "avg_R",
+            "total_pnl",
         ]
         with target.open("w", newline="", encoding="utf-8") as file_handle:
             writer = csv.DictWriter(file_handle, fieldnames=fieldnames)

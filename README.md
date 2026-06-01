@@ -419,6 +419,63 @@ In one line:
 > unstable edge, and the system is now more useful because it exposes what is
 > actually real, repeatable, and worth scaling deliberately.
 
+### Moonshot overlays
+
+The repo now also contains a separate layered moonshot overlay, but it is
+implemented as an extension of the existing portfolio engine rather than a new
+parallel strategy tree.
+
+The design is intentionally minimal:
+
+- the core `15m` weighted opportunity stream remains the entry timing engine
+- one new expansion dimension is added through `range_expansion_factor`
+- an intraday moonshot overlay promotes high-score, high-expansion,
+  top-ranked candidates into a smaller, asymmetry-seeking risk bucket
+- a higher-timeframe swing moonshot overlay tags candidates only when daily and
+  weekly structure, momentum, and expansion all align
+- both overlays are logged and reported separately by `strategy_type`
+
+The three currently recognized strategy layers are:
+
+- `core`
+- `intraday_moonshot`
+- `swing_moonshot`
+
+This matters because the portfolio should no longer be evaluated as one blind
+aggregate. The repo now writes a `strategy_layer_summary.csv` artifact so core
+flow, intraday expansion, and higher-timeframe tail exposure can be audited
+independently.
+
+Initial implementation status:
+
+- the architectural wiring is complete in both `main_live.py` and
+  `main_backtest.py`
+- checkpoint and resume preserve the layer state
+- trade logs and signal logs now carry strategy-layer metadata
+- the higher-timeframe swing layer is intentionally conservative and can remain
+  dormant for long stretches
+
+A focused 3-symbol historical smoke replay over `BTCUSDT`, `ETHUSDT`, and
+`SOLUSDT` from `2026-01-01` to `2026-05-22` produced:
+
+| Layer | Trades | Win Rate | Avg R | Total PnL |
+| --- | --- | --- | --- | --- |
+| `core` | `191` | `40.31%` | `-0.0593` | `-EUR 148.93` |
+| `intraday_moonshot` | `191` | `42.93%` | `-0.0178` | `-EUR 263.60` |
+| `swing_moonshot` | `0` | `n/a` | `n/a` | `EUR 0.00` |
+
+That smoke run ended at `EUR 19,587.47` from a `EUR 20,000` start. The point of
+that run is not that moonshots are already profitable. The point is that the
+layer is now real, resumable, multi-asset, historically replayable, and
+forensically separable from core flow.
+
+So the current state is:
+
+- moonshot capture logic is now implemented
+- moonshot performance is not yet validated as a net-positive contributor
+- future work should optimize the moonshot layers by their own distribution,
+  not by hiding them inside aggregate portfolio PnL
+
 ### Lean edge-selection layer
 
 The repo now includes a deliberately small edge-selection seam built for
@@ -1277,12 +1334,13 @@ In `portfolio_replay` mode, `main_backtest.py`:
 2. clips every symbol to the requested historical window
 3. rebuilds `15m` and `1h` strategy timeframes per symbol
 4. recomputes features on those historical frames
-5. precomputes aligned `1h` bias snapshots and cross-symbol momentum ranks
-6. replays every `15m` timestamp across the universe
-7. ranks same-step candidates with the same continuous score used in the live scanner
-8. applies the same adaptive daily threshold and shared-risk portfolio rules
-9. manages multiple simultaneous paper positions with the same `LivePaperPortfolio`
-10. writes trade, equity, signal-scan, score-bucket, daily-summary, and portfolio-state artifacts
+5. rebuilds aligned higher-timeframe state including `1D` and `1W` moonshot context
+6. precomputes aligned `1h` bias snapshots and cross-symbol momentum ranks
+7. replays every `15m` timestamp across the universe
+8. ranks same-step candidates with the same continuous score used in the live scanner
+9. applies the same adaptive daily threshold, shared-risk portfolio rules, and moonshot overlays
+10. manages multiple simultaneous paper positions with the same `LivePaperPortfolio`
+11. writes trade, equity, signal-scan, score-bucket, strategy-layer, daily-summary, and portfolio-state artifacts
 
 This is the historical analogue of the live multi-asset paper portfolio. It is
 the correct research path for validating daily trade flow, adaptive selection,
@@ -1374,6 +1432,7 @@ backtest/output/trades.csv
 backtest/output/equity.csv
 backtest/output/signals.csv
 backtest/output/score_bucket_summary.csv
+backtest/output/strategy_layer_summary.csv
 backtest/output/daily_summary.csv
 backtest/output/portfolio_status.json
 ```
@@ -1442,17 +1501,18 @@ In `portfolio_paper` mode, `live_sim/runner.py` continuously:
 2. trims each symbol's state to the warmup window needed by the feature stack
 3. fetches fresh recent Binance `1m` candles for each symbol
 4. merges, deduplicates, and sorts the in-memory `1m` state per symbol
-5. rebuilds `15m`, `1h`, `5h`, and `12h` in memory for every symbol
+5. rebuilds `15m`, `1h`, `5h`, `12h`, `1D`, and `1W` in memory for every symbol
 6. recomputes features on every timeframe
 7. detects whether a new `15m` candle has appeared for each symbol
 8. computes recent cross-symbol momentum ranks and identifies top movers
 9. builds live opportunity candidates using the same bucket semantics as the edge lab
-10. scores those candidates with a continuous `0-1` opportunity score
-11. adapts the score threshold intra-day so trade flow can relax toward the configured floor
-12. opens paper trades across multiple symbols while respecting total-risk and per-asset caps
-13. manages existing trades with the shared hard-stop and trailing components
-14. writes trade, signal-scan, score-bucket, and portfolio-state artifacts
-15. sleeps for `live_sim.poll_seconds`
+10. overlays intraday and higher-timeframe moonshot logic on top of that base candidate stream
+11. scores those candidates with a continuous `0-1` opportunity score
+12. adapts the score threshold intra-day so trade flow can relax toward the configured floor
+13. opens paper trades across multiple symbols while respecting total-risk, per-asset caps, and layer-specific risk caps
+14. manages existing trades with shared hard-stop logic plus per-layer execution profiles
+15. writes trade, signal-scan, score-bucket, strategy-layer, and portfolio-state artifacts
+16. sleeps for `live_sim.poll_seconds`
 
 `Top movers` in this system means strongest symbols right now, not symbols
 predicted to be tomorrow's winners. The live scanner ranks the current market
@@ -1741,12 +1801,17 @@ deliberate incompleteness.
   path.
 - The current validated branches are still not deployable for the intended
   `EUR 10k/month` / `EUR 100k/year` income model.
+- The moonshot overlays are implemented and reported separately, but they are
+  not yet validated as a positive contributor over long historical windows.
 
 ### Execution realism
 
 - There is no fee model.
 - There is no slippage model.
 - There is no partial-fill model.
+- There is no native partial-take-profit engine inside the portfolio path yet;
+  moonshot trades currently rely on stop movement and trailing behavior rather
+  than true multi-leg partial exits.
 - Equity is updated on realized trade close, not mark-to-market unrealized value.
 - The edge lab is fee-aware for diagnostics, but the simulator itself still does
   not subtract execution fees from live trade PnL.

@@ -46,6 +46,11 @@ TRADE_LOG_FIELDS = [
     "opportunity_score",
     "score_bucket",
     "momentum_rank",
+    "strategy_type",
+    "risk_group",
+    "selection_score",
+    "moonshot_score",
+    "range_expansion_factor",
     "score_norm",
     "momentum_strength",
     "final_strength",
@@ -60,6 +65,9 @@ TRADE_LOG_FIELDS = [
     "trail_decay_score",
     "bars_held",
     "max_hold_candles",
+    "trailing_activation_r",
+    "slow_grind_max_bars",
+    "slow_grind_open_r_max",
     "entry_layer_count",
     "pyramid_level",
     "score",
@@ -125,6 +133,11 @@ def trade_to_log_record(trade):
         "opportunity_score": getattr(trade, "opportunity_score", conditions.get("opportunity_score")),
         "score_bucket": getattr(trade, "score_bucket", conditions.get("score_bucket")),
         "momentum_rank": getattr(trade, "momentum_rank", conditions.get("momentum_rank")),
+        "strategy_type": getattr(trade, "strategy_type", conditions.get("strategy_type")),
+        "risk_group": getattr(trade, "risk_group", conditions.get("risk_group")),
+        "selection_score": getattr(trade, "selection_score", conditions.get("selection_score")),
+        "moonshot_score": getattr(trade, "moonshot_score", conditions.get("moonshot_score")),
+        "range_expansion_factor": getattr(trade, "range_expansion_factor", conditions.get("range_expansion_factor")),
         "score_norm": getattr(trade, "score_norm", conditions.get("score_norm")),
         "momentum_strength": getattr(trade, "momentum_strength", conditions.get("momentum_strength")),
         "final_strength": getattr(trade, "final_strength", conditions.get("final_strength")),
@@ -139,6 +152,9 @@ def trade_to_log_record(trade):
         "trail_decay_score": getattr(trade, "trail_decay_score", conditions.get("trail_decay_score")),
         "bars_held": getattr(trade, "bars_held", conditions.get("bars_held")),
         "max_hold_candles": getattr(trade, "max_hold_candles", conditions.get("max_hold_candles")),
+        "trailing_activation_r": getattr(trade, "trailing_activation_r", conditions.get("trailing_activation_r")),
+        "slow_grind_max_bars": getattr(trade, "slow_grind_max_bars", conditions.get("slow_grind_max_bars")),
+        "slow_grind_open_r_max": getattr(trade, "slow_grind_open_r_max", conditions.get("slow_grind_open_r_max")),
         "entry_layer_count": entry_layer_count,
         "pyramid_level": getattr(trade, "pyramid_level", conditions.get("pyramid_level", 0)),
         "score": conditions.get("score"),
@@ -244,6 +260,11 @@ class Trade:
         self.opportunity_score = None
         self.score_bucket = None
         self.momentum_rank = None
+        self.strategy_type = "core"
+        self.risk_group = "core"
+        self.selection_score = None
+        self.moonshot_score = None
+        self.range_expansion_factor = None
         self.feature_values = {}
         self.score_norm = None
         self.momentum_strength = None
@@ -273,6 +294,9 @@ class Trade:
         self.disable_trailing = False
         self.profit_lock_trigger_r = None
         self.profit_lock_stop_r = None
+        self.trailing_activation_r = None
+        self.slow_grind_max_bars = None
+        self.slow_grind_open_r_max = None
 
         # Store WHY trade happened (very important)
         self.conditions = {
@@ -297,6 +321,11 @@ class Trade:
             "opportunity_score": None,
             "score_bucket": None,
             "momentum_rank": None,
+            "strategy_type": self.strategy_type,
+            "risk_group": self.risk_group,
+            "selection_score": None,
+            "moonshot_score": None,
+            "range_expansion_factor": None,
             "edge_type": None,
             "body_bucket": None,
             "vwap_bucket": None,
@@ -311,6 +340,9 @@ class Trade:
             "event_bonus": None,
             "bars_held": 0,
             "max_hold_candles": None,
+            "trailing_activation_r": None,
+            "slow_grind_max_bars": None,
+            "slow_grind_open_r_max": None,
         }
 
         print(f"Trade created at {self.entry_time}")
@@ -506,11 +538,21 @@ class Trade:
         score_bucket=None,
         momentum_rank=None,
         feature_values=None,
+        strategy_type=None,
+        risk_group=None,
+        selection_score=None,
+        moonshot_score=None,
+        range_expansion_factor=None,
     ):
         self.symbol = symbol
         self.opportunity_score = opportunity_score
         self.score_bucket = score_bucket
         self.momentum_rank = momentum_rank
+        self.strategy_type = strategy_type or self.strategy_type
+        self.risk_group = risk_group or self.risk_group
+        self.selection_score = selection_score
+        self.moonshot_score = moonshot_score
+        self.range_expansion_factor = range_expansion_factor
         self.feature_values = dict(feature_values or {})
         self.conditions.update(
             {
@@ -518,6 +560,11 @@ class Trade:
                 "opportunity_score": opportunity_score,
                 "score_bucket": score_bucket,
                 "momentum_rank": momentum_rank,
+                "strategy_type": self.strategy_type,
+                "risk_group": self.risk_group,
+                "selection_score": selection_score,
+                "moonshot_score": moonshot_score,
+                "range_expansion_factor": range_expansion_factor,
             }
         )
 
@@ -579,6 +626,9 @@ class Trade:
         disable_trailing=False,
         profit_lock_trigger_r=None,
         profit_lock_stop_r=None,
+        trailing_activation_r=None,
+        slow_grind_max_bars=None,
+        slow_grind_open_r_max=None,
     ):
         self.max_hold_candles = (
             None if max_hold_candles in (None, "") else int(max_hold_candles)
@@ -591,6 +641,15 @@ class Trade:
         self.profit_lock_stop_r = (
             None if profit_lock_stop_r in (None, "") else float(profit_lock_stop_r)
         )
+        self.trailing_activation_r = (
+            None if trailing_activation_r in (None, "") else float(trailing_activation_r)
+        )
+        self.slow_grind_max_bars = (
+            None if slow_grind_max_bars in (None, "") else int(slow_grind_max_bars)
+        )
+        self.slow_grind_open_r_max = (
+            None if slow_grind_open_r_max in (None, "") else float(slow_grind_open_r_max)
+        )
         self.conditions.update(
             {
                 "max_hold_candles": self.max_hold_candles,
@@ -598,6 +657,9 @@ class Trade:
                 "disable_trailing": self.disable_trailing,
                 "profit_lock_trigger_r": self.profit_lock_trigger_r,
                 "profit_lock_stop_r": self.profit_lock_stop_r,
+                "trailing_activation_r": self.trailing_activation_r,
+                "slow_grind_max_bars": self.slow_grind_max_bars,
+                "slow_grind_open_r_max": self.slow_grind_open_r_max,
             }
         )
 
@@ -686,6 +748,11 @@ class Trade:
             "opportunity_score": self.opportunity_score,
             "score_bucket": self.score_bucket,
             "momentum_rank": self.momentum_rank,
+            "strategy_type": self.strategy_type,
+            "risk_group": self.risk_group,
+            "selection_score": self.selection_score,
+            "moonshot_score": self.moonshot_score,
+            "range_expansion_factor": self.range_expansion_factor,
             "feature_values": dict(self.feature_values),
             "score_norm": self.score_norm,
             "momentum_strength": self.momentum_strength,
@@ -709,6 +776,9 @@ class Trade:
             "disable_trailing": self.disable_trailing,
             "profit_lock_trigger_r": self.profit_lock_trigger_r,
             "profit_lock_stop_r": self.profit_lock_stop_r,
+            "trailing_activation_r": self.trailing_activation_r,
+            "slow_grind_max_bars": self.slow_grind_max_bars,
+            "slow_grind_open_r_max": self.slow_grind_open_r_max,
             "conditions": dict(self.conditions),
         }
 
@@ -760,6 +830,11 @@ class Trade:
         trade.opportunity_score = snapshot.get("opportunity_score")
         trade.score_bucket = snapshot.get("score_bucket")
         trade.momentum_rank = snapshot.get("momentum_rank")
+        trade.strategy_type = snapshot.get("strategy_type", "core")
+        trade.risk_group = snapshot.get("risk_group", "core")
+        trade.selection_score = snapshot.get("selection_score")
+        trade.moonshot_score = snapshot.get("moonshot_score")
+        trade.range_expansion_factor = snapshot.get("range_expansion_factor")
         trade.feature_values = dict(snapshot.get("feature_values", {}) or {})
         trade.score_norm = snapshot.get("score_norm")
         trade.momentum_strength = snapshot.get("momentum_strength")
@@ -783,5 +858,8 @@ class Trade:
         trade.disable_trailing = snapshot.get("disable_trailing", False)
         trade.profit_lock_trigger_r = snapshot.get("profit_lock_trigger_r")
         trade.profit_lock_stop_r = snapshot.get("profit_lock_stop_r")
+        trade.trailing_activation_r = snapshot.get("trailing_activation_r")
+        trade.slow_grind_max_bars = snapshot.get("slow_grind_max_bars")
+        trade.slow_grind_open_r_max = snapshot.get("slow_grind_open_r_max")
         trade.conditions = dict(snapshot.get("conditions", {}))
         return trade

@@ -17,6 +17,7 @@ from data.downloader import load_from_csv
 from data.resampler import TimeframeBuilder
 from entry.edge_buckets import build_signal_bucket
 from entry.edge_selector import EdgeSelector
+from entry.moonshot import MoonshotOverlay, build_swing_snapshots
 from entry.opportunity_ranking import OpportunityScorer
 from features.feature_pipeline import compute_features
 from live_sim.logger import LivePortfolioStateLogger, LiveSignalLogger
@@ -231,6 +232,29 @@ def _build_score_stats_from_trades(trades_df):
     return score_stats
 
 
+def _build_strategy_stats_from_trades(trades_df):
+    strategy_stats = {}
+    if trades_df.empty or "strategy_type" not in trades_df.columns:
+        return strategy_stats
+
+    working = trades_df.copy()
+    working["strategy_type"] = working["strategy_type"].fillna("core").astype(str)
+    working["pnl"] = pd.to_numeric(working.get("pnl"), errors="coerce").fillna(0.0)
+    working["pnl_R_initial"] = pd.to_numeric(
+        working.get("pnl_R_initial"),
+        errors="coerce",
+    ).fillna(0.0)
+
+    for strategy_type, group in working.groupby("strategy_type"):
+        strategy_stats[str(strategy_type)] = {
+            "count": int(len(group)),
+            "wins": int((group["pnl"] > 0).sum()),
+            "total_R": float(group["pnl_R_initial"].sum()),
+            "total_pnl": float(group["pnl"].sum()),
+        }
+    return strategy_stats
+
+
 def _build_feature_stats_from_trades(trades_df, scorer):
     feature_stats = {
         feature: {"sum_pos": 0.0, "sum_neg": 0.0}
@@ -355,6 +379,7 @@ def _build_artifact_resume_payload(output_dir, common_index, config):
             else []
         ),
         "score_stats": _build_score_stats_from_trades(trades_df),
+        "strategy_stats": _build_strategy_stats_from_trades(trades_df),
         "feature_stats": _build_feature_stats_from_trades(trades_df, scorer),
         "last_top_symbols": list(status.get("top_symbols") or []),
         "open_positions": [],
@@ -397,10 +422,14 @@ def _build_strategy_timeframes(df_1m, config):
 
     df_15m = builder.resample(df_1m, execution_rule)
     df_1h = builder.resample(df_1m, direction_rule)
+    df_1d = builder.resample(df_1m, "1D")
+    df_1w = builder.resample(df_1m, "1W")
 
     df_15m = compute_features(df_15m, config=config)
     df_1h = compute_features(df_1h, config=config)
-    return df_15m, df_1h
+    df_1d = compute_features(df_1d, config=config)
+    df_1w = compute_features(df_1w, config=config)
+    return df_15m, df_1h, df_1d, df_1w
 
 
 def _aligned_bias_snapshots(df_15m, df_1h, detector):
@@ -447,7 +476,9 @@ def _build_candidate(
     momentum_rank,
     top_symbols,
     edge_selector,
+    moonshot_overlay,
     portfolio,
+    swing_snapshot=None,
     config,
 ):
     bias = str(bias_snapshot.get("label", "neutral"))
@@ -475,7 +506,7 @@ def _build_candidate(
     )
     bucket_risk_mult = selector_profile.get("bucket_risk_mult", 1.0) or 1.0
 
-    return {
+    candidate = {
         "symbol": symbol,
         "timestamp": row.name,
         "side": "long",
@@ -494,6 +525,13 @@ def _build_candidate(
         "is_top_mover": is_top_mover,
         "score": float(score_info["score"]),
         "score_bucket": score_info["score_bucket"],
+        "selection_score": float(score_info["score"]),
+        "strategy_type": "core",
+        "signal_family": "portfolio_replay",
+        "risk_group": "core",
+        "moonshot_score": None,
+        "range_expansion_factor": float(row.get("range_expansion_factor", 0.0) or 0.0),
+        "execution_profile": {},
         "feature_values": {
             "body_strength": score_info["components"]["body_strength"],
             "close_position": score_info["components"]["close_position"],
@@ -501,6 +539,7 @@ def _build_candidate(
             "momentum": score_info["components"]["momentum"],
         },
     }
+    return moonshot_overlay.apply_to_candidate(candidate, swing_snapshot=swing_snapshot)
 
 
 def run_portfolio_backtest(config=None):
@@ -551,15 +590,22 @@ def run_portfolio_backtest(config=None):
 
     execution_frames = {}
     bias_frames = {}
+    swing_frames = {}
     source_paths = {}
     bias_detector = BiasDetector(config=config)
 
     for symbol in symbols:
         print(f"\nLoading full history for {symbol}...")
         df_1m, source_path = _load_full_history(symbol, interval, config)
-        df_15m, df_1h = _build_strategy_timeframes(df_1m, config=config)
+        df_15m, df_1h, df_1d, df_1w = _build_strategy_timeframes(df_1m, config=config)
         execution_frames[symbol] = df_15m
         bias_frames[symbol] = _aligned_bias_snapshots(df_15m, df_1h, bias_detector)
+        swing_frames[symbol] = build_swing_snapshots(
+            df_15m.index,
+            df_1d,
+            df_1w,
+            config=config,
+        )
         source_paths[symbol] = source_path
         print(f"  Source: {source_path}")
         print(f"  Execution rows: {len(df_15m):,}")
@@ -629,6 +675,7 @@ def run_portfolio_backtest(config=None):
             f"{resume_index:,}/{len(common_index):,}"
         )
     edge_selector = EdgeSelector(config=config)
+    moonshot_overlay = MoonshotOverlay(config=config)
 
     latest_rows_by_symbol = {}
     start_time = time.time()
@@ -677,6 +724,11 @@ def run_portfolio_backtest(config=None):
                 bias_snapshot = bias_frame.loc[timestamp].to_dict()
                 if pd.isna(bias_snapshot.get("label")):
                     continue
+                swing_snapshot = (
+                    swing_frames[symbol].loc[timestamp].to_dict()
+                    if timestamp in swing_frames[symbol].index
+                    else {}
+                )
                 candidate = _build_candidate(
                     symbol=symbol,
                     row=row,
@@ -684,7 +736,9 @@ def run_portfolio_backtest(config=None):
                     momentum_rank=float(rank_row.get(symbol, 0.5) or 0.5),
                     top_symbols=top_symbols,
                     edge_selector=edge_selector,
+                    moonshot_overlay=moonshot_overlay,
                     portfolio=portfolio,
+                    swing_snapshot=swing_snapshot,
                     config=config,
                 )
                 if candidate is not None:

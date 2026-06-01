@@ -103,6 +103,9 @@ class LivePaperPortfolio:
         self.score_stats = defaultdict(
             lambda: {"count": 0, "wins": 0, "total_R": 0.0, "total_pnl": 0.0}
         )
+        self.strategy_stats = defaultdict(
+            lambda: {"count": 0, "wins": 0, "total_R": 0.0, "total_pnl": 0.0}
+        )
         self.feature_stats = defaultdict(
             lambda: {"sum_pos": 0.0, "sum_neg": 0.0}
         )
@@ -151,12 +154,14 @@ class LivePaperPortfolio:
             or 0.0
         )
 
-    def _active_risk_fraction(self):
+    def _active_risk_fraction(self, risk_group=None):
         equity = float(self.account.equity or 0.0)
         if equity <= 0:
             return 0.0
         total = 0.0
         for trade in self.open_positions:
+            if risk_group and getattr(trade, "risk_group", None) != risk_group:
+                continue
             total += abs(float(trade.entry_price) - float(trade.stop)) * sum(
                 float(size) for _, size in trade.entries
             )
@@ -257,7 +262,12 @@ class LivePaperPortfolio:
             "is_top_mover": candidate.get("is_top_mover"),
             "momentum_rank": candidate.get("momentum_rank"),
             "score": candidate.get("score"),
+            "selection_score": candidate.get("selection_score"),
             "score_bucket": candidate.get("score_bucket"),
+            "strategy_type": candidate.get("strategy_type"),
+            "risk_group": candidate.get("risk_group"),
+            "moonshot_score": candidate.get("moonshot_score"),
+            "range_expansion_factor": candidate.get("range_expansion_factor"),
             "threshold": threshold,
             "selected": selected,
             "selection_reason": selection_reason,
@@ -276,6 +286,14 @@ class LivePaperPortfolio:
         stats["total_pnl"] += float(getattr(trade, "pnl", 0.0) or 0.0)
         if float(getattr(trade, "pnl", 0.0) or 0.0) > 0:
             stats["wins"] += 1
+
+        strategy_type = str(getattr(trade, "strategy_type", "core") or "core")
+        strategy_stats = self.strategy_stats[strategy_type]
+        strategy_stats["count"] += 1
+        strategy_stats["total_R"] += float(getattr(trade, "pnl_R_initial", 0.0) or 0.0)
+        strategy_stats["total_pnl"] += float(getattr(trade, "pnl", 0.0) or 0.0)
+        if float(getattr(trade, "pnl", 0.0) or 0.0) > 0:
+            strategy_stats["wins"] += 1
 
         feature_values = dict(getattr(trade, "feature_values", {}) or {})
         positive = float(getattr(trade, "pnl_R_initial", 0.0) or 0.0) > 0
@@ -303,6 +321,22 @@ class LivePaperPortfolio:
             )
         summary_rows.sort(key=lambda item: bucket_floor(item["bucket"]), reverse=True)
         self.state_logger.write_score_bucket_summary(summary_rows)
+        strategy_rows = []
+        for strategy_type, stats in self.strategy_stats.items():
+            count = int(stats["count"])
+            strategy_rows.append(
+                {
+                    "strategy_type": strategy_type,
+                    "count": count,
+                    "win_rate": (stats["wins"] / count) if count else 0.0,
+                    "avg_R": (stats["total_R"] / count) if count else 0.0,
+                    "total_pnl": stats["total_pnl"],
+                }
+            )
+        strategy_rows.sort(key=lambda item: item["total_pnl"], reverse=True)
+        write_strategy_summary = getattr(self.state_logger, "write_strategy_layer_summary", None)
+        if callable(write_strategy_summary):
+            write_strategy_summary(strategy_rows)
         write_daily_summary = getattr(self.state_logger, "write_daily_summary", None)
         if callable(write_daily_summary):
             write_daily_summary(list(self.daily_history))
@@ -317,6 +351,10 @@ class LivePaperPortfolio:
                 "daily_closed_pnl": self.daily_closed_pnl,
                 "current_threshold": self.current_threshold,
                 "score_weights": dict(self.scorer.weights),
+                "strategy_stats": {
+                    strategy_type: dict(values)
+                    for strategy_type, values in self.strategy_stats.items()
+                },
                 "top_symbols": list(self.last_top_symbols),
             },
         )
@@ -380,6 +418,10 @@ class LivePaperPortfolio:
             "score_stats": {
                 bucket: dict(values)
                 for bucket, values in self.score_stats.items()
+            },
+            "strategy_stats": {
+                strategy_type: dict(values)
+                for strategy_type, values in self.strategy_stats.items()
             },
             "feature_stats": {
                 feature: dict(values)
@@ -452,6 +494,16 @@ class LivePaperPortfolio:
                 "total_R": float(values.get("total_R", 0.0) or 0.0),
                 "total_pnl": float(values.get("total_pnl", 0.0) or 0.0),
             }
+        self.strategy_stats = defaultdict(
+            lambda: {"count": 0, "wins": 0, "total_R": 0.0, "total_pnl": 0.0}
+        )
+        for strategy_type, values in (snapshot.get("strategy_stats") or {}).items():
+            self.strategy_stats[str(strategy_type)] = {
+                "count": int(values.get("count", 0) or 0),
+                "wins": int(values.get("wins", 0) or 0),
+                "total_R": float(values.get("total_R", 0.0) or 0.0),
+                "total_pnl": float(values.get("total_pnl", 0.0) or 0.0),
+            }
         self.feature_stats = defaultdict(
             lambda: {"sum_pos": 0.0, "sum_neg": 0.0}
         )
@@ -497,6 +549,43 @@ class LivePaperPortfolio:
                 continue
 
             open_r_multiple = self._open_r_multiple(trade, float(row["close"]))
+            trailing_activation_r = float(
+                getattr(trade, "trailing_activation_r", None)
+                or self.trailing_activation_r
+            )
+            slow_grind_max_bars = int(
+                getattr(trade, "slow_grind_max_bars", None)
+                or self.slow_grind_max_bars
+            )
+            slow_grind_open_r_max = float(
+                getattr(trade, "slow_grind_open_r_max", None)
+                or self.slow_grind_open_r_max
+            )
+
+            if getattr(trade, "max_hold_candles", None) is not None and int(
+                getattr(trade, "bars_held", 0) or 0
+            ) >= int(trade.max_hold_candles):
+                self.close_trade(trade, row, reason="time exit")
+                continue
+
+            profit_lock_trigger_r = getattr(trade, "profit_lock_trigger_r", None)
+            profit_lock_stop_r = getattr(trade, "profit_lock_stop_r", None)
+            if (
+                profit_lock_trigger_r is not None
+                and profit_lock_stop_r is not None
+                and open_r_multiple >= float(profit_lock_trigger_r)
+            ):
+                locked_stop = float(trade.entry_price) + (
+                    float(profit_lock_stop_r) * float(trade.R)
+                )
+                if trade.side == "short":
+                    locked_stop = float(trade.entry_price) - (
+                        float(profit_lock_stop_r) * float(trade.R)
+                    )
+                    trade.active_stop = min(float(trade.active_stop), locked_stop)
+                else:
+                    trade.active_stop = max(float(trade.active_stop), locked_stop)
+
             if open_r_multiple >= self.breakeven_trigger_r:
                 if trade.side == "short":
                     trade.active_stop = min(float(trade.active_stop), float(trade.entry_price))
@@ -504,13 +593,16 @@ class LivePaperPortfolio:
                     trade.active_stop = max(float(trade.active_stop), float(trade.entry_price))
 
             if (
-                int(getattr(trade, "bars_held", 0) or 0) >= self.slow_grind_max_bars
-                and open_r_multiple < self.slow_grind_open_r_max
+                slow_grind_max_bars > 0
+                and int(getattr(trade, "bars_held", 0) or 0) >= slow_grind_max_bars
+                and open_r_multiple < slow_grind_open_r_max
             ):
                 self.close_trade(trade, row, reason="slow grind exit")
                 continue
 
-            if open_r_multiple < self.trailing_activation_r:
+            if getattr(trade, "disable_trailing", False):
+                continue
+            if open_r_multiple < trailing_activation_r:
                 continue
 
             result = self.trend_sniffer.evaluate(row, trade=trade)
@@ -539,7 +631,7 @@ class LivePaperPortfolio:
 
         ordered = sorted(
             candidates,
-            key=lambda item: float(item.get("score", 0.0)),
+            key=lambda item: float(item.get("selection_score", item.get("score", 0.0))),
             reverse=True,
         )
         opened_this_step = 0
@@ -548,14 +640,19 @@ class LivePaperPortfolio:
             reason = "score_below_threshold"
             selected = False
             score = float(candidate.get("score", 0.0) or 0.0)
+            selection_score = float(
+                candidate.get("selection_score", candidate.get("score", 0.0)) or 0.0
+            )
             score_bucket = candidate.get("score_bucket")
             score_bucket_risk_mult = self._score_bucket_risk_multiplier(score_bucket)
+            risk_group = candidate.get("risk_group")
+            group_risk_cap = candidate.get("group_risk_cap")
 
             if candidate.get("side") not in self.allowed_sides:
                 reason = "side_disabled"
             elif score_bucket_risk_mult <= 0.0:
                 reason = "score_bucket_filtered"
-            elif score < threshold:
+            elif selection_score < threshold:
                 reason = "score_below_threshold"
             elif opened_this_step >= self.max_new_positions_per_step:
                 reason = "step_position_cap"
@@ -564,16 +661,26 @@ class LivePaperPortfolio:
             elif self._direction_open_count(candidate["side"]) >= self.max_same_direction_positions:
                 reason = "direction_cap"
             else:
-                risk_fraction = self._risk_fraction_for_score(
-                    score,
-                    risk_mult=(
-                        float(candidate.get("risk_mult", 1.0) or 1.0)
-                        * score_bucket_risk_mult
-                    ),
-                )
+                if candidate.get("risk_fraction_override") not in (None, ""):
+                    risk_fraction = float(candidate.get("risk_fraction_override"))
+                else:
+                    risk_fraction = self._risk_fraction_for_score(
+                        score,
+                        risk_mult=(
+                            float(candidate.get("risk_mult", 1.0) or 1.0)
+                            * score_bucket_risk_mult
+                        ),
+                    )
                 projected_total_risk = self._active_risk_fraction() + risk_fraction
                 if projected_total_risk > self.max_total_risk_fraction:
                     reason = "risk_cap"
+                elif (
+                    risk_group
+                    and group_risk_cap not in (None, "")
+                    and (self._active_risk_fraction(risk_group=risk_group) + risk_fraction)
+                    > float(group_risk_cap)
+                ):
+                    reason = "strategy_risk_cap"
                 else:
                     row = candidate["row"]
                     trade = Trade(
@@ -597,8 +704,16 @@ class LivePaperPortfolio:
                             score_bucket=candidate.get("score_bucket"),
                             momentum_rank=candidate.get("momentum_rank"),
                             feature_values=candidate.get("feature_values"),
+                            strategy_type=candidate.get("strategy_type"),
+                            risk_group=candidate.get("risk_group"),
+                            selection_score=selection_score,
+                            moonshot_score=candidate.get("moonshot_score"),
+                            range_expansion_factor=candidate.get("range_expansion_factor"),
                         )
-                        trade.annotate_signal_family("live_paper", pressure_score=None)
+                        trade.annotate_signal_family(
+                            candidate.get("signal_family", "live_paper"),
+                            pressure_score=None,
+                        )
                         trade.annotate_edge_bucket(
                             edge_type=candidate.get("edge_type"),
                             body_bucket=candidate.get("body_bucket"),
@@ -627,6 +742,9 @@ class LivePaperPortfolio:
                             runtime_risk_multiplier=1.0,
                             intended_risk_per_trade=risk_fraction,
                             effective_risk_fraction=risk_fraction,
+                        )
+                        trade.annotate_edge_execution_profile(
+                            **dict(candidate.get("execution_profile") or {})
                         )
                         trade.add_entry(row["close"], size)
                         self.open_positions.append(trade)

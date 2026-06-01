@@ -111,6 +111,9 @@
       "atr_compression_ratio_max": 0.85,
       "range_compression_ratio_max": 0.72
     },
+    "expansion": {
+      "lookback_period": 20
+    },
     "candle_metrics": {
       "average_body_period": 10
     },
@@ -235,6 +238,59 @@
         "disable_trailing": true,
         "profit_lock_trigger_r": 1.5,
         "profit_lock_stop_r": 0.25
+      }
+    },
+    "moonshots": {
+      "enabled": true,
+      "intraday": {
+        "enabled": true,
+        "min_score": 0.85,
+        "min_expansion": 1.4,
+        "max_expansion_for_score": 2.5,
+        "min_momentum_rank": 0.75,
+        "selection_bonus": 0.06,
+        "base_risk_fraction": 0.0025,
+        "max_group_risk_fraction": 0.015,
+        "risk_by_expansion": [
+          {
+            "min_expansion": 1.4,
+            "risk_fraction": 0.0025
+          },
+          {
+            "min_expansion": 1.8,
+            "risk_fraction": 0.0035
+          },
+          {
+            "min_expansion": 2.2,
+            "risk_fraction": 0.0045
+          }
+        ],
+        "profit_lock_trigger_r": 1.0,
+        "profit_lock_stop_r": 0.15,
+        "trailing_activation_r": 1.5,
+        "slow_grind_max_bars": 12,
+        "slow_grind_open_r_max": 0.8
+      },
+      "swing": {
+        "enabled": true,
+        "min_score": 0.82,
+        "min_rank": 0.75,
+        "daily_breakout_lookback": 20,
+        "weekly_breakout_lookback": 8,
+        "daily_momentum_lookback": 10,
+        "weekly_momentum_lookback": 4,
+        "daily_expansion_lookback": 20,
+        "weekly_expansion_lookback": 8,
+        "daily_expansion_threshold": 1.1,
+        "weekly_expansion_threshold": 1.0,
+        "selection_bonus": 0.10,
+        "risk_fraction": 0.0015,
+        "max_group_risk_fraction": 0.01,
+        "profit_lock_trigger_r": 1.5,
+        "profit_lock_stop_r": 0.25,
+        "trailing_activation_r": 2.0,
+        "slow_grind_max_bars": 2880,
+        "slow_grind_open_r_max": 1.2
       }
     },
     "execution": {
