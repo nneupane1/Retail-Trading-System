@@ -347,11 +347,24 @@ the locked gated baseline.
 | Opportunity logging | Enabled by default into `backtest/output/opportunities.csv` |
 | Lean edge selection | Optional `strategy.edge_selection` lookup table built from `main_edge_lab.py` |
 | Daily controls | Enabled by default: daily loss brake, target brake, risk cap, and trade-flow cap |
+| Recent control | Enabled: bucket and strategy health are driven by recent windows, not full-history averages |
+| Convexity | Enabled: probe, promotion, and one earned add for validated trades |
+| HTF overlays | `swing_moonshot`, structural `htf_12h_moonshot`, and cross-sectional `htf_12h_rotation` are implemented and separately tracked |
+| Intraday moonshot | Implemented but disabled by default after failing broad historical validation |
 | Exploration layer | Implemented but `strategy.exploration.enabled = false` by default |
 
 The weighted path is intentionally looser than the locked baseline. The design
 goal is to allow many more candidates to exist, then scale capital by measured
 strength instead of relying on compounded hard gates.
+
+The active stack is no longer a single-path strategy. It is a capital-routing
+engine with:
+
+- `15m` weighted core flow
+- recency-aware bucket and strategy control
+- convexity behavior that starts small and earns size only after proof
+- structural `12H` moonshot participation
+- a separate `12H` cross-sectional rotation sleeve for leader reinforcement
 
 ### Validated portfolio replay status
 
@@ -419,62 +432,183 @@ In one line:
 > unstable edge, and the system is now more useful because it exposes what is
 > actually real, repeatable, and worth scaling deliberately.
 
-### Moonshot overlays
+### Recent adaptive-stack status
 
-The repo now also contains a separate layered moonshot overlay, but it is
-implemented as an extension of the existing portfolio engine rather than a new
-parallel strategy tree.
+The next step after the broad-versus-quality allocator comparison was not to add
+more raw signals. It was to stop trusting full-history averages blindly and let
+the portfolio react to what is working now.
 
-The design is intentionally minimal:
+That control layer is now implemented in the shared live/backtest path:
 
-- the core `15m` weighted opportunity stream remains the entry timing engine
-- one new expansion dimension is added through `range_expansion_factor`
-- an intraday moonshot overlay promotes high-score, high-expansion,
-  top-ranked candidates into a smaller, asymmetry-seeking risk bucket
-- a higher-timeframe swing moonshot overlay tags candidates only when daily and
-  weekly structure, momentum, and expansion all align
-- both overlays are logged and reported separately by `strategy_type`
+- recent bucket health can scale or nearly disable weak score buckets
+- strategy health can suppress or shrink weak sleeves such as `swing_moonshot`
+- threshold floors can move toward recently profitable participation zones
+- long historical replays and validation matrices preserve that state through
+  checkpoints and resumes
 
-The three currently recognized strategy layers are:
+The most informative recent-regime branch set is the replay window from
+`2025-01-01` to `2026-05-22`.
+
+| Branch | Final Equity | PF | Avg R | Max DD | Median Daily PnL | Avg Monthly PnL |
+| --- | --- | --- | --- | --- | --- | --- |
+| `core_only` with soft recent control | `EUR 22,417.79` | `1.168` | `0.00256` | `-7.19%` | `-EUR 0.22` | `EUR 142.22` |
+| `core + htf_12h_moonshot` | `EUR 22,855.58` | `1.199` | `0.00475` | `-4.84%` | `-EUR 0.22` | `EUR 167.98` |
+| `core + swing + htf_12h_moonshot` | `EUR 22,745.59` | `1.168` | `0.00958` | `-7.56%` | `-EUR 0.27` | `EUR 161.51` |
+
+What this proved:
+
+- the recency-aware control layer is a real improvement, not a cosmetic one
+- the recent bucket hierarchy diverges from the old full-history hierarchy:
+  `0.8-0.9` can remain positive while `0.9-1.0` weakens
+- the system now reacts to that drift instead of continuing to size stale edge
+- structural `12H` HTF participation still adds value in the recent live-like
+  regime
+
+This is the current state of the business problem:
+
+- the system is no longer dominated by stale calibration
+- the system is still below the intended `EUR 10k/month` and `EUR 100k/year`
+  objective
+- the remaining gap is now mostly portfolio routing and capital competition,
+  not lack of infrastructure
+
+### Convexity and HTF overlays
+
+The repo now has a real layered overlay model rather than one monolithic
+portfolio stream. The important distinction is that convexity is treated as
+trade behavior, not as a separate strategy family:
+
+- start with a smaller probe when uncertainty is highest
+- promote only after the trade proves itself
+- allow one controlled add only while the trade is winning and the active stop
+  has progressed
+- hold longer only when the higher-timeframe context still supports the move
+
+That means the system tries to keep downside linear while allowing a smaller
+subset of validated winners to become non-linear contributors.
+
+The currently recognized strategy layers are:
 
 - `core`
-- `intraday_moonshot`
 - `swing_moonshot`
+- `htf_12h_moonshot`
+- `htf_12h_rotation`
+- `intraday_moonshot` remains implemented, but is disabled by default after
+  failing broader validation
 
-This matters because the portfolio should no longer be evaluated as one blind
-aggregate. The repo now writes a `strategy_layer_summary.csv` artifact so core
-flow, intraday expansion, and higher-timeframe tail exposure can be audited
-independently.
+#### Structural status
 
-Initial implementation status:
+The architectural wiring is complete in both `main_live.py` and
+`main_backtest.py`:
 
-- the architectural wiring is complete in both `main_live.py` and
-  `main_backtest.py`
-- checkpoint and resume preserve the layer state
-- trade logs and signal logs now carry strategy-layer metadata
-- the higher-timeframe swing layer is intentionally conservative and can remain
-  dormant for long stretches
+- every layer is logged by `strategy_type`
+- checkpoint and resume preserve the full layer state
+- the live paper portfolio and historical portfolio replay use the same
+  portfolio state machine
+- HTF trades are managed through HTF stops and HTF decay logic, not by `15m`
+  noise exits
 
-A focused 3-symbol historical smoke replay over `BTCUSDT`, `ETHUSDT`, and
-`SOLUSDT` from `2026-01-01` to `2026-05-22` produced:
+#### Convexity smoke status
 
-| Layer | Trades | Win Rate | Avg R | Total PnL |
-| --- | --- | --- | --- | --- |
-| `core` | `191` | `40.31%` | `-0.0593` | `-EUR 148.93` |
-| `intraday_moonshot` | `191` | `42.93%` | `-0.0178` | `-EUR 263.60` |
-| `swing_moonshot` | `0` | `n/a` | `n/a` | `EUR 0.00` |
+The first direct convexity A/B smoke replay over `BTCUSDT`, `ETHUSDT`, and
+`SOLUSDT` from `2026-01-01` to `2026-02-01` showed the intended structural
+behavior:
 
-That smoke run ended at `EUR 19,587.47` from a `EUR 20,000` start. The point of
-that run is not that moonshots are already profitable. The point is that the
-layer is now real, resumable, multi-asset, historically replayable, and
-forensically separable from core flow.
+- convexity `ON`: final equity `EUR 19,828`, net `-EUR 171.89`
+- convexity `OFF`: final equity `EUR 19,563`, net `-EUR 436.09`
 
-So the current state is:
+The same trade count was preserved, but the convex profile reduced damage. In
+that smoke:
 
-- moonshot capture logic is now implemented
-- moonshot performance is not yet validated as a net-positive contributor
-- future work should optimize the moonshot layers by their own distribution,
-  not by hiding them inside aggregate portfolio PnL
+- `76` trades opened as probes
+- `4` trades earned promotion
+- `1` trade reached the third exposure layer
+
+So the first-pass convexity logic behaved correctly: most trades stayed small,
+and only proven trades earned additional size.
+
+#### Structural 12H moonshot status
+
+The structural `htf_12h_moonshot` sleeve is now a distinct higher-timeframe
+execution engine with:
+
+- closed `12H` signal timing
+- `1D` and optional `1W` context
+- structural `12H` stop placement
+- long-only side policy by default
+- no HTF pyramiding yet
+
+Its purpose is early higher-timeframe trend participation, not dense trade
+flow.
+
+#### Cross-sectional 12H rotation status
+
+The repo also now includes a separate Binance-only cross-sectional HTF capital
+allocator in `entry/htf_rotation.py`. This layer asks:
+
+> where is capital concentrating across the liquid Binance universe right now?
+
+It does not duplicate the structural breakout sleeve. The role separation is:
+
+- `htf_12h_moonshot`: early structural trend birth
+- `htf_12h_rotation`: leader reinforcement once leadership is already visible
+
+The recent-regime rotation funnel over the 9-symbol universe from
+`2025-01-01` to `2026-05-22` produced:
+
+| Stage | Count |
+| --- | --- |
+| Raw `12H` events | `8,838` |
+| Passed `12H` structure | `8,802` |
+| Passed context gate | `3,106` |
+| Passed expansion | `1,155` |
+| Passed stretch filter | `1,031` |
+| Passed quality | `702` |
+| Passed score | `702` |
+| Opened rotation candidates | `702` |
+
+The real starvation gates are therefore:
+
+- context
+- expansion
+- then candle quality
+
+Score is not the bottleneck.
+
+Standalone recent-regime validation for `htf_12h_rotation` only:
+
+- final equity `EUR 20,824.40`
+- trades `102`
+- PF `2.479`
+- avg `R` `0.1548`
+- max drawdown `-0.54%`
+- top 5 trades contribution `86.0%`
+
+That is real standalone edge.
+
+Incremental rotation results:
+
+- `core_only -> core + rotation`
+  - equity improved from `EUR 22,417.79` to `EUR 22,853.20`
+  - median daily improved from `-EUR 0.221` to `-EUR 0.182`
+- `core + htf -> core + htf + rotation`
+  - equity improved from `EUR 22,855.58` to `EUR 23,060.77`
+  - median daily improved from `-EUR 0.216` to `-EUR 0.170`
+- `full_stack -> full_stack + rotation`
+  - rotation made money directly, but total portfolio equity fell from
+    `EUR 22,745.59` to `EUR 22,158.08`
+
+That last result matters. It means rotation is not a fake edge; it means that
+in the full stack it is currently competing for capital with stronger sleeves.
+
+So the current conclusion is:
+
+- `intraday_moonshot`: implemented, historically weak, disabled by default
+- `swing_moonshot`: implemented, conservative, still controlled by strategy
+  health
+- `htf_12h_moonshot`: keep enabled
+- `htf_12h_rotation`: keep enabled as a calibrated sleeve, but treat it as a
+  portfolio-routing problem rather than blindly stacking it into every branch
 
 ### Lean edge-selection layer
 
@@ -1423,6 +1557,24 @@ This matters because long 9-symbol, multi-year replays can run for hours. The
 portfolio replay path is now operationally safe to resume instead of forcing a
 full rerun after every interruption.
 
+The same checkpoint discipline now also applies to the heavier validation
+matrices:
+
+- `backtest/validate_recent_control.py`
+- `backtest/validate_htf_12h.py`
+- `backtest/validate_htf_rotation.py`
+
+Those validators keep a scenario registry such as:
+
+```text
+backtest/output/<validation_run>/scenario_progress.json
+```
+
+and each scenario still persists its own portfolio replay checkpoint under the
+scenario folder. In practice this means you can stop a long validation sweep
+mid-run and rerun the exact same command later without losing the finished
+scenarios.
+
 ### Backtest outputs
 
 `portfolio_replay` now writes:
@@ -1432,7 +1584,10 @@ backtest/output/trades.csv
 backtest/output/equity.csv
 backtest/output/signals.csv
 backtest/output/score_bucket_summary.csv
+backtest/output/recent_score_bucket_summary.csv
 backtest/output/strategy_layer_summary.csv
+backtest/output/recent_strategy_layer_summary.csv
+backtest/output/recent_strategy_bucket_summary.csv
 backtest/output/daily_summary.csv
 backtest/output/portfolio_status.json
 ```
@@ -1507,12 +1662,13 @@ In `portfolio_paper` mode, `live_sim/runner.py` continuously:
 8. computes recent cross-symbol momentum ranks and identifies top movers
 9. builds live opportunity candidates using the same bucket semantics as the edge lab
 10. overlays intraday and higher-timeframe moonshot logic on top of that base candidate stream
-11. scores those candidates with a continuous `0-1` opportunity score
-12. adapts the score threshold intra-day so trade flow can relax toward the configured floor
-13. opens paper trades across multiple symbols while respecting total-risk, per-asset caps, and layer-specific risk caps
-14. manages existing trades with shared hard-stop logic plus per-layer execution profiles
-15. writes trade, signal-scan, score-bucket, strategy-layer, and portfolio-state artifacts
-16. sleeps for `live_sim.poll_seconds`
+11. builds structural `12H` moonshot candidates and separate `12H` rotation candidates
+12. scores those candidates with a continuous `0-1` opportunity score
+13. adapts thresholds and bucket participation using recent strategy and score-bucket health
+14. opens paper trades across multiple symbols while respecting total-risk, per-asset caps, strategy caps, and layer-specific risk caps
+15. manages existing trades with shared hard-stop logic plus per-layer execution profiles and convex promotion behavior
+16. writes trade, signal-scan, score-bucket, strategy-layer, recent-health, and portfolio-state artifacts
+17. sleeps for `live_sim.poll_seconds`
 
 `Top movers` in this system means strongest symbols right now, not symbols
 predicted to be tomorrow's winners. The live scanner ranks the current market
@@ -1801,8 +1957,10 @@ deliberate incompleteness.
   path.
 - The current validated branches are still not deployable for the intended
   `EUR 10k/month` / `EUR 100k/year` income model.
-- The moonshot overlays are implemented and reported separately, but they are
-  not yet validated as a positive contributor over long historical windows.
+- `htf_12h_moonshot` and `htf_12h_rotation` both have real standalone or
+  incremental edge, but portfolio interaction is still the hard problem.
+- The current full stack is still limited more by capital competition and
+  distribution than by missing signal families.
 
 ### Execution realism
 
@@ -1830,6 +1988,10 @@ deliberate incompleteness.
 - The current support-flow problem is not solved by simply loosening the
   existing `0.8-0.9` bucket. The validated `0.25` support-weight replay still
   fails the intended daily and monthly income distribution targets.
+- The current `full_stack + rotation` branch shows that a sleeve can add direct
+  PnL and still reduce aggregate equity if it displaces stronger uses of
+  capital. That interaction must be solved at the portfolio-routing level, not
+  by stacking more raw signals.
 
 ### Logging
 

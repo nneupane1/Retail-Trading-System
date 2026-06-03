@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -35,6 +36,25 @@ class DummyConfig:
                 },
             },
             "strategy": {
+                "htf_12h_moonshot": {
+                    "enabled": True,
+                    "base_risk_fraction": 0.0035,
+                    "max_total_risk_fraction": 0.012,
+                    "max_open_positions": 2,
+                    "min_score": 7,
+                    "breakout_lookback": 3,
+                    "daily_breakout_lookback": 3,
+                    "weekly_breakout_lookback": 2,
+                    "compression_lookback": 3,
+                    "trailing_lookback": 2,
+                    "atr_stop_buffer": 0.5,
+                    "max_vwap_distance": 0.03,
+                    "max_ema_distance": 0.08,
+                    "daily_momentum_lookback": 1,
+                    "weekly_momentum_lookback": 1,
+                    "max_hold_12h_candles": 120,
+                    "allow_pyramiding": False,
+                },
                 "sniffing": {
                     "body_strength_min": 0.8,
                     "close_position_min": 0.4,
@@ -99,6 +119,41 @@ class DummyConfig:
                     "pacing_tighten_step": 0.03,
                     "threshold_smoothing": 0.20,
                     "min_profitable_bucket_count": 2,
+                    "recency_lookback_days": 60,
+                    "recency_max_trades": 300,
+                    "recency_min_bucket_trades": 2,
+                    "recency_min_strategy_trades": 2,
+                    "health_reference_avg_r": 0.02,
+                    "bucket_negative_risk_multiplier": 0.25,
+                    "bucket_positive_floor_multiplier": 0.60,
+                    "bucket_positive_cap": 1.20,
+                    "strategy_negative_risk_multiplier": 0.30,
+                    "strategy_positive_floor_multiplier": 0.75,
+                    "strategy_positive_cap": 1.20,
+                    "strategy_health_profiles": {
+                        "htf_12h_moonshot": {
+                            "recency_lookback_days": 180,
+                            "recency_max_trades": 50,
+                            "recency_min_trades": 8,
+                            "neutral_below_min_trades": True,
+                            "disable_when_negative": False,
+                            "negative_risk_multiplier": 0.75,
+                            "positive_floor_multiplier": 0.90,
+                            "positive_cap": 1.10,
+                            "emergency_disable_min_trades": 20,
+                            "emergency_disable_avg_r": -0.30,
+                        }
+                    },
+                    "strategy_threshold_offsets": {
+                        "htf_12h_moonshot": -0.05,
+                    },
+                    "strategy_allowed_sides": {
+                        "htf_12h_moonshot": ["long"],
+                    },
+                    "disable_non_core_negative_strategies": True,
+                    "strategy_emergency_disable_min_trades": 3,
+                    "strategy_emergency_disable_avg_r": -0.20,
+                    "performance_history_limit": 5000,
                     "min_risk_per_trade": 0.0025,
                     "max_risk_per_trade": 0.0060,
                     "max_total_risk_fraction": 0.04,
@@ -109,6 +164,29 @@ class DummyConfig:
                     "slow_grind_max_bars": 8,
                     "slow_grind_open_r_max": 1.0,
                     "weight_update_min_trades": 2,
+                    "convexity": {
+                        "enabled": True,
+                        "strategy_types": ["core"],
+                        "probe_fraction": 0.35,
+                        "min_score": 0.82,
+                        "promote_trigger_r": 0.6,
+                        "promote_target_multiple": 1.0,
+                        "add_trigger_r": 1.4,
+                        "add_target_multiple": 1.25,
+                        "max_target_multiple": 1.25,
+                        "max_layers": 3,
+                        "min_body_strength": 1.0,
+                        "min_close_position": 0.60,
+                        "min_expansion": 1.0,
+                        "add_min_body_strength": 1.4,
+                        "add_min_close_position": 0.72,
+                        "add_min_expansion": 1.15,
+                        "max_abs_vwap_distance": 0.012,
+                        "min_bars_between_adds": 1,
+                        "use_active_stop_for_adds": True,
+                        "add_min_stop_distance_r_multiple": 0.50,
+                        "hold_extension_bars": 4,
+                    },
                 },
             },
         }
@@ -209,6 +287,158 @@ class LivePaperPortfolioTests(unittest.TestCase):
             self.assertEqual(trade.score_bucket, "0.9-1.0")
             self.assertGreater(trade.intended_risk_per_trade, 0.0)
 
+    def test_core_convexity_opens_as_probe_but_preserves_full_risk_target(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config = DummyConfig(output_dir=temp_dir)
+            portfolio = LivePaperPortfolio(config=config)
+            timestamp = pd.Timestamp("2026-01-01 12:00:00")
+            row = pd.Series(
+                {
+                    "close": 105.0,
+                    "low": 104.0,
+                    "high": 106.0,
+                    "ll2": 100.0,
+                    "ema2": 104.5,
+                    "ema3": 104.0,
+                    "session_vwap": 104.3,
+                    "body_strength": 1.8,
+                    "close_position": 0.82,
+                    "range_expansion_factor": 1.3,
+                    "vwap_distance_ratio": 0.004,
+                    "atr": 1.5,
+                },
+                name=timestamp,
+            )
+
+            portfolio.reset_daily_state_if_needed(timestamp)
+            portfolio.select_and_open(
+                [
+                    {
+                        "symbol": "BTCUSDT",
+                        "timestamp": timestamp,
+                        "side": "long",
+                        "row": row,
+                        "bias": "neutral",
+                        "edge_type": "impulse_breakout",
+                        "body_bucket": "strong",
+                        "vwap_bucket": "far",
+                        "bucket_key_text": "impulse_breakout|neutral|strong|far",
+                        "bucket_valid": True,
+                        "bucket_expected_return": 0.000212,
+                        "bucket_risk_mult": 1.1,
+                        "risk_mult": 1.1,
+                        "momentum_rank": 0.95,
+                        "is_top_mover": True,
+                        "score": 0.92,
+                        "score_bucket": "0.9-1.0",
+                        "feature_values": {
+                            "body_strength": 0.9,
+                            "close_position": 0.9,
+                            "vwap_score": 1.0,
+                            "momentum": 0.95,
+                        },
+                    }
+                ],
+                timestamp,
+            )
+
+            trade = portfolio.open_positions[0]
+            self.assertTrue(trade.convexity_enabled)
+            self.assertEqual(trade.convexity_state, "probe")
+            self.assertAlmostEqual(trade.convexity_probe_fraction, 0.35, places=7)
+            self.assertGreater(trade.intended_risk_per_trade, trade.effective_risk_fraction)
+            self.assertAlmostEqual(
+                trade.initial_risk_amount,
+                trade.equity_at_entry * trade.intended_risk_per_trade,
+                places=7,
+            )
+
+    def test_convexity_promotes_after_trade_proves_itself(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config = DummyConfig(output_dir=temp_dir)
+            portfolio = LivePaperPortfolio(config=config)
+            entry_time = pd.Timestamp("2026-01-01 12:00:00")
+            entry_row = pd.Series(
+                {
+                    "close": 105.0,
+                    "low": 104.0,
+                    "high": 106.0,
+                    "ll2": 100.0,
+                    "ema2": 104.5,
+                    "ema3": 104.0,
+                    "session_vwap": 104.3,
+                    "body_strength": 1.8,
+                    "close_position": 0.82,
+                    "range_expansion_factor": 1.3,
+                    "vwap_distance_ratio": 0.004,
+                    "atr": 1.5,
+                },
+                name=entry_time,
+            )
+
+            portfolio.reset_daily_state_if_needed(entry_time)
+            portfolio.select_and_open(
+                [
+                    {
+                        "symbol": "BTCUSDT",
+                        "timestamp": entry_time,
+                        "side": "long",
+                        "row": entry_row,
+                        "bias": "neutral",
+                        "edge_type": "impulse_breakout",
+                        "body_bucket": "strong",
+                        "vwap_bucket": "far",
+                        "bucket_key_text": "impulse_breakout|neutral|strong|far",
+                        "bucket_valid": True,
+                        "bucket_expected_return": 0.000212,
+                        "bucket_risk_mult": 1.1,
+                        "risk_mult": 1.1,
+                        "momentum_rank": 0.95,
+                        "is_top_mover": True,
+                        "score": 0.92,
+                        "score_bucket": "0.9-1.0",
+                        "feature_values": {
+                            "body_strength": 0.9,
+                            "close_position": 0.9,
+                            "vwap_score": 1.0,
+                            "momentum": 0.95,
+                        },
+                    }
+                ],
+                entry_time,
+            )
+
+            trade = portfolio.open_positions[0]
+            probe_entries = len(trade.entries)
+            probe_risk = trade.effective_risk_fraction
+            manage_time = pd.Timestamp("2026-01-01 12:15:00")
+            manage_row = pd.Series(
+                {
+                    "close": 108.5,
+                    "low": 108.0,
+                    "high": 109.0,
+                    "ll2": 100.0,
+                    "ema2": 107.5,
+                    "ema3": 106.5,
+                    "session_vwap": 107.2,
+                    "body_strength": 2.0,
+                    "close_position": 0.86,
+                    "range_expansion_factor": 1.35,
+                    "vwap_distance_ratio": 0.006,
+                    "atr": 1.6,
+                },
+                name=manage_time,
+            )
+
+            portfolio.manage_open_positions({"BTCUSDT": manage_row})
+
+            self.assertEqual(len(portfolio.open_positions), 1)
+            trade = portfolio.open_positions[0]
+            self.assertEqual(len(trade.entries), probe_entries + 1)
+            self.assertEqual(trade.convexity_stage, 1)
+            self.assertEqual(trade.convexity_state, "promoted")
+            self.assertGreater(trade.effective_risk_fraction, probe_risk)
+
     def test_adaptive_threshold_relaxes_when_day_is_behind_schedule(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             portfolio = LivePaperPortfolio(config=DummyConfig(output_dir=temp_dir))
@@ -219,6 +449,112 @@ class LivePaperPortfolioTests(unittest.TestCase):
 
             self.assertLess(threshold, portfolio.current_threshold)
             self.assertGreaterEqual(threshold, portfolio.min_threshold)
+
+    def test_recent_profitable_support_bucket_lowers_threshold_floor(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            portfolio = LivePaperPortfolio(config=DummyConfig(output_dir=temp_dir))
+            reference_time = datetime(2026, 1, 10, 12, 0, 0)
+            portfolio.performance_history = [
+                {
+                    "exit_time": reference_time - timedelta(days=1),
+                    "strategy_type": "core",
+                    "score_bucket": "0.8-0.9",
+                    "pnl_R_initial": 0.04,
+                    "pnl": 10.0,
+                },
+                {
+                    "exit_time": reference_time,
+                    "strategy_type": "core",
+                    "score_bucket": "0.8-0.9",
+                    "pnl_R_initial": 0.02,
+                    "pnl": 8.0,
+                },
+                {
+                    "exit_time": reference_time,
+                    "strategy_type": "core",
+                    "score_bucket": "0.9-1.0",
+                    "pnl_R_initial": -0.01,
+                    "pnl": -5.0,
+                },
+                {
+                    "exit_time": reference_time - timedelta(days=2),
+                    "strategy_type": "core",
+                    "score_bucket": "0.9-1.0",
+                    "pnl_R_initial": -0.02,
+                    "pnl": -4.0,
+                },
+            ]
+            portfolio._refresh_recent_performance()
+
+            threshold, source = portfolio._derive_threshold_from_history()
+
+            self.assertAlmostEqual(threshold, 0.8, places=7)
+            self.assertEqual(source, "recent")
+
+    def test_negative_recent_core_bucket_can_be_disabled_by_strategy_bucket_health(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config = DummyConfig(output_dir=temp_dir)
+            config.data["live_sim"]["paper_portfolio"]["strategy_bucket_health_profiles"] = {
+                "core": {
+                    "enabled": True,
+                    "recency_lookback_days": 60,
+                    "recency_max_trades": 300,
+                    "recency_min_trades": 2,
+                    "neutral_below_min_trades": True,
+                    "disable_when_negative": True,
+                    "negative_risk_multiplier": 0.0,
+                    "positive_floor_multiplier": 0.95,
+                    "positive_cap": 1.10,
+                    "apply_to_threshold_derivation": True,
+                }
+            }
+            portfolio = LivePaperPortfolio(config=config)
+            reference_time = datetime(2026, 1, 10, 12, 0, 0)
+            portfolio.performance_history = [
+                {
+                    "exit_time": reference_time - timedelta(days=1),
+                    "strategy_type": "core",
+                    "score_bucket": "0.8-0.9",
+                    "pnl_R_initial": 0.05,
+                    "pnl": 10.0,
+                },
+                {
+                    "exit_time": reference_time,
+                    "strategy_type": "core",
+                    "score_bucket": "0.8-0.9",
+                    "pnl_R_initial": 0.03,
+                    "pnl": 8.0,
+                },
+                {
+                    "exit_time": reference_time - timedelta(days=2),
+                    "strategy_type": "core",
+                    "score_bucket": "0.9-1.0",
+                    "pnl_R_initial": -0.02,
+                    "pnl": -5.0,
+                },
+                {
+                    "exit_time": reference_time,
+                    "strategy_type": "core",
+                    "score_bucket": "0.9-1.0",
+                    "pnl_R_initial": -0.04,
+                    "pnl": -6.0,
+                },
+            ]
+            portfolio._refresh_recent_performance()
+
+            positive_multiplier, _ = portfolio._strategy_bucket_health_multiplier(
+                "core", "0.8-0.9"
+            )
+            negative_multiplier, negative_source = portfolio._strategy_bucket_health_multiplier(
+                "core", "0.9-1.0"
+            )
+            threshold, source = portfolio._derive_threshold_from_history()
+
+            self.assertGreater(positive_multiplier, 0.0)
+            self.assertEqual(negative_multiplier, 0.0)
+            self.assertEqual(negative_source, "recent_window")
+            self.assertAlmostEqual(threshold, 0.8, places=7)
+            self.assertEqual(source, "recent")
 
     def test_low_score_bucket_candidate_is_filtered_before_open(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -401,6 +737,644 @@ class LivePaperPortfolioTests(unittest.TestCase):
             self.assertAlmostEqual(trade.selection_score, 0.97, places=7)
             self.assertAlmostEqual(trade.range_expansion_factor, 2.2, places=7)
             self.assertAlmostEqual(trade.trailing_activation_r, 1.5, places=7)
+
+    def test_htf_candidate_same_symbol_same_side_is_blocked(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            portfolio = LivePaperPortfolio(config=DummyConfig(output_dir=temp_dir))
+            timestamp = pd.Timestamp("2026-01-01 12:00:00")
+            row = pd.Series(
+                {
+                    "close": 105.0,
+                    "low": 104.0,
+                    "high": 106.0,
+                    "ll2": 100.0,
+                    "ema2": 104.0,
+                    "ema3": 103.0,
+                    "atr": 1.5,
+                },
+                name=timestamp,
+            )
+
+            portfolio.reset_daily_state_if_needed(timestamp)
+            portfolio.select_and_open(
+                [
+                    {
+                        "symbol": "BTCUSDT",
+                        "timestamp": timestamp,
+                        "side": "long",
+                        "row": row,
+                        "bias": "neutral",
+                        "edge_type": "impulse_breakout",
+                        "body_bucket": "strong",
+                        "vwap_bucket": "far",
+                        "bucket_key_text": "impulse_breakout|neutral|strong|far",
+                        "bucket_valid": True,
+                        "bucket_expected_return": 0.000212,
+                        "bucket_risk_mult": 1.1,
+                        "risk_mult": 1.1,
+                        "momentum_rank": 0.95,
+                        "is_top_mover": True,
+                        "score": 0.92,
+                        "score_bucket": "0.9-1.0",
+                        "feature_values": {
+                            "body_strength": 0.9,
+                            "close_position": 0.9,
+                            "vwap_score": 1.0,
+                            "momentum": 0.95,
+                        },
+                    }
+                ],
+                timestamp,
+            )
+            self.assertEqual(len(portfolio.open_positions), 1)
+
+            htf_row = pd.Series(
+                {
+                    "close": 112.0,
+                    "low": 111.0,
+                    "high": 113.0,
+                    "ll2": 108.0,
+                    "ema2": 110.0,
+                    "ema3": 109.0,
+                    "atr": 2.0,
+                },
+                name=timestamp,
+            )
+            portfolio.select_and_open(
+                [
+                    {
+                        "symbol": "BTCUSDT",
+                        "timestamp": timestamp,
+                        "side": "long",
+                        "row": htf_row,
+                        "bias": "bullish",
+                        "edge_type": "htf_12h_moonshot",
+                        "body_bucket": "strong",
+                        "vwap_bucket": "near",
+                        "bucket_key_text": "htf_12h_moonshot|bullish|strong|near",
+                        "bucket_valid": True,
+                        "bucket_expected_return": None,
+                        "bucket_risk_mult": 1.0,
+                        "risk_mult": 1.0,
+                        "momentum_rank": 0.97,
+                        "is_top_mover": True,
+                        "score": 0.91,
+                        "selection_score": 0.94,
+                        "score_bucket": "0.9-1.0",
+                        "strategy_type": "htf_12h_moonshot",
+                        "signal_family": "htf_12h_moonshot",
+                        "risk_group": "htf_12h_moonshot",
+                        "group_risk_cap": 0.012,
+                        "max_open_positions_for_strategy": 2,
+                        "block_same_symbol_same_side": True,
+                        "apply_score_bucket_filters": False,
+                        "risk_fraction_override": 0.0035,
+                        "moonshot_score": 0.91,
+                        "range_expansion_factor": 1.8,
+                        "stop_price_override": 107.0,
+                        "htf_signal_family": "structure_breakout",
+                        "htf_score": 8.0,
+                        "htf_context_1d": "bullish",
+                        "htf_context_1w": "bullish",
+                        "htf_entry_reason": "12h structure breakout",
+                        "htf_stop_reason": "12h structural low with ATR buffer",
+                        "htf_trailing_state": "confirmation",
+                        "htf_decay_reason": None,
+                        "htf_candidate_rank": 0.94,
+                        "execution_profile": {
+                            "disable_pyramiding": True,
+                            "disable_trailing": True,
+                            "max_hold_candles": 5760,
+                        },
+                        "feature_values": {
+                            "body_strength": 2.0,
+                            "close_position": 0.85,
+                            "vwap_score": 0.3,
+                            "momentum": 0.97,
+                        },
+                    }
+                ],
+                timestamp,
+            )
+
+            self.assertEqual(len(portfolio.open_positions), 1)
+
+    def test_htf_trade_is_not_exited_by_15m_noise_when_macro_context_holds(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            portfolio = LivePaperPortfolio(config=DummyConfig(output_dir=temp_dir))
+            timestamp = pd.Timestamp("2026-01-01 12:00:00")
+            row = pd.Series(
+                {
+                    "close": 112.0,
+                    "low": 111.0,
+                    "high": 113.0,
+                    "ll2": 108.0,
+                    "ema2": 110.0,
+                    "ema3": 109.0,
+                    "atr": 2.0,
+                },
+                name=timestamp,
+            )
+
+            portfolio.reset_daily_state_if_needed(timestamp)
+            portfolio.select_and_open(
+                [
+                    {
+                        "symbol": "ETHUSDT",
+                        "timestamp": timestamp,
+                        "side": "long",
+                        "row": row,
+                        "bias": "bullish",
+                        "edge_type": "htf_12h_moonshot",
+                        "body_bucket": "strong",
+                        "vwap_bucket": "near",
+                        "bucket_key_text": "htf_12h_moonshot|bullish|strong|near",
+                        "bucket_valid": True,
+                        "bucket_expected_return": None,
+                        "bucket_risk_mult": 1.0,
+                        "risk_mult": 1.0,
+                        "momentum_rank": 0.95,
+                        "is_top_mover": True,
+                        "score": 0.90,
+                        "selection_score": 0.93,
+                        "score_bucket": "0.9-1.0",
+                        "strategy_type": "htf_12h_moonshot",
+                        "signal_family": "htf_12h_moonshot",
+                        "risk_group": "htf_12h_moonshot",
+                        "group_risk_cap": 0.012,
+                        "max_open_positions_for_strategy": 2,
+                        "block_same_symbol_same_side": True,
+                        "apply_score_bucket_filters": False,
+                        "risk_fraction_override": 0.0035,
+                        "moonshot_score": 0.90,
+                        "range_expansion_factor": 1.7,
+                        "stop_price_override": 107.0,
+                        "htf_signal_family": "structure_breakout",
+                        "htf_score": 8.0,
+                        "htf_context_1d": "bullish",
+                        "htf_context_1w": "bullish",
+                        "htf_entry_reason": "12h structure breakout",
+                        "htf_stop_reason": "12h structural low with ATR buffer",
+                        "htf_trailing_state": "confirmation",
+                        "htf_decay_reason": None,
+                        "htf_candidate_rank": 0.93,
+                        "execution_profile": {
+                            "disable_pyramiding": True,
+                            "disable_trailing": True,
+                            "max_hold_candles": 5760,
+                        },
+                        "feature_values": {
+                            "body_strength": 2.0,
+                            "close_position": 0.85,
+                            "vwap_score": 0.3,
+                            "momentum": 0.95,
+                        },
+                    }
+                ],
+                timestamp,
+            )
+            self.assertEqual(len(portfolio.open_positions), 1)
+
+            noisy_row = pd.Series(
+                {
+                    "close": 111.2,
+                    "low": 110.8,
+                    "high": 111.6,
+                    "ll2": 109.5,
+                    "ema2": 111.8,
+                    "ema3": 112.0,
+                    "session_vwap": 112.1,
+                    "atr": 1.8,
+                },
+                name=pd.Timestamp("2026-01-01 12:15:00"),
+            )
+            portfolio.manage_open_positions(
+                {"ETHUSDT": noisy_row},
+                htf_context_by_symbol={
+                    "ETHUSDT": {
+                        "htf_context_1d": "bullish",
+                        "htf_context_1w": "bullish",
+                        "htf_trailing_state_long": "confirmation",
+                        "htf_trailing_long": 108.2,
+                        "htf_decay_active_long": False,
+                        "htf_decay_12h_candles": 3,
+                    }
+                },
+            )
+
+            self.assertEqual(len(portfolio.open_positions), 1)
+            trade = portfolio.open_positions[0]
+            self.assertEqual(trade.strategy_type, "htf_12h_moonshot")
+            self.assertEqual(trade.htf_trailing_state, "confirmation")
+
+    def test_htf_rotation_trade_uses_same_htf_management_path(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            portfolio = LivePaperPortfolio(config=DummyConfig(output_dir=temp_dir))
+            timestamp = pd.Timestamp("2026-01-01 12:00:00")
+            row = pd.Series(
+                {
+                    "close": 112.0,
+                    "low": 111.0,
+                    "high": 113.0,
+                    "ll2": 108.0,
+                    "ema2": 110.0,
+                    "ema3": 109.0,
+                    "atr": 2.0,
+                },
+                name=timestamp,
+            )
+
+            portfolio.reset_daily_state_if_needed(timestamp)
+            portfolio.select_and_open(
+                [
+                    {
+                        "symbol": "SOLUSDT",
+                        "timestamp": timestamp,
+                        "side": "long",
+                        "row": row,
+                        "bias": "bullish",
+                        "edge_type": "htf_12h_rotation",
+                        "body_bucket": "strong",
+                        "vwap_bucket": "near",
+                        "bucket_key_text": "htf_12h_rotation|bullish|strong|near",
+                        "bucket_valid": True,
+                        "bucket_expected_return": None,
+                        "bucket_risk_mult": 1.0,
+                        "risk_mult": 1.0,
+                        "momentum_rank": 0.96,
+                        "is_top_mover": True,
+                        "score": 0.88,
+                        "selection_score": 0.91,
+                        "score_bucket": "0.8-0.9",
+                        "strategy_type": "htf_12h_rotation",
+                        "signal_family": "htf_12h_rotation",
+                        "risk_group": "htf_12h_rotation",
+                        "group_risk_cap": 0.008,
+                        "max_open_positions_for_strategy": 2,
+                        "block_same_symbol_same_side": True,
+                        "apply_score_bucket_filters": False,
+                        "risk_fraction_override": 0.0025,
+                        "moonshot_score": 0.88,
+                        "range_expansion_factor": 1.6,
+                        "stop_price_override": 107.0,
+                        "htf_signal_family": "leader_acceleration",
+                        "htf_score": 8.8,
+                        "htf_context_1d": "bullish",
+                        "htf_context_1w": "bullish",
+                        "htf_entry_reason": "12h rotation leader acceleration",
+                        "htf_stop_reason": "12h rotation structural low with ATR buffer",
+                        "htf_trailing_state": "confirmation",
+                        "htf_decay_reason": None,
+                        "htf_candidate_rank": 0.88,
+                        "execution_profile": {
+                            "disable_pyramiding": True,
+                            "disable_trailing": True,
+                            "max_hold_candles": 6912,
+                        },
+                        "feature_values": {
+                            "body_strength": 1.8,
+                            "close_position": 0.85,
+                            "vwap_score": 0.3,
+                            "momentum": 0.96,
+                        },
+                    }
+                ],
+                timestamp,
+            )
+            self.assertEqual(len(portfolio.open_positions), 1)
+
+            noisy_row = pd.Series(
+                {
+                    "close": 111.4,
+                    "low": 111.0,
+                    "high": 111.8,
+                    "ll2": 109.0,
+                    "ema2": 111.7,
+                    "ema3": 111.9,
+                    "session_vwap": 112.0,
+                    "atr": 1.8,
+                },
+                name=pd.Timestamp("2026-01-01 12:15:00"),
+            )
+            portfolio.manage_open_positions(
+                {"SOLUSDT": noisy_row},
+                htf_context_by_symbol={
+                    "SOLUSDT": {
+                        "htf_context_1d": "bullish",
+                        "htf_context_1w": "bullish",
+                        "htf_trailing_state_long": "confirmation",
+                        "htf_trailing_long": 108.1,
+                        "htf_decay_active_long": False,
+                        "htf_decay_12h_candles": 2,
+                    }
+                },
+            )
+
+            self.assertEqual(len(portfolio.open_positions), 1)
+            trade = portfolio.open_positions[0]
+            self.assertEqual(trade.strategy_type, "htf_12h_rotation")
+            self.assertEqual(trade.htf_trailing_state, "confirmation")
+
+    def test_htf_short_can_open_when_strategy_side_policy_allows_it(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config = DummyConfig(output_dir=temp_dir)
+            config.data["live_sim"]["paper_portfolio"]["strategy_allowed_sides"][
+                "htf_12h_moonshot"
+            ] = ["long", "short"]
+            portfolio = LivePaperPortfolio(config=config)
+            timestamp = pd.Timestamp("2026-01-01 12:00:00")
+            row = pd.Series(
+                {
+                    "close": 100.0,
+                    "low": 99.0,
+                    "high": 101.0,
+                    "hh2": 104.0,
+                    "ema2": 100.5,
+                    "ema3": 101.0,
+                    "atr": 1.5,
+                },
+                name=timestamp,
+            )
+
+            portfolio.reset_daily_state_if_needed(timestamp)
+            portfolio.select_and_open(
+                [
+                    {
+                        "symbol": "BTCUSDT",
+                        "timestamp": timestamp,
+                        "side": "short",
+                        "row": row,
+                        "bias": "bearish",
+                        "edge_type": "htf_12h_moonshot",
+                        "body_bucket": "strong",
+                        "vwap_bucket": "near",
+                        "bucket_key_text": "htf_12h_moonshot|bearish|strong|near",
+                        "bucket_valid": True,
+                        "bucket_expected_return": None,
+                        "bucket_risk_mult": 1.0,
+                        "risk_mult": 1.0,
+                        "momentum_rank": 0.92,
+                        "is_top_mover": True,
+                        "score": 0.89,
+                        "selection_score": 0.91,
+                        "score_bucket": "0.8-0.9",
+                        "strategy_type": "htf_12h_moonshot",
+                        "signal_family": "htf_12h_moonshot",
+                        "risk_group": "htf_12h_moonshot",
+                        "group_risk_cap": 0.012,
+                        "max_open_positions_for_strategy": 2,
+                        "block_same_symbol_same_side": True,
+                        "apply_score_bucket_filters": False,
+                        "risk_fraction_override": 0.0021,
+                        "moonshot_score": 0.89,
+                        "range_expansion_factor": 1.7,
+                        "stop_price_override": 103.0,
+                        "htf_signal_family": "structure_breakout",
+                        "htf_score": 8.0,
+                        "htf_context_1d": "bearish",
+                        "htf_context_1w": "bearish",
+                        "htf_entry_reason": "12h structure breakout",
+                        "htf_stop_reason": "12h structural high with ATR buffer",
+                        "htf_trailing_state": "confirmation",
+                        "htf_decay_reason": None,
+                        "htf_candidate_rank": 0.91,
+                        "execution_profile": {
+                            "disable_pyramiding": True,
+                            "disable_trailing": True,
+                            "max_hold_candles": 5760,
+                        },
+                        "feature_values": {
+                            "body_strength": 2.0,
+                            "close_position": 0.15,
+                            "vwap_score": 0.3,
+                            "momentum": 0.92,
+                        },
+                    }
+                ],
+                timestamp,
+            )
+
+            self.assertEqual(len(portfolio.open_positions), 1)
+            self.assertEqual(portfolio.open_positions[0].side, "short")
+
+    def test_negative_recent_swing_health_blocks_new_swing_trade(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            portfolio = LivePaperPortfolio(config=DummyConfig(output_dir=temp_dir))
+            timestamp = pd.Timestamp("2026-01-01 12:00:00")
+            row = pd.Series(
+                {
+                    "close": 105.0,
+                    "low": 104.0,
+                    "high": 106.0,
+                    "ll2": 100.0,
+                    "ema2": 104.0,
+                    "ema3": 103.0,
+                    "atr": 1.5,
+                },
+                name=timestamp,
+            )
+            portfolio.performance_history = [
+                {
+                    "exit_time": datetime(2025, 12, 31, 12, 0, 0),
+                    "strategy_type": "swing_moonshot",
+                    "score_bucket": "0.9-1.0",
+                    "pnl_R_initial": -0.20,
+                    "pnl": -20.0,
+                },
+                {
+                    "exit_time": datetime(2026, 1, 1, 11, 0, 0),
+                    "strategy_type": "swing_moonshot",
+                    "score_bucket": "0.9-1.0",
+                    "pnl_R_initial": -0.10,
+                    "pnl": -10.0,
+                },
+            ]
+            portfolio._refresh_recent_performance()
+            portfolio.reset_daily_state_if_needed(timestamp)
+
+            portfolio.select_and_open(
+                [
+                    {
+                        "symbol": "BTCUSDT",
+                        "timestamp": timestamp,
+                        "side": "long",
+                        "row": row,
+                        "bias": "neutral",
+                        "edge_type": "impulse_breakout",
+                        "body_bucket": "strong",
+                        "vwap_bucket": "far",
+                        "bucket_key_text": "impulse_breakout|neutral|strong|far",
+                        "bucket_valid": True,
+                        "bucket_expected_return": 0.000212,
+                        "bucket_risk_mult": 1.1,
+                        "risk_mult": 1.1,
+                        "momentum_rank": 0.95,
+                        "is_top_mover": True,
+                        "score": 0.92,
+                        "selection_score": 0.95,
+                        "score_bucket": "0.9-1.0",
+                        "strategy_type": "swing_moonshot",
+                        "signal_family": "swing_moonshot",
+                        "risk_group": "swing_moonshot",
+                        "group_risk_cap": 0.01,
+                        "risk_fraction_override": 0.0015,
+                        "moonshot_score": 0.90,
+                        "execution_profile": {
+                            "disable_pyramiding": True,
+                        },
+                        "feature_values": {
+                            "body_strength": 0.9,
+                            "close_position": 0.9,
+                            "vwap_score": 1.0,
+                            "momentum": 0.95,
+                        },
+                    }
+                ],
+                timestamp,
+            )
+
+            self.assertEqual(len(portfolio.open_positions), 0)
+
+    def test_sparse_negative_recent_htf_window_stays_neutral(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            portfolio = LivePaperPortfolio(config=DummyConfig(output_dir=temp_dir))
+            portfolio.performance_history = [
+                {
+                    "exit_time": datetime(2026, 1, 1, 9, 0, 0),
+                    "strategy_type": "htf_12h_moonshot",
+                    "score_bucket": "0.9-1.0",
+                    "pnl_R_initial": -0.40,
+                    "pnl": -25.0,
+                },
+                {
+                    "exit_time": datetime(2026, 1, 2, 9, 0, 0),
+                    "strategy_type": "htf_12h_moonshot",
+                    "score_bucket": "0.9-1.0",
+                    "pnl_R_initial": -0.35,
+                    "pnl": -20.0,
+                },
+                {
+                    "exit_time": datetime(2026, 1, 3, 9, 0, 0),
+                    "strategy_type": "htf_12h_moonshot",
+                    "score_bucket": "0.9-1.0",
+                    "pnl_R_initial": -0.20,
+                    "pnl": -10.0,
+                },
+            ]
+            portfolio._refresh_recent_performance()
+
+            multiplier, source = portfolio._strategy_health_multiplier("htf_12h_moonshot")
+
+            self.assertEqual(multiplier, 1.0)
+            self.assertEqual(source, "none")
+
+    def test_negative_recent_htf_window_scales_down_without_disable(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            portfolio = LivePaperPortfolio(config=DummyConfig(output_dir=temp_dir))
+            portfolio.performance_history = [
+                {
+                    "exit_time": datetime(2026, 1, 1, 9, 0, 0),
+                    "strategy_type": "htf_12h_moonshot",
+                    "score_bucket": "0.9-1.0",
+                    "pnl_R_initial": -0.10,
+                    "pnl": -8.0,
+                }
+                for _ in range(8)
+            ]
+            for index, record in enumerate(portfolio.performance_history):
+                record["exit_time"] = datetime(2026, 1, 1, 9, 0, 0) + timedelta(days=index)
+            portfolio._refresh_recent_performance()
+
+            multiplier, source = portfolio._strategy_health_multiplier("htf_12h_moonshot")
+
+            self.assertAlmostEqual(multiplier, 0.75, places=7)
+            self.assertEqual(source, "recent_window")
+
+    def test_htf_candidate_threshold_uses_strategy_offset_and_bounds(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            portfolio = LivePaperPortfolio(config=DummyConfig(output_dir=temp_dir))
+            timestamp = pd.Timestamp("2026-01-01 12:00:00")
+            portfolio.reset_daily_state_if_needed(timestamp)
+            portfolio.current_threshold = 0.82
+            candidate = {
+                "strategy_type": "htf_12h_moonshot",
+                "selection_min_threshold": 0.74,
+                "selection_max_threshold": 0.88,
+            }
+
+            threshold = portfolio._threshold_for_candidate(candidate, timestamp)
+
+            self.assertAlmostEqual(threshold, 0.74, places=7)
+
+    def test_sparse_but_sharply_negative_recent_swing_window_triggers_emergency_disable(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config = DummyConfig(output_dir=temp_dir)
+            config.data["live_sim"]["paper_portfolio"]["recency_min_strategy_trades"] = 10
+            portfolio = LivePaperPortfolio(config=config)
+            portfolio.performance_history = [
+                {
+                    "exit_time": datetime(2026, 1, 1, 9, 0, 0),
+                    "strategy_type": "swing_moonshot",
+                    "score_bucket": "0.9-1.0",
+                    "pnl_R_initial": -0.30,
+                    "pnl": -10.0,
+                },
+                {
+                    "exit_time": datetime(2026, 1, 1, 10, 0, 0),
+                    "strategy_type": "swing_moonshot",
+                    "score_bucket": "0.9-1.0",
+                    "pnl_R_initial": -0.25,
+                    "pnl": -12.0,
+                },
+                {
+                    "exit_time": datetime(2026, 1, 1, 11, 0, 0),
+                    "strategy_type": "swing_moonshot",
+                    "score_bucket": "0.9-1.0",
+                    "pnl_R_initial": -0.35,
+                    "pnl": -15.0,
+                },
+            ]
+            portfolio._refresh_recent_performance()
+
+            multiplier, source = portfolio._strategy_health_multiplier("swing_moonshot")
+
+            self.assertEqual(multiplier, 0.0)
+            self.assertEqual(source, "recent_emergency")
+
+    def test_snapshot_restore_preserves_recent_performance_state(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config = DummyConfig(output_dir=temp_dir)
+            portfolio = LivePaperPortfolio(config=config)
+            portfolio.performance_history = [
+                {
+                    "exit_time": datetime(2026, 1, 1, 12, 0, 0),
+                    "strategy_type": "core",
+                    "score_bucket": "0.8-0.9",
+                    "pnl_R_initial": 0.03,
+                    "pnl": 10.0,
+                },
+                {
+                    "exit_time": datetime(2026, 1, 2, 12, 0, 0),
+                    "strategy_type": "core",
+                    "score_bucket": "0.8-0.9",
+                    "pnl_R_initial": 0.02,
+                    "pnl": 8.0,
+                },
+            ]
+            portfolio._refresh_recent_performance()
+
+            restored = LivePaperPortfolio(config=config)
+            restored.restore_state(portfolio.snapshot_state())
+
+            self.assertIn("0.8-0.9", restored.recent_score_stats)
+            self.assertAlmostEqual(
+                restored.recent_score_stats["0.8-0.9"]["avg_R"],
+                0.025,
+                places=7,
+            )
+            threshold, source = restored._derive_threshold_from_history()
+            self.assertAlmostEqual(threshold, 0.8, places=7)
+            self.assertEqual(source, "recent")
 
 
 if __name__ == "__main__":

@@ -35,6 +35,19 @@ LIVE_SIGNAL_LOG_FIELDS = [
     "bucket_valid",
     "bucket_expected_return",
     "bucket_risk_mult",
+    "bucket_health_mult",
+    "bucket_health_source",
+    "strategy_health_mult",
+    "strategy_health_source",
+    "htf_signal_family",
+    "htf_score",
+    "htf_context_1d",
+    "htf_context_1w",
+    "htf_entry_reason",
+    "htf_stop_reason",
+    "htf_trailing_state",
+    "htf_decay_reason",
+    "htf_candidate_rank",
 ]
 
 
@@ -174,6 +187,55 @@ class LivePortfolioStateLogger:
             "win_rate",
             "avg_R",
             "total_pnl",
+        ]
+        with target.open("w", newline="", encoding="utf-8") as file_handle:
+            writer = csv.DictWriter(file_handle, fieldnames=fieldnames)
+            writer.writeheader()
+            for row in rows:
+                writer.writerow({field: row.get(field) for field in fieldnames})
+
+    def write_recent_score_bucket_summary(self, rows):
+        target = self.output_dir / "recent_score_bucket_summary.csv"
+        fieldnames = [
+            "bucket",
+            "count",
+            "win_rate",
+            "avg_R",
+            "total_pnl",
+        ]
+        with target.open("w", newline="", encoding="utf-8") as file_handle:
+            writer = csv.DictWriter(file_handle, fieldnames=fieldnames)
+            writer.writeheader()
+            for row in rows:
+                writer.writerow({field: row.get(field) for field in fieldnames})
+
+    def write_recent_strategy_layer_summary(self, rows):
+        target = self.output_dir / "recent_strategy_layer_summary.csv"
+        fieldnames = [
+            "strategy_type",
+            "count",
+            "win_rate",
+            "avg_R",
+            "total_pnl",
+            "risk_multiplier",
+        ]
+        with target.open("w", newline="", encoding="utf-8") as file_handle:
+            writer = csv.DictWriter(file_handle, fieldnames=fieldnames)
+            writer.writeheader()
+            for row in rows:
+                writer.writerow({field: row.get(field) for field in fieldnames})
+
+    def write_recent_strategy_bucket_summary(self, rows):
+        target = self.output_dir / "recent_strategy_bucket_summary.csv"
+        fieldnames = [
+            "strategy_type",
+            "bucket",
+            "count",
+            "win_rate",
+            "avg_R",
+            "total_pnl",
+            "risk_multiplier",
+            "source",
         ]
         with target.open("w", newline="", encoding="utf-8") as file_handle:
             writer = csv.DictWriter(file_handle, fieldnames=fieldnames)

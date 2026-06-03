@@ -12,6 +12,11 @@ from data.downloader import fetch_recent, load_from_csv
 from data.resampler import TimeframeBuilder
 from entry.edge_buckets import build_signal_bucket
 from entry.edge_selector import EdgeSelector
+from entry.htf_moonshot import HTFMoonshotEngine, build_htf_12h_snapshots
+from entry.htf_rotation import (
+    HTFRotationEngine,
+    build_htf_rotation_snapshots_by_symbol,
+)
 from entry.moonshot import MoonshotOverlay, build_swing_snapshots
 from features.feature_pipeline import compute_features
 from live_sim.candle_clock import is_new_15m_candle
@@ -108,12 +113,82 @@ def _required_live_warmup_minutes(config):
     else:
         swing_minutes = 0
 
+    htf_enabled = bool(
+        getter("strategy", "htf_12h_moonshot", "enabled", default=False)
+        if callable(getter)
+        else False
+    )
+    if htf_enabled:
+        htf_breakout_lookback = int(
+            getter("strategy", "htf_12h_moonshot", "breakout_lookback", default=20)
+            if callable(getter)
+            else 20
+        )
+        htf_daily_breakout_lookback = int(
+            getter("strategy", "htf_12h_moonshot", "daily_breakout_lookback", default=20)
+            if callable(getter)
+            else 20
+        )
+        htf_weekly_breakout_lookback = int(
+            getter("strategy", "htf_12h_moonshot", "weekly_breakout_lookback", default=8)
+            if callable(getter)
+            else 8
+        )
+        htf_daily_momentum = int(
+            getter("strategy", "htf_12h_moonshot", "daily_momentum_lookback", default=10)
+            if callable(getter)
+            else 10
+        )
+        htf_weekly_momentum = int(
+            getter("strategy", "htf_12h_moonshot", "weekly_momentum_lookback", default=4)
+            if callable(getter)
+            else 4
+        )
+        htf_minutes = max(
+            (htf_breakout_lookback + 6) * 12 * 60,
+            (htf_daily_breakout_lookback + htf_daily_momentum + 5) * 24 * 60,
+            (htf_weekly_breakout_lookback + htf_weekly_momentum + 3) * 7 * 24 * 60,
+        )
+    else:
+        htf_minutes = 0
+
+    rotation_enabled = bool(
+        getter("strategy", "htf_12h_rotation", "enabled", default=False)
+        if callable(getter)
+        else False
+    )
+    if rotation_enabled:
+        rotation_min_history_bars = int(
+            getter("strategy", "htf_12h_rotation", "min_history_bars", default=8)
+            if callable(getter)
+            else 8
+        )
+        rotation_daily_momentum = int(
+            getter("strategy", "htf_12h_rotation", "daily_momentum_lookback", default=10)
+            if callable(getter)
+            else 10
+        )
+        rotation_weekly_momentum = int(
+            getter("strategy", "htf_12h_rotation", "weekly_momentum_lookback", default=4)
+            if callable(getter)
+            else 4
+        )
+        rotation_minutes = max(
+            (rotation_min_history_bars + 6) * 12 * 60,
+            (rotation_daily_momentum + 10) * 24 * 60,
+            (rotation_weekly_momentum + 4) * 7 * 24 * 60,
+        )
+    else:
+        rotation_minutes = 0
+
     return max(
         execution_bars * execution_minutes,
         direction_bars * direction_minutes,
         trend_bars * trend_minutes,
         macro_bars * macro_minutes,
         swing_minutes,
+        htf_minutes,
+        rotation_minutes,
     )
 
 
@@ -232,7 +307,12 @@ def _build_live_timeframes(df_1m, builder, config):
     execution_rule = config.require("timeframes", "execution", "rule")
     direction_rule = config.require("timeframes", "direction", "rule")
     trend_rule = config.require("timeframes", "trend", "rule")
-    macro_rule = config.require("timeframes", "macro", "rule")
+    getter = getattr(config, "get", None)
+    macro_rule = (
+        getter("timeframes", "macro", "rule", default="12h")
+        if callable(getter)
+        else "12h"
+    )
 
     df_15m = builder.resample(df_1m, execution_rule)
     df_1h = builder.resample(df_1m, direction_rule)
@@ -321,7 +401,7 @@ def _run_single_symbol_live_sim(symbol=None, config=None):
         )
 
         print("Building timeframes...")
-        df_15m, df_1h, df_5h, df_12h = _build_live_timeframes(
+        df_15m, df_1h, df_5h, df_12h, df_1d, df_1w = _build_live_timeframes(
             df_1m_state,
             builder=builder,
             config=config,
@@ -358,68 +438,94 @@ def _build_live_candidate(
     moonshot_overlay,
     portfolio,
     swing_snapshot=None,
+    htf_snapshot=None,
+    htf_engine=None,
+    htf_rotation_snapshot=None,
+    htf_rotation_engine=None,
     config,
 ):
     bias_snapshot = bias_detector.get_bias_snapshot(df_1h)
     bias = str(bias_snapshot.get("label", "neutral"))
+    candidates = []
     bucket = build_signal_bucket(row, bias=bias, side="long", config=config)
-    if bucket is None:
-        return None
+    if bucket is not None:
+        getter = getattr(config, "get", None)
+        allowed_edge_types = (
+            getter("live_sim", "paper_portfolio", "allowed_edge_types", default=["impulse_breakout"])
+            if callable(getter)
+            else ["impulse_breakout"]
+        )
+        if not allowed_edge_types or bucket["edge_type"] in {str(item) for item in allowed_edge_types}:
+            selector_profile = edge_selector.evaluate(row, bias=bias, side="long")
+            is_top_mover = symbol in set(top_symbols)
+            score_info = portfolio.scorer.compute_score(
+                row=row,
+                momentum_rank=momentum_rank,
+                vwap_bucket=bucket["vwap_bucket"],
+                edge_type=bucket["edge_type"],
+                is_top_mover=is_top_mover,
+            )
+            bucket_risk_mult = selector_profile.get("bucket_risk_mult", 1.0) or 1.0
 
-    getter = getattr(config, "get", None)
-    allowed_edge_types = (
-        getter("live_sim", "paper_portfolio", "allowed_edge_types", default=["impulse_breakout"])
-        if callable(getter)
-        else ["impulse_breakout"]
-    )
-    if allowed_edge_types and bucket["edge_type"] not in {str(item) for item in allowed_edge_types}:
-        return None
-
-    selector_profile = edge_selector.evaluate(row, bias=bias, side="long")
-    is_top_mover = symbol in set(top_symbols)
-    score_info = portfolio.scorer.compute_score(
-        row=row,
-        momentum_rank=momentum_rank,
-        vwap_bucket=bucket["vwap_bucket"],
-        edge_type=bucket["edge_type"],
-        is_top_mover=is_top_mover,
-    )
-    bucket_risk_mult = selector_profile.get("bucket_risk_mult", 1.0) or 1.0
-
-    candidate = {
-        "symbol": symbol,
-        "timestamp": row.name,
-        "side": "long",
-        "row": row,
-        "bias": bias,
-        "bias_snapshot": bias_snapshot,
-        "edge_type": bucket["edge_type"],
-        "body_bucket": bucket["body_bucket"],
-        "vwap_bucket": bucket["vwap_bucket"],
-        "bucket_key_text": bucket["bucket_key_text"],
-        "bucket_valid": selector_profile.get("bucket_valid"),
-        "bucket_expected_return": selector_profile.get("bucket_expected_return"),
-        "bucket_risk_mult": bucket_risk_mult,
-        "risk_mult": bucket_risk_mult,
-        "momentum_rank": float(momentum_rank or 0.0),
-        "is_top_mover": is_top_mover,
-        "score": float(score_info["score"]),
-        "score_bucket": score_info["score_bucket"],
-        "selection_score": float(score_info["score"]),
-        "strategy_type": "core",
-        "signal_family": "live_paper",
-        "risk_group": "core",
-        "moonshot_score": None,
-        "range_expansion_factor": float(row.get("range_expansion_factor", 0.0) or 0.0),
-        "execution_profile": {},
-        "feature_values": {
-            "body_strength": score_info["components"]["body_strength"],
-            "close_position": score_info["components"]["close_position"],
-            "vwap_score": score_info["components"]["vwap_score"],
-            "momentum": score_info["components"]["momentum"],
-        },
-    }
-    return moonshot_overlay.apply_to_candidate(candidate, swing_snapshot=swing_snapshot)
+            candidate = {
+                "symbol": symbol,
+                "timestamp": row.name,
+                "side": "long",
+                "row": row,
+                "bias": bias,
+                "bias_snapshot": bias_snapshot,
+                "edge_type": bucket["edge_type"],
+                "body_bucket": bucket["body_bucket"],
+                "vwap_bucket": bucket["vwap_bucket"],
+                "bucket_key_text": bucket["bucket_key_text"],
+                "bucket_valid": selector_profile.get("bucket_valid"),
+                "bucket_expected_return": selector_profile.get("bucket_expected_return"),
+                "bucket_risk_mult": bucket_risk_mult,
+                "risk_mult": bucket_risk_mult,
+                "momentum_rank": float(momentum_rank or 0.0),
+                "is_top_mover": is_top_mover,
+                "score": float(score_info["score"]),
+                "score_bucket": score_info["score_bucket"],
+                "selection_score": float(score_info["score"]),
+                "strategy_type": "core",
+                "signal_family": "live_paper",
+                "risk_group": "core",
+                "moonshot_score": None,
+                "range_expansion_factor": float(row.get("range_expansion_factor", 0.0) or 0.0),
+                "execution_profile": {},
+                "feature_values": {
+                    "body_strength": score_info["components"]["body_strength"],
+                    "close_position": score_info["components"]["close_position"],
+                    "vwap_score": score_info["components"]["vwap_score"],
+                    "momentum": score_info["components"]["momentum"],
+                },
+            }
+            candidates.append(
+                moonshot_overlay.apply_to_candidate(candidate, swing_snapshot=swing_snapshot)
+            )
+    if htf_engine is not None:
+        htf_candidate = htf_engine.build_candidate(
+            symbol=symbol,
+            timestamp=row.name,
+            execution_row=row,
+            snapshot=htf_snapshot or {},
+            momentum_rank=momentum_rank,
+            top_symbols=top_symbols,
+        )
+        if htf_candidate is not None:
+            candidates.append(htf_candidate)
+    if htf_rotation_engine is not None:
+        rotation_candidate = htf_rotation_engine.build_candidate(
+            symbol=symbol,
+            timestamp=row.name,
+            execution_row=row,
+            snapshot=htf_rotation_snapshot or {},
+            momentum_rank=momentum_rank,
+            top_symbols=top_symbols,
+        )
+        if rotation_candidate is not None:
+            candidates.append(rotation_candidate)
+    return [item for item in candidates if item is not None]
 
 
 def _run_portfolio_live_paper_sim(config=None):
@@ -469,6 +575,8 @@ def _run_portfolio_live_paper_sim(config=None):
     bias_detector = BiasDetector(config=config)
     edge_selector = EdgeSelector(config=config)
     moonshot_overlay = MoonshotOverlay(config=config)
+    htf_engine = HTFMoonshotEngine(config=config)
+    htf_rotation_engine = HTFRotationEngine(config=config)
     portfolio = LivePaperPortfolio(
         trade_logger=LiveTradeLogger(config=config),
         signal_logger=LiveSignalLogger(config=config),
@@ -483,7 +591,12 @@ def _run_portfolio_live_paper_sim(config=None):
         cycle_start = time.time()
         execution_frames = {}
         swing_snapshots = {}
+        htf_snapshots = {}
+        htf_macro_frames = {}
+        htf_daily_frames = {}
+        htf_weekly_frames = {}
         latest_rows_by_symbol = {}
+        latest_htf_context_by_symbol = {}
         new_symbols = []
 
         for index, symbol in enumerate(symbols):
@@ -500,8 +613,18 @@ def _run_portfolio_live_paper_sim(config=None):
                 config=config,
             )
             execution_frames[symbol] = df_15m
+            htf_macro_frames[symbol] = df_12h
+            htf_daily_frames[symbol] = df_1d
+            htf_weekly_frames[symbol] = df_1w
             swing_snapshots[symbol] = build_swing_snapshots(
                 df_15m.index,
+                df_1d,
+                df_1w,
+                config=config,
+            )
+            htf_snapshots[symbol] = build_htf_12h_snapshots(
+                df_15m.index,
+                df_12h,
                 df_1d,
                 df_1w,
                 config=config,
@@ -513,6 +636,11 @@ def _run_portfolio_live_paper_sim(config=None):
             if is_new:
                 row = df_15m.iloc[-1]
                 latest_rows_by_symbol[symbol] = row
+                latest_htf_context_by_symbol[symbol] = (
+                    htf_snapshots[symbol].loc[row.name].to_dict()
+                    if row.name in htf_snapshots[symbol].index
+                    else {}
+                )
                 new_symbols.append(
                     {
                         "symbol": symbol,
@@ -525,16 +653,29 @@ def _run_portfolio_live_paper_sim(config=None):
                             if row.name in swing_snapshots[symbol].index
                             else {}
                         ),
+                        "htf_snapshot": latest_htf_context_by_symbol[symbol],
                     }
                 )
 
             if fetch_pause_seconds > 0 and index < len(symbols) - 1:
                 time.sleep(fetch_pause_seconds)
 
+        htf_rotation_snapshots = build_htf_rotation_snapshots_by_symbol(
+            {symbol: frame.index for symbol, frame in execution_frames.items()},
+            htf_macro_frames,
+            htf_daily_frames,
+            htf_weekly_frames,
+            structural_snapshots_by_symbol=htf_snapshots,
+            config=config,
+        )
+
         if new_symbols:
             timestamp = max(item["row"].name for item in new_symbols)
             portfolio.reset_daily_state_if_needed(timestamp)
-            portfolio.manage_open_positions(latest_rows_by_symbol)
+            portfolio.manage_open_positions(
+                latest_rows_by_symbol,
+                htf_context_by_symbol=latest_htf_context_by_symbol,
+            )
             momentum_ranks, top_symbols = _momentum_ranks(
                 execution_frames,
                 lookback_bars=momentum_lookback_bars,
@@ -544,7 +685,7 @@ def _run_portfolio_live_paper_sim(config=None):
             for item in new_symbols:
                 if item["df_1h"].empty or item["df_5h"].empty or item["df_12h"].empty:
                     continue
-                candidate = _build_live_candidate(
+                symbol_candidates = _build_live_candidate(
                     symbol=item["symbol"],
                     row=item["row"],
                     df_1h=item["df_1h"],
@@ -555,10 +696,17 @@ def _run_portfolio_live_paper_sim(config=None):
                     moonshot_overlay=moonshot_overlay,
                     portfolio=portfolio,
                     swing_snapshot=item.get("swing_snapshot"),
+                    htf_snapshot=item.get("htf_snapshot"),
+                    htf_engine=htf_engine,
+                    htf_rotation_snapshot=(
+                        htf_rotation_snapshots[item["symbol"]].loc[item["row"].name].to_dict()
+                        if item["row"].name in htf_rotation_snapshots[item["symbol"]].index
+                        else {}
+                    ),
+                    htf_rotation_engine=htf_rotation_engine,
                     config=config,
                 )
-                if candidate is not None:
-                    candidates.append(candidate)
+                candidates.extend(symbol_candidates)
 
             if candidates:
                 portfolio.select_and_open(candidates, timestamp)

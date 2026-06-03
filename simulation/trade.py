@@ -70,6 +70,27 @@ TRADE_LOG_FIELDS = [
     "slow_grind_open_r_max",
     "entry_layer_count",
     "pyramid_level",
+    "convexity_enabled",
+    "convexity_state",
+    "convexity_stage",
+    "convexity_base_risk_fraction",
+    "convexity_probe_fraction",
+    "convexity_target_risk_fraction",
+    "convexity_base_risk_amount",
+    "convexity_promote_target_multiple",
+    "convexity_add_target_multiple",
+    "convexity_max_target_multiple",
+    "convexity_add_count",
+    "convexity_last_add_bar",
+    "htf_signal_family",
+    "htf_score",
+    "htf_context_1d",
+    "htf_context_1w",
+    "htf_entry_reason",
+    "htf_stop_reason",
+    "htf_trailing_state",
+    "htf_decay_reason",
+    "htf_candidate_rank",
     "score",
     "body_strength",
     "close_position",
@@ -157,6 +178,67 @@ def trade_to_log_record(trade):
         "slow_grind_open_r_max": getattr(trade, "slow_grind_open_r_max", conditions.get("slow_grind_open_r_max")),
         "entry_layer_count": entry_layer_count,
         "pyramid_level": getattr(trade, "pyramid_level", conditions.get("pyramid_level", 0)),
+        "convexity_enabled": getattr(trade, "convexity_enabled", conditions.get("convexity_enabled")),
+        "convexity_state": getattr(trade, "convexity_state", conditions.get("convexity_state")),
+        "convexity_stage": getattr(trade, "convexity_stage", conditions.get("convexity_stage")),
+        "convexity_base_risk_fraction": getattr(
+            trade,
+            "convexity_base_risk_fraction",
+            conditions.get("convexity_base_risk_fraction"),
+        ),
+        "convexity_probe_fraction": getattr(
+            trade,
+            "convexity_probe_fraction",
+            conditions.get("convexity_probe_fraction"),
+        ),
+        "convexity_target_risk_fraction": getattr(
+            trade,
+            "convexity_target_risk_fraction",
+            conditions.get("convexity_target_risk_fraction"),
+        ),
+        "convexity_base_risk_amount": getattr(
+            trade,
+            "convexity_base_risk_amount",
+            conditions.get("convexity_base_risk_amount"),
+        ),
+        "convexity_promote_target_multiple": getattr(
+            trade,
+            "convexity_promote_target_multiple",
+            conditions.get("convexity_promote_target_multiple"),
+        ),
+        "convexity_add_target_multiple": getattr(
+            trade,
+            "convexity_add_target_multiple",
+            conditions.get("convexity_add_target_multiple"),
+        ),
+        "convexity_max_target_multiple": getattr(
+            trade,
+            "convexity_max_target_multiple",
+            conditions.get("convexity_max_target_multiple"),
+        ),
+        "convexity_add_count": getattr(
+            trade,
+            "convexity_add_count",
+            conditions.get("convexity_add_count"),
+        ),
+        "convexity_last_add_bar": getattr(
+            trade,
+            "convexity_last_add_bar",
+            conditions.get("convexity_last_add_bar"),
+        ),
+        "htf_signal_family": getattr(trade, "htf_signal_family", conditions.get("htf_signal_family")),
+        "htf_score": getattr(trade, "htf_score", conditions.get("htf_score")),
+        "htf_context_1d": getattr(trade, "htf_context_1d", conditions.get("htf_context_1d")),
+        "htf_context_1w": getattr(trade, "htf_context_1w", conditions.get("htf_context_1w")),
+        "htf_entry_reason": getattr(trade, "htf_entry_reason", conditions.get("htf_entry_reason")),
+        "htf_stop_reason": getattr(trade, "htf_stop_reason", conditions.get("htf_stop_reason")),
+        "htf_trailing_state": getattr(
+            trade,
+            "htf_trailing_state",
+            conditions.get("htf_trailing_state"),
+        ),
+        "htf_decay_reason": getattr(trade, "htf_decay_reason", conditions.get("htf_decay_reason")),
+        "htf_candidate_rank": getattr(trade, "htf_candidate_rank", conditions.get("htf_candidate_rank")),
         "score": conditions.get("score"),
         "body_strength": conditions.get("body_strength"),
         "close_position": conditions.get("close_position"),
@@ -297,6 +379,27 @@ class Trade:
         self.trailing_activation_r = None
         self.slow_grind_max_bars = None
         self.slow_grind_open_r_max = None
+        self.convexity_enabled = False
+        self.convexity_state = "disabled"
+        self.convexity_stage = 0
+        self.convexity_base_risk_fraction = None
+        self.convexity_probe_fraction = None
+        self.convexity_target_risk_fraction = None
+        self.convexity_base_risk_amount = None
+        self.convexity_promote_target_multiple = None
+        self.convexity_add_target_multiple = None
+        self.convexity_max_target_multiple = None
+        self.convexity_add_count = 0
+        self.convexity_last_add_bar = 0
+        self.htf_signal_family = None
+        self.htf_score = None
+        self.htf_context_1d = None
+        self.htf_context_1w = None
+        self.htf_entry_reason = None
+        self.htf_stop_reason = None
+        self.htf_trailing_state = None
+        self.htf_decay_reason = None
+        self.htf_candidate_rank = None
 
         # Store WHY trade happened (very important)
         self.conditions = {
@@ -343,6 +446,27 @@ class Trade:
             "trailing_activation_r": None,
             "slow_grind_max_bars": None,
             "slow_grind_open_r_max": None,
+            "convexity_enabled": self.convexity_enabled,
+            "convexity_state": self.convexity_state,
+            "convexity_stage": self.convexity_stage,
+            "convexity_base_risk_fraction": self.convexity_base_risk_fraction,
+            "convexity_probe_fraction": self.convexity_probe_fraction,
+            "convexity_target_risk_fraction": self.convexity_target_risk_fraction,
+            "convexity_base_risk_amount": self.convexity_base_risk_amount,
+            "convexity_promote_target_multiple": self.convexity_promote_target_multiple,
+            "convexity_add_target_multiple": self.convexity_add_target_multiple,
+            "convexity_max_target_multiple": self.convexity_max_target_multiple,
+            "convexity_add_count": self.convexity_add_count,
+            "convexity_last_add_bar": self.convexity_last_add_bar,
+            "htf_signal_family": self.htf_signal_family,
+            "htf_score": self.htf_score,
+            "htf_context_1d": self.htf_context_1d,
+            "htf_context_1w": self.htf_context_1w,
+            "htf_entry_reason": self.htf_entry_reason,
+            "htf_stop_reason": self.htf_stop_reason,
+            "htf_trailing_state": self.htf_trailing_state,
+            "htf_decay_reason": self.htf_decay_reason,
+            "htf_candidate_rank": self.htf_candidate_rank,
         }
 
         print(f"Trade created at {self.entry_time}")
@@ -406,14 +530,28 @@ class Trade:
         layers yields the total worst-case loss if price hits the stop.
         """
 
-        if self.stop is None:
+        return self.total_risk_to_stop_price(self.stop)
+
+    def total_risk_to_stop_price(self, stop_price, floor_zero=False):
+        if stop_price is None:
             return 0
 
         total = 0
         for entry_price, size in self.entries:
-            total += abs(entry_price - self.stop) * size
+            if self.side == "short":
+                risk_distance = float(stop_price) - float(entry_price)
+            else:
+                risk_distance = float(entry_price) - float(stop_price)
+            if floor_zero:
+                risk_distance = max(0.0, risk_distance)
+            else:
+                risk_distance = abs(risk_distance)
+            total += risk_distance * float(size)
 
         return total
+
+    def total_risk_to_active_stop(self):
+        return self.total_risk_to_stop_price(self.active_stop, floor_zero=True)
 
     def compute_pnl(self):
 
@@ -663,6 +801,103 @@ class Trade:
             }
         )
 
+    def annotate_htf_context(
+        self,
+        *,
+        signal_family=None,
+        htf_score=None,
+        context_1d=None,
+        context_1w=None,
+        entry_reason=None,
+        stop_reason=None,
+        trailing_state=None,
+        decay_reason=None,
+        candidate_rank=None,
+    ):
+        self.htf_signal_family = signal_family
+        self.htf_score = htf_score
+        self.htf_context_1d = context_1d
+        self.htf_context_1w = context_1w
+        self.htf_entry_reason = entry_reason
+        self.htf_stop_reason = stop_reason
+        self.htf_trailing_state = trailing_state
+        self.htf_decay_reason = decay_reason
+        self.htf_candidate_rank = candidate_rank
+        self.conditions.update(
+            {
+                "htf_signal_family": signal_family,
+                "htf_score": htf_score,
+                "htf_context_1d": context_1d,
+                "htf_context_1w": context_1w,
+                "htf_entry_reason": entry_reason,
+                "htf_stop_reason": stop_reason,
+                "htf_trailing_state": trailing_state,
+                "htf_decay_reason": decay_reason,
+                "htf_candidate_rank": candidate_rank,
+            }
+        )
+
+    def annotate_convexity_profile(
+        self,
+        *,
+        enabled=False,
+        state="disabled",
+        stage=0,
+        base_risk_fraction=None,
+        probe_fraction=None,
+        target_risk_fraction=None,
+        base_risk_amount=None,
+        promote_target_multiple=None,
+        add_target_multiple=None,
+        max_target_multiple=None,
+        add_count=None,
+        last_add_bar=None,
+    ):
+        self.convexity_enabled = bool(enabled)
+        self.convexity_state = str(state or "disabled")
+        self.convexity_stage = int(stage or 0)
+        self.convexity_base_risk_fraction = (
+            None if base_risk_fraction in (None, "") else float(base_risk_fraction)
+        )
+        self.convexity_probe_fraction = (
+            None if probe_fraction in (None, "") else float(probe_fraction)
+        )
+        self.convexity_target_risk_fraction = (
+            None if target_risk_fraction in (None, "") else float(target_risk_fraction)
+        )
+        self.convexity_base_risk_amount = (
+            None if base_risk_amount in (None, "") else float(base_risk_amount)
+        )
+        self.convexity_promote_target_multiple = (
+            None
+            if promote_target_multiple in (None, "")
+            else float(promote_target_multiple)
+        )
+        self.convexity_add_target_multiple = (
+            None if add_target_multiple in (None, "") else float(add_target_multiple)
+        )
+        self.convexity_max_target_multiple = (
+            None if max_target_multiple in (None, "") else float(max_target_multiple)
+        )
+        self.convexity_add_count = int(add_count or 0)
+        self.convexity_last_add_bar = int(last_add_bar or 0)
+        self.conditions.update(
+            {
+                "convexity_enabled": self.convexity_enabled,
+                "convexity_state": self.convexity_state,
+                "convexity_stage": self.convexity_stage,
+                "convexity_base_risk_fraction": self.convexity_base_risk_fraction,
+                "convexity_probe_fraction": self.convexity_probe_fraction,
+                "convexity_target_risk_fraction": self.convexity_target_risk_fraction,
+                "convexity_base_risk_amount": self.convexity_base_risk_amount,
+                "convexity_promote_target_multiple": self.convexity_promote_target_multiple,
+                "convexity_add_target_multiple": self.convexity_add_target_multiple,
+                "convexity_max_target_multiple": self.convexity_max_target_multiple,
+                "convexity_add_count": self.convexity_add_count,
+                "convexity_last_add_bar": self.convexity_last_add_bar,
+            }
+        )
+
     def advance_bar(self):
         self.bars_held = int(self.bars_held or 0) + 1
         self.conditions["bars_held"] = self.bars_held
@@ -779,6 +1014,27 @@ class Trade:
             "trailing_activation_r": self.trailing_activation_r,
             "slow_grind_max_bars": self.slow_grind_max_bars,
             "slow_grind_open_r_max": self.slow_grind_open_r_max,
+            "convexity_enabled": self.convexity_enabled,
+            "convexity_state": self.convexity_state,
+            "convexity_stage": self.convexity_stage,
+            "convexity_base_risk_fraction": self.convexity_base_risk_fraction,
+            "convexity_probe_fraction": self.convexity_probe_fraction,
+            "convexity_target_risk_fraction": self.convexity_target_risk_fraction,
+            "convexity_base_risk_amount": self.convexity_base_risk_amount,
+            "convexity_promote_target_multiple": self.convexity_promote_target_multiple,
+            "convexity_add_target_multiple": self.convexity_add_target_multiple,
+            "convexity_max_target_multiple": self.convexity_max_target_multiple,
+            "convexity_add_count": self.convexity_add_count,
+            "convexity_last_add_bar": self.convexity_last_add_bar,
+            "htf_signal_family": self.htf_signal_family,
+            "htf_score": self.htf_score,
+            "htf_context_1d": self.htf_context_1d,
+            "htf_context_1w": self.htf_context_1w,
+            "htf_entry_reason": self.htf_entry_reason,
+            "htf_stop_reason": self.htf_stop_reason,
+            "htf_trailing_state": self.htf_trailing_state,
+            "htf_decay_reason": self.htf_decay_reason,
+            "htf_candidate_rank": self.htf_candidate_rank,
             "conditions": dict(self.conditions),
         }
 
@@ -861,5 +1117,26 @@ class Trade:
         trade.trailing_activation_r = snapshot.get("trailing_activation_r")
         trade.slow_grind_max_bars = snapshot.get("slow_grind_max_bars")
         trade.slow_grind_open_r_max = snapshot.get("slow_grind_open_r_max")
+        trade.convexity_enabled = snapshot.get("convexity_enabled", False)
+        trade.convexity_state = snapshot.get("convexity_state", "disabled")
+        trade.convexity_stage = snapshot.get("convexity_stage", 0)
+        trade.convexity_base_risk_fraction = snapshot.get("convexity_base_risk_fraction")
+        trade.convexity_probe_fraction = snapshot.get("convexity_probe_fraction")
+        trade.convexity_target_risk_fraction = snapshot.get("convexity_target_risk_fraction")
+        trade.convexity_base_risk_amount = snapshot.get("convexity_base_risk_amount")
+        trade.convexity_promote_target_multiple = snapshot.get("convexity_promote_target_multiple")
+        trade.convexity_add_target_multiple = snapshot.get("convexity_add_target_multiple")
+        trade.convexity_max_target_multiple = snapshot.get("convexity_max_target_multiple")
+        trade.convexity_add_count = snapshot.get("convexity_add_count", 0)
+        trade.convexity_last_add_bar = snapshot.get("convexity_last_add_bar", 0)
+        trade.htf_signal_family = snapshot.get("htf_signal_family")
+        trade.htf_score = snapshot.get("htf_score")
+        trade.htf_context_1d = snapshot.get("htf_context_1d")
+        trade.htf_context_1w = snapshot.get("htf_context_1w")
+        trade.htf_entry_reason = snapshot.get("htf_entry_reason")
+        trade.htf_stop_reason = snapshot.get("htf_stop_reason")
+        trade.htf_trailing_state = snapshot.get("htf_trailing_state")
+        trade.htf_decay_reason = snapshot.get("htf_decay_reason")
+        trade.htf_candidate_rank = snapshot.get("htf_candidate_rank")
         trade.conditions = dict(snapshot.get("conditions", {}))
         return trade

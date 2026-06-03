@@ -157,25 +157,105 @@ class MoonshotOverlay:
         score = _safe_float(candidate.get("score"), default=0.0)
         expansion = _safe_float(candidate.get("range_expansion_factor"), default=0.0)
         momentum_rank = _safe_float(candidate.get("momentum_rank"), default=0.0)
-        if score < _safe_float(self.intraday.get("min_score", 0.85), default=0.85):
+        row = candidate.get("row")
+        body_strength = _safe_float(
+            None if row is None else row.get("body_strength"),
+            default=0.0,
+        )
+        close_position = _safe_float(
+            None if row is None else row.get("close_position"),
+            default=0.0,
+        )
+        abs_vwap_distance = abs(
+            _safe_float(
+                None if row is None else row.get("vwap_distance_ratio"),
+                default=0.0,
+            )
+        )
+
+        min_score = _safe_float(self.intraday.get("min_score", 0.88), default=0.88)
+        min_expansion = _safe_float(
+            self.intraday.get("min_expansion", 1.8),
+            default=1.8,
+        )
+        min_momentum_rank = _safe_float(
+            self.intraday.get("min_momentum_rank", 0.85),
+            default=0.85,
+        )
+        min_body_strength = _safe_float(
+            self.intraday.get("min_body_strength", 2.8),
+            default=2.8,
+        )
+        min_close_position = _safe_float(
+            self.intraday.get("min_close_position", 0.88),
+            default=0.88,
+        )
+        max_abs_vwap_distance = _safe_float(
+            self.intraday.get("max_abs_vwap_distance", 0.008),
+            default=0.008,
+        )
+        shape_override_active = bool(self.intraday.get("allow_shape_override", True)) and (
+            expansion >= _safe_float(
+                self.intraday.get("shape_override_min_expansion", 2.2),
+                default=2.2,
+            )
+            and body_strength >= _safe_float(
+                self.intraday.get("shape_override_min_body_strength", 3.4),
+                default=3.4,
+            )
+            and close_position >= _safe_float(
+                self.intraday.get("shape_override_min_close_position", 0.90),
+                default=0.90,
+            )
+        )
+
+        if score < min_score and not shape_override_active:
             return None
-        if expansion < _safe_float(self.intraday.get("min_expansion", 1.4), default=1.4):
+        if expansion < min_expansion:
             return None
-        if momentum_rank < _safe_float(self.intraday.get("min_momentum_rank", 0.75), default=0.75):
+        if momentum_rank < min_momentum_rank:
+            return None
+        if body_strength < min_body_strength:
+            return None
+        if close_position < min_close_position:
+            return None
+        if max_abs_vwap_distance > 0.0 and abs_vwap_distance > max_abs_vwap_distance:
             return None
 
         expansion_score = normalize(
             expansion,
-            _safe_float(self.intraday.get("min_expansion", 1.4), default=1.4),
+            min_expansion,
             _safe_float(self.intraday.get("max_expansion_for_score", 2.5), default=2.5),
         )
-        moonshot_score = clamp(
-            0.55 * score
-            + 0.25 * expansion_score
-            + 0.20 * momentum_rank
+        body_score = normalize(
+            body_strength,
+            min_body_strength,
+            _safe_float(
+                self.intraday.get("max_body_strength_for_score", 5.0),
+                default=5.0,
+            ),
         )
-        selection_bonus = _safe_float(self.intraday.get("selection_bonus", 0.06), default=0.06)
-        selection_score = clamp(max(score, moonshot_score) + selection_bonus)
+        close_score = normalize(
+            close_position,
+            min_close_position,
+            1.0,
+        )
+        moonshot_score = clamp(
+            0.35 * score
+            + 0.20 * expansion_score
+            + 0.15 * momentum_rank
+            + 0.15 * body_score
+            + 0.15 * close_score
+        )
+        selection_bonus = _safe_float(
+            self.intraday.get("selection_bonus", 0.04),
+            default=0.04,
+        )
+        selection_score = clamp(
+            0.7 * score
+            + 0.3 * moonshot_score
+            + selection_bonus
+        )
 
         risk_fraction = _safe_float(
             self.intraday.get("base_risk_fraction", 0.0025),
@@ -241,11 +321,46 @@ class MoonshotOverlay:
         )
         if not (daily_breakout_active or weekly_breakout_active):
             return None
-        if daily_momentum <= 0.0 or weekly_momentum <= 0.0:
+        min_daily_momentum = _safe_float(
+            self.swing.get("min_daily_momentum", 0.0),
+            default=0.0,
+        )
+        min_weekly_momentum = _safe_float(
+            self.swing.get("min_weekly_momentum", -0.03),
+            default=-0.03,
+        )
+        daily_expansion_threshold = _safe_float(
+            self.swing.get("daily_expansion_threshold", 1.1),
+            default=1.1,
+        )
+        weekly_expansion_threshold = _safe_float(
+            self.swing.get("weekly_expansion_threshold", 1.0),
+            default=1.0,
+        )
+        if daily_momentum < min_daily_momentum:
             return None
-        if daily_expansion < _safe_float(self.swing.get("daily_expansion_threshold", 1.1), default=1.1):
+        if daily_expansion < daily_expansion_threshold:
             return None
-        if weekly_expansion < _safe_float(self.swing.get("weekly_expansion_threshold", 1.0), default=1.0):
+        weekly_supportive = (
+            weekly_breakout_active
+            or weekly_momentum >= min_weekly_momentum
+        ) and weekly_expansion >= weekly_expansion_threshold
+        allow_daily_override = bool(self.swing.get("allow_daily_override", True))
+        daily_override_min_strength = _safe_float(
+            self.swing.get("daily_override_min_strength", 0.72),
+            default=0.72,
+        )
+        daily_strength = _safe_float(
+            swing_snapshot.get("daily_strength"),
+            default=0.0,
+        )
+        base_active = daily_breakout_active and weekly_supportive
+        override_active = (
+            allow_daily_override
+            and daily_breakout_active
+            and daily_strength >= daily_override_min_strength
+        )
+        if not (base_active or override_active):
             return None
 
         strength = clamp(
