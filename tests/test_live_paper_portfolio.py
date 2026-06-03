@@ -55,6 +55,9 @@ class DummyConfig:
                     "max_hold_12h_candles": 120,
                     "allow_pyramiding": False,
                 },
+                "htf_12h_rotation": {
+                    "enabled": True,
+                },
                 "sniffing": {
                     "body_strength_min": 0.8,
                     "close_position_min": 0.4,
@@ -146,9 +149,95 @@ class DummyConfig:
                     },
                     "strategy_threshold_offsets": {
                         "htf_12h_moonshot": -0.05,
+                        "htf_12h_rotation": -0.04,
                     },
                     "strategy_allowed_sides": {
                         "htf_12h_moonshot": ["long"],
+                        "htf_12h_rotation": ["long"],
+                    },
+                    "strategy_sleeves": {
+                        "htf_12h_moonshot": {
+                            "enabled": True,
+                            "reserved_risk_fraction": 0.012,
+                            "max_new_positions_per_step": 2,
+                            "block_if_symbol_has_other_strategy_position": False,
+                            "ignore_global_step_cap": True,
+                        },
+                        "htf_12h_rotation": {
+                            "enabled": True,
+                            "reserved_risk_fraction": 0.006,
+                            "max_new_positions_per_step": 1,
+                            "block_if_symbol_has_other_strategy_position": True,
+                            "ignore_global_step_cap": True,
+                        },
+                        "swing_moonshot": {
+                            "enabled": True,
+                            "reserved_risk_fraction": 0.003,
+                            "max_new_positions_per_step": 1,
+                            "block_if_symbol_has_other_strategy_position": False,
+                            "ignore_global_step_cap": False,
+                        },
+                    },
+                    "allocator_v2": {
+                        "enabled": True,
+                        "leader_dominance": {
+                            "enabled": True,
+                            "min_gap": 0.10,
+                            "boost": 0.12,
+                        },
+                        "agreement_bonus": {
+                            "enabled": True,
+                            "pairs": [
+                                {
+                                    "primary": "htf_12h_moonshot",
+                                    "secondary": "htf_12h_rotation",
+                                    "primary_bonus": 0.06,
+                                    "secondary_bonus": 0.0,
+                                }
+                            ],
+                        },
+                        "concentration_brake": {
+                            "enabled": True,
+                            "min_closed_trades": 2,
+                            "daily_loss_fraction_trigger": 0.0045,
+                            "loss_streak_trigger": 3,
+                            "budget_multiplier": 0.80,
+                            "core_budget_multiplier": 0.55,
+                            "priority_multiplier": 0.92,
+                            "core_priority_multiplier": 0.78,
+                            "leader_boost_multiplier": 0.45,
+                            "uniform_weight_blend": 0.45,
+                        },
+                        "sleeves": {
+                            "core": {
+                                "priority_multiplier": 0.78,
+                                "rank_weights": [1.0, 0.45, 0.20],
+                                "max_candidates": 3,
+                                "max_risk_fraction_multiplier": 0.85,
+                                "absolute_max_risk_fraction": 0.0025,
+                            },
+                            "swing_moonshot": {
+                                "priority_multiplier": 0.98,
+                                "rank_weights": [1.0, 0.35],
+                                "max_candidates": 2,
+                                "max_risk_fraction_multiplier": 1.20,
+                                "absolute_max_risk_fraction": 0.0030,
+                            },
+                            "htf_12h_moonshot": {
+                                "priority_multiplier": 1.24,
+                                "rank_weights": [1.0, 0.50, 0.18],
+                                "max_candidates": 3,
+                                "max_risk_fraction_multiplier": 2.00,
+                                "absolute_max_risk_fraction": 0.0085,
+                            },
+                            "htf_12h_rotation": {
+                                "priority_multiplier": 1.08,
+                                "rank_weights": [1.0, 0.35],
+                                "max_candidates": 2,
+                                "max_risk_fraction_multiplier": 1.40,
+                                "absolute_max_risk_fraction": 0.0040,
+                            },
+                        },
                     },
                     "disable_non_core_negative_strategies": True,
                     "strategy_emergency_disable_min_trades": 3,
@@ -1075,6 +1164,352 @@ class LivePaperPortfolioTests(unittest.TestCase):
             self.assertEqual(trade.strategy_type, "htf_12h_rotation")
             self.assertEqual(trade.htf_trailing_state, "confirmation")
 
+    def test_rotation_sleeve_has_reserved_risk_when_shared_pool_is_full(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config = DummyConfig(output_dir=temp_dir)
+            config.data["live_sim"]["paper_portfolio"]["max_total_risk_fraction"] = 0.04
+            config.data["live_sim"]["paper_portfolio"]["convexity"]["enabled"] = False
+            config.data["live_sim"]["paper_portfolio"]["allocator_v2"]["enabled"] = False
+            config.data["live_sim"]["paper_portfolio"]["strategy_sleeves"] = {
+                "htf_12h_rotation": {
+                    "enabled": True,
+                    "reserved_risk_fraction": 0.01,
+                    "max_new_positions_per_step": 1,
+                    "block_if_symbol_has_other_strategy_position": True,
+                    "ignore_global_step_cap": True,
+                }
+            }
+            portfolio = LivePaperPortfolio(config=config)
+            timestamp = pd.Timestamp("2026-01-01 12:00:00")
+
+            def build_core(symbol, score, risk_fraction):
+                return {
+                    "symbol": symbol,
+                    "timestamp": timestamp,
+                    "side": "long",
+                    "row": pd.Series(
+                        {
+                            "close": 105.0,
+                            "low": 104.0,
+                            "high": 106.0,
+                            "ll2": 100.0,
+                            "ema2": 104.0,
+                            "ema3": 103.0,
+                            "atr": 1.5,
+                        },
+                        name=timestamp,
+                    ),
+                    "bias": "neutral",
+                    "edge_type": "impulse_breakout",
+                    "body_bucket": "strong",
+                    "vwap_bucket": "far",
+                    "bucket_key_text": "impulse_breakout|neutral|strong|far",
+                    "bucket_valid": True,
+                    "bucket_expected_return": 0.000212,
+                    "bucket_risk_mult": 1.0,
+                    "risk_mult": 1.0,
+                    "momentum_rank": 0.95,
+                    "is_top_mover": True,
+                    "score": score,
+                    "selection_score": score,
+                    "score_bucket": "0.9-1.0",
+                    "risk_fraction_override": risk_fraction,
+                    "feature_values": {
+                        "body_strength": 0.9,
+                        "close_position": 0.9,
+                        "vwap_score": 1.0,
+                        "momentum": 0.95,
+                    },
+                }
+
+            rotation_candidate = {
+                "symbol": "SOLUSDT",
+                "timestamp": timestamp,
+                "side": "long",
+                "row": pd.Series(
+                    {
+                        "close": 112.0,
+                        "low": 111.0,
+                        "high": 113.0,
+                        "ll2": 108.0,
+                        "ema2": 110.0,
+                        "ema3": 109.0,
+                        "atr": 2.0,
+                    },
+                    name=timestamp,
+                ),
+                "bias": "bullish",
+                "edge_type": "htf_12h_rotation",
+                "body_bucket": "strong",
+                "vwap_bucket": "near",
+                "bucket_key_text": "htf_12h_rotation|bullish|strong|near",
+                "bucket_valid": True,
+                "bucket_expected_return": None,
+                "bucket_risk_mult": 1.0,
+                "risk_mult": 1.0,
+                "momentum_rank": 0.96,
+                "is_top_mover": True,
+                "score": 0.88,
+                "selection_score": 0.91,
+                "score_bucket": "0.8-0.9",
+                "strategy_type": "htf_12h_rotation",
+                "signal_family": "htf_12h_rotation",
+                "risk_group": "htf_12h_rotation",
+                "group_risk_cap": 0.01,
+                "max_open_positions_for_strategy": 2,
+                "block_same_symbol_same_side": True,
+                "apply_score_bucket_filters": False,
+                "risk_fraction_override": 0.005,
+                "stop_price_override": 107.0,
+                "feature_values": {
+                    "body_strength": 1.8,
+                    "close_position": 0.85,
+                    "vwap_score": 0.3,
+                    "momentum": 0.96,
+                },
+            }
+
+            portfolio.reset_daily_state_if_needed(timestamp)
+            portfolio.select_and_open([build_core("BTCUSDT", 0.95, 0.03)], timestamp)
+            portfolio.select_and_open(
+                [
+                    build_core("ETHUSDT", 0.94, 0.005),
+                    rotation_candidate,
+                ],
+                timestamp,
+            )
+
+            self.assertEqual(len(portfolio.open_positions), 2)
+            self.assertCountEqual(
+                [trade.strategy_type for trade in portfolio.open_positions],
+                ["core", "htf_12h_rotation"],
+            )
+
+    def test_rotation_sleeve_can_ignore_global_step_cap_with_own_step_lane(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config = DummyConfig(output_dir=temp_dir)
+            config.data["live_sim"]["paper_portfolio"]["allocator_v2"]["enabled"] = False
+            config.data["live_sim"]["paper_portfolio"]["max_new_positions_per_step"] = 1
+            config.data["live_sim"]["paper_portfolio"]["strategy_sleeves"] = {
+                "htf_12h_rotation": {
+                    "enabled": True,
+                    "reserved_risk_fraction": 0.01,
+                    "max_new_positions_per_step": 1,
+                    "block_if_symbol_has_other_strategy_position": True,
+                    "ignore_global_step_cap": True,
+                }
+            }
+            portfolio = LivePaperPortfolio(config=config)
+            timestamp = pd.Timestamp("2026-01-01 12:00:00")
+
+            core_candidate = {
+                "symbol": "BTCUSDT",
+                "timestamp": timestamp,
+                "side": "long",
+                "row": pd.Series(
+                    {
+                        "close": 105.0,
+                        "low": 104.0,
+                        "high": 106.0,
+                        "ll2": 100.0,
+                        "ema2": 104.0,
+                        "ema3": 103.0,
+                        "atr": 1.5,
+                    },
+                    name=timestamp,
+                ),
+                "bias": "neutral",
+                "edge_type": "impulse_breakout",
+                "body_bucket": "strong",
+                "vwap_bucket": "far",
+                "bucket_key_text": "impulse_breakout|neutral|strong|far",
+                "bucket_valid": True,
+                "bucket_expected_return": 0.000212,
+                "bucket_risk_mult": 1.0,
+                "risk_mult": 1.0,
+                "momentum_rank": 0.95,
+                "is_top_mover": True,
+                "score": 0.95,
+                "selection_score": 0.95,
+                "score_bucket": "0.9-1.0",
+                "feature_values": {
+                    "body_strength": 0.9,
+                    "close_position": 0.9,
+                    "vwap_score": 1.0,
+                    "momentum": 0.95,
+                },
+            }
+            rotation_candidate = {
+                "symbol": "SOLUSDT",
+                "timestamp": timestamp,
+                "side": "long",
+                "row": pd.Series(
+                    {
+                        "close": 112.0,
+                        "low": 111.0,
+                        "high": 113.0,
+                        "ll2": 108.0,
+                        "ema2": 110.0,
+                        "ema3": 109.0,
+                        "atr": 2.0,
+                    },
+                    name=timestamp,
+                ),
+                "bias": "bullish",
+                "edge_type": "htf_12h_rotation",
+                "body_bucket": "strong",
+                "vwap_bucket": "near",
+                "bucket_key_text": "htf_12h_rotation|bullish|strong|near",
+                "bucket_valid": True,
+                "bucket_expected_return": None,
+                "bucket_risk_mult": 1.0,
+                "risk_mult": 1.0,
+                "momentum_rank": 0.96,
+                "is_top_mover": True,
+                "score": 0.88,
+                "selection_score": 0.91,
+                "score_bucket": "0.8-0.9",
+                "strategy_type": "htf_12h_rotation",
+                "signal_family": "htf_12h_rotation",
+                "risk_group": "htf_12h_rotation",
+                "group_risk_cap": 0.01,
+                "max_open_positions_for_strategy": 2,
+                "block_same_symbol_same_side": True,
+                "apply_score_bucket_filters": False,
+                "risk_fraction_override": 0.005,
+                "stop_price_override": 107.0,
+                "feature_values": {
+                    "body_strength": 1.8,
+                    "close_position": 0.85,
+                    "vwap_score": 0.3,
+                    "momentum": 0.96,
+                },
+            }
+
+            portfolio.reset_daily_state_if_needed(timestamp)
+            portfolio.select_and_open([core_candidate, rotation_candidate], timestamp)
+
+            self.assertEqual(len(portfolio.open_positions), 2)
+            self.assertCountEqual(
+                [trade.strategy_type for trade in portfolio.open_positions],
+                ["core", "htf_12h_rotation"],
+            )
+
+    def test_rotation_sleeve_blocks_same_symbol_when_other_strategy_is_open(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config = DummyConfig(output_dir=temp_dir)
+            config.data["live_sim"]["paper_portfolio"]["strategy_sleeves"] = {
+                "htf_12h_rotation": {
+                    "enabled": True,
+                    "reserved_risk_fraction": 0.01,
+                    "max_new_positions_per_step": 1,
+                    "block_if_symbol_has_other_strategy_position": True,
+                    "ignore_global_step_cap": True,
+                }
+            }
+            portfolio = LivePaperPortfolio(config=config)
+            timestamp = pd.Timestamp("2026-01-01 12:00:00")
+            core_row = pd.Series(
+                {
+                    "close": 105.0,
+                    "low": 104.0,
+                    "high": 106.0,
+                    "ll2": 100.0,
+                    "ema2": 104.0,
+                    "ema3": 103.0,
+                    "atr": 1.5,
+                },
+                name=timestamp,
+            )
+            rotation_row = pd.Series(
+                {
+                    "close": 112.0,
+                    "low": 111.0,
+                    "high": 113.0,
+                    "ll2": 108.0,
+                    "ema2": 110.0,
+                    "ema3": 109.0,
+                    "atr": 2.0,
+                },
+                name=timestamp,
+            )
+
+            portfolio.reset_daily_state_if_needed(timestamp)
+            portfolio.select_and_open(
+                [
+                    {
+                        "symbol": "BTCUSDT",
+                        "timestamp": timestamp,
+                        "side": "long",
+                        "row": core_row,
+                        "bias": "neutral",
+                        "edge_type": "impulse_breakout",
+                        "body_bucket": "strong",
+                        "vwap_bucket": "far",
+                        "bucket_key_text": "impulse_breakout|neutral|strong|far",
+                        "bucket_valid": True,
+                        "bucket_expected_return": 0.000212,
+                        "bucket_risk_mult": 1.0,
+                        "risk_mult": 1.0,
+                        "momentum_rank": 0.95,
+                        "is_top_mover": True,
+                        "score": 0.95,
+                        "selection_score": 0.95,
+                        "score_bucket": "0.9-1.0",
+                        "feature_values": {
+                            "body_strength": 0.9,
+                            "close_position": 0.9,
+                            "vwap_score": 1.0,
+                            "momentum": 0.95,
+                        },
+                    }
+                ],
+                timestamp,
+            )
+            portfolio.select_and_open(
+                [
+                    {
+                        "symbol": "BTCUSDT",
+                        "timestamp": timestamp,
+                        "side": "long",
+                        "row": rotation_row,
+                        "bias": "bullish",
+                        "edge_type": "htf_12h_rotation",
+                        "body_bucket": "strong",
+                        "vwap_bucket": "near",
+                        "bucket_key_text": "htf_12h_rotation|bullish|strong|near",
+                        "bucket_valid": True,
+                        "bucket_expected_return": None,
+                        "bucket_risk_mult": 1.0,
+                        "risk_mult": 1.0,
+                        "momentum_rank": 0.96,
+                        "is_top_mover": True,
+                        "score": 0.88,
+                        "selection_score": 0.91,
+                        "score_bucket": "0.8-0.9",
+                        "strategy_type": "htf_12h_rotation",
+                        "signal_family": "htf_12h_rotation",
+                        "risk_group": "htf_12h_rotation",
+                        "group_risk_cap": 0.01,
+                        "max_open_positions_for_strategy": 2,
+                        "block_same_symbol_same_side": True,
+                        "apply_score_bucket_filters": False,
+                        "risk_fraction_override": 0.005,
+                        "stop_price_override": 107.0,
+                        "feature_values": {
+                            "body_strength": 1.8,
+                            "close_position": 0.85,
+                            "vwap_score": 0.3,
+                            "momentum": 0.96,
+                        },
+                    }
+                ],
+                timestamp,
+            )
+
+            self.assertEqual(len(portfolio.open_positions), 1)
+            self.assertEqual(portfolio.open_positions[0].strategy_type, "core")
+
     def test_htf_short_can_open_when_strategy_side_policy_allows_it(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             config = DummyConfig(output_dir=temp_dir)
@@ -1375,6 +1810,433 @@ class LivePaperPortfolioTests(unittest.TestCase):
             threshold, source = restored._derive_threshold_from_history()
             self.assertAlmostEqual(threshold, 0.8, places=7)
             self.assertEqual(source, "recent")
+
+    def test_allocator_v2_concentrates_htf_risk_over_core_flow(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config = DummyConfig(output_dir=temp_dir)
+            portfolio = LivePaperPortfolio(config=config)
+            timestamp = pd.Timestamp("2026-01-01 12:00:00")
+            portfolio.reset_daily_state_if_needed(timestamp)
+
+            core_row = pd.Series(
+                {
+                    "close": 105.0,
+                    "low": 104.0,
+                    "high": 106.0,
+                    "ll2": 100.0,
+                    "ema2": 104.5,
+                    "ema3": 104.0,
+                    "session_vwap": 104.3,
+                    "body_strength": 1.8,
+                    "close_position": 0.82,
+                    "range_expansion_factor": 1.3,
+                    "vwap_distance_ratio": 0.004,
+                    "atr": 1.5,
+                },
+                name=timestamp,
+            )
+            htf_row = pd.Series(
+                {
+                    "close": 205.0,
+                    "low": 202.0,
+                    "high": 208.0,
+                    "ll2": 198.0,
+                    "ema2": 203.0,
+                    "ema3": 201.0,
+                    "session_vwap": 202.8,
+                    "body_strength": 1.9,
+                    "close_position": 0.86,
+                    "range_expansion_factor": 1.5,
+                    "vwap_distance_ratio": 0.005,
+                    "atr": 2.0,
+                },
+                name=timestamp,
+            )
+            core_candidate = {
+                "symbol": "BTCUSDT",
+                "timestamp": timestamp,
+                "side": "long",
+                "row": core_row,
+                "bias": "neutral",
+                "edge_type": "impulse_breakout",
+                "body_bucket": "strong",
+                "vwap_bucket": "far",
+                "bucket_key_text": "impulse_breakout|neutral|strong|far",
+                "bucket_valid": True,
+                "bucket_expected_return": 0.0002,
+                "bucket_risk_mult": 1.1,
+                "risk_mult": 1.1,
+                "momentum_rank": 0.90,
+                "is_top_mover": True,
+                "score": 0.94,
+                "selection_score": 0.94,
+                "score_bucket": "0.9-1.0",
+                "strategy_type": "core",
+                "signal_family": "core",
+                "risk_group": "core",
+                "feature_values": {
+                    "body_strength": 0.9,
+                    "close_position": 0.9,
+                    "vwap_score": 1.0,
+                    "momentum": 0.90,
+                },
+            }
+            htf_candidate = {
+                "symbol": "SOLUSDT",
+                "timestamp": timestamp,
+                "side": "long",
+                "row": htf_row,
+                "bias": "bullish",
+                "edge_type": "htf_12h_moonshot",
+                "body_bucket": "strong",
+                "vwap_bucket": "far",
+                "bucket_key_text": "htf_12h_moonshot|bullish|strong|far",
+                "bucket_valid": True,
+                "bucket_expected_return": None,
+                "bucket_risk_mult": 1.0,
+                "risk_mult": 1.0,
+                "momentum_rank": 0.88,
+                "is_top_mover": True,
+                "score": 0.86,
+                "selection_score": 0.90,
+                "score_bucket": "0.8-0.9",
+                "strategy_type": "htf_12h_moonshot",
+                "signal_family": "htf_12h_moonshot",
+                "risk_group": "htf_12h_moonshot",
+                "group_risk_cap": 0.012,
+                "max_open_positions_for_strategy": 2,
+                "block_same_symbol_same_side": True,
+                "apply_score_bucket_filters": False,
+                "selection_threshold_offset": -0.05,
+                "selection_min_threshold": 0.70,
+                "selection_max_threshold": 0.95,
+                "risk_fraction_override": 0.0035,
+                "moonshot_score": 0.86,
+                "range_expansion_factor": 1.5,
+                "execution_profile": {
+                    "disable_pyramiding": True,
+                },
+                "feature_values": {
+                    "body_strength": 1.9,
+                    "close_position": 0.86,
+                    "vwap_score": 1.0,
+                    "momentum": 0.88,
+                },
+            }
+
+            portfolio.select_and_open([core_candidate, htf_candidate], timestamp)
+
+            self.assertEqual(len(portfolio.open_positions), 2)
+            by_strategy = {
+                trade.strategy_type: trade for trade in portfolio.open_positions
+            }
+            self.assertGreater(
+                by_strategy["htf_12h_moonshot"].effective_risk_fraction,
+                by_strategy["core"].effective_risk_fraction,
+            )
+            self.assertGreater(
+                float(htf_candidate.get("allocated_risk_fraction", 0.0) or 0.0),
+                float(core_candidate.get("allocated_risk_fraction", 0.0) or 0.0),
+            )
+
+    def test_allocator_v2_applies_rank_asymmetry_within_htf_sleeve(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config = DummyConfig(output_dir=temp_dir)
+            portfolio = LivePaperPortfolio(config=config)
+            timestamp = pd.Timestamp("2026-01-01 12:00:00")
+            row = pd.Series(
+                {
+                    "close": 205.0,
+                    "low": 202.0,
+                    "high": 208.0,
+                    "ll2": 198.0,
+                    "ema2": 203.0,
+                    "ema3": 201.0,
+                    "session_vwap": 202.8,
+                    "body_strength": 1.9,
+                    "close_position": 0.86,
+                    "range_expansion_factor": 1.5,
+                    "vwap_distance_ratio": 0.005,
+                    "atr": 2.0,
+                },
+                name=timestamp,
+            )
+            candidates = [
+                {
+                    "symbol": "SOLUSDT",
+                    "timestamp": timestamp,
+                    "side": "long",
+                    "row": row,
+                    "bias": "bullish",
+                    "edge_type": "htf_12h_moonshot",
+                    "body_bucket": "strong",
+                    "vwap_bucket": "far",
+                    "bucket_key_text": "htf_12h_moonshot|bullish|strong|far",
+                    "bucket_valid": True,
+                    "momentum_rank": 0.90,
+                    "score": 0.88,
+                    "selection_score": 0.92,
+                    "score_bucket": "0.8-0.9",
+                    "strategy_type": "htf_12h_moonshot",
+                    "signal_family": "htf_12h_moonshot",
+                    "risk_group": "htf_12h_moonshot",
+                    "group_risk_cap": 0.012,
+                    "max_open_positions_for_strategy": 2,
+                    "block_same_symbol_same_side": True,
+                    "apply_score_bucket_filters": False,
+                    "selection_threshold_offset": -0.05,
+                    "selection_min_threshold": 0.70,
+                    "selection_max_threshold": 0.95,
+                    "risk_fraction_override": 0.0035,
+                },
+                {
+                    "symbol": "ETHUSDT",
+                    "timestamp": timestamp,
+                    "side": "long",
+                    "row": row,
+                    "bias": "bullish",
+                    "edge_type": "htf_12h_moonshot",
+                    "body_bucket": "strong",
+                    "vwap_bucket": "far",
+                    "bucket_key_text": "htf_12h_moonshot|bullish|strong|far",
+                    "bucket_valid": True,
+                    "momentum_rank": 0.84,
+                    "score": 0.84,
+                    "selection_score": 0.82,
+                    "score_bucket": "0.8-0.9",
+                    "strategy_type": "htf_12h_moonshot",
+                    "signal_family": "htf_12h_moonshot",
+                    "risk_group": "htf_12h_moonshot",
+                    "group_risk_cap": 0.012,
+                    "max_open_positions_for_strategy": 2,
+                    "block_same_symbol_same_side": True,
+                    "apply_score_bucket_filters": False,
+                    "selection_threshold_offset": -0.05,
+                    "selection_min_threshold": 0.70,
+                    "selection_max_threshold": 0.95,
+                    "risk_fraction_override": 0.0035,
+                },
+            ]
+
+            portfolio.select_and_open(candidates, timestamp)
+
+            self.assertEqual(len(portfolio.open_positions), 2)
+            allocations = {
+                trade.symbol: trade.effective_risk_fraction
+                for trade in portfolio.open_positions
+            }
+            self.assertGreater(allocations["SOLUSDT"], allocations["ETHUSDT"])
+
+    def test_allocator_v2_agreement_bonus_promotes_confirmed_htf_leader(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config = DummyConfig(output_dir=temp_dir)
+            portfolio = LivePaperPortfolio(config=config)
+            timestamp = pd.Timestamp("2026-01-01 12:00:00")
+            row = pd.Series(
+                {
+                    "close": 205.0,
+                    "low": 202.0,
+                    "high": 208.0,
+                    "ll2": 198.0,
+                    "ema2": 203.0,
+                    "ema3": 201.0,
+                    "session_vwap": 202.8,
+                    "body_strength": 1.9,
+                    "close_position": 0.86,
+                    "range_expansion_factor": 1.5,
+                    "vwap_distance_ratio": 0.005,
+                    "atr": 2.0,
+                },
+                name=timestamp,
+            )
+            raw_candidates = [
+                {
+                    "symbol": "SOLUSDT",
+                    "timestamp": timestamp,
+                    "side": "long",
+                    "row": row,
+                    "bias": "bullish",
+                    "score": 0.84,
+                    "selection_score": 0.84,
+                    "score_bucket": "0.8-0.9",
+                    "strategy_type": "htf_12h_moonshot",
+                    "signal_family": "htf_12h_moonshot",
+                    "risk_group": "htf_12h_moonshot",
+                    "group_risk_cap": 0.012,
+                    "apply_score_bucket_filters": False,
+                    "selection_threshold_offset": -0.05,
+                    "selection_min_threshold": 0.70,
+                    "selection_max_threshold": 0.95,
+                    "risk_fraction_override": 0.0035,
+                },
+                {
+                    "symbol": "SOLUSDT",
+                    "timestamp": timestamp,
+                    "side": "long",
+                    "row": row,
+                    "bias": "bullish",
+                    "score": 0.80,
+                    "selection_score": 0.80,
+                    "score_bucket": "0.8-0.9",
+                    "strategy_type": "htf_12h_rotation",
+                    "signal_family": "htf_12h_rotation",
+                    "risk_group": "htf_12h_rotation",
+                    "group_risk_cap": 0.006,
+                    "apply_score_bucket_filters": False,
+                    "selection_threshold_offset": -0.04,
+                    "selection_min_threshold": 0.70,
+                    "selection_max_threshold": 0.95,
+                    "risk_fraction_override": 0.0025,
+                },
+                {
+                    "symbol": "ETHUSDT",
+                    "timestamp": timestamp,
+                    "side": "long",
+                    "row": row,
+                    "bias": "bullish",
+                    "score": 0.88,
+                    "selection_score": 0.88,
+                    "score_bucket": "0.8-0.9",
+                    "strategy_type": "htf_12h_moonshot",
+                    "signal_family": "htf_12h_moonshot",
+                    "risk_group": "htf_12h_moonshot",
+                    "group_risk_cap": 0.012,
+                    "apply_score_bucket_filters": False,
+                    "selection_threshold_offset": -0.05,
+                    "selection_min_threshold": 0.70,
+                    "selection_max_threshold": 0.95,
+                    "risk_fraction_override": 0.0035,
+                },
+            ]
+            states = [
+                portfolio._build_candidate_selection_state(candidate, timestamp, index)
+                for index, candidate in enumerate(raw_candidates)
+            ]
+            allocated = portfolio._allocate_candidate_risk_fractions(
+                [state for state in states if state["reason"] is None]
+            )
+            htf_states = [
+                state for state in allocated if state["strategy_type"] == "htf_12h_moonshot"
+            ]
+            ranked_symbols = [state["candidate"]["symbol"] for state in htf_states]
+
+            self.assertEqual(ranked_symbols[0], "SOLUSDT")
+            self.assertGreater(
+                float(htf_states[0]["agreement_bonus"]),
+                0.0,
+            )
+
+    def test_allocator_v2_concentration_brake_reduces_core_rank_concentration(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config = DummyConfig(output_dir=temp_dir)
+            portfolio = LivePaperPortfolio(config=config)
+            timestamp = pd.Timestamp("2026-01-01 12:00:00")
+            row = pd.Series(
+                {
+                    "close": 105.0,
+                    "low": 104.0,
+                    "high": 106.0,
+                    "ll2": 100.0,
+                    "ema2": 104.5,
+                    "ema3": 104.0,
+                    "session_vwap": 104.3,
+                    "body_strength": 1.8,
+                    "close_position": 0.82,
+                    "range_expansion_factor": 1.3,
+                    "vwap_distance_ratio": 0.004,
+                    "atr": 1.5,
+                },
+                name=timestamp,
+            )
+            candidates = [
+                {
+                    "symbol": "BTCUSDT",
+                    "timestamp": timestamp,
+                    "side": "long",
+                    "row": row,
+                    "score": 0.95,
+                    "selection_score": 0.95,
+                    "score_bucket": "0.9-1.0",
+                    "strategy_type": "core",
+                    "signal_family": "core",
+                    "apply_score_bucket_filters": False,
+                    "risk_fraction_override": 0.0055,
+                },
+                {
+                    "symbol": "ETHUSDT",
+                    "timestamp": timestamp,
+                    "side": "long",
+                    "row": row,
+                    "score": 0.74,
+                    "selection_score": 0.74,
+                    "score_bucket": "0.8-0.9",
+                    "strategy_type": "core",
+                    "signal_family": "core",
+                    "apply_score_bucket_filters": False,
+                    "risk_fraction_override": 0.0055,
+                },
+            ]
+            normal_states = [
+                portfolio._build_candidate_selection_state(candidate, timestamp, index)
+                for index, candidate in enumerate(candidates)
+            ]
+            normal_allocated = portfolio._allocate_candidate_risk_fractions(normal_states)
+            normal_top_state = max(
+                normal_allocated,
+                key=lambda state: float(state["allocated_risk_fraction"] or 0.0),
+            )
+
+            stressed = LivePaperPortfolio(config=config)
+            stressed.reset_daily_state_if_needed(timestamp)
+            stressed.daily_closed_trades = 3
+            stressed.daily_closed_pnl = -120.0
+            stressed.day_start_equity = 20_000.0
+            stressed.daily_loss_streak = 3
+            stressed_states = [
+                stressed._build_candidate_selection_state(candidate.copy(), timestamp, index)
+                for index, candidate in enumerate(candidates)
+            ]
+            stressed_allocated = stressed._allocate_candidate_risk_fractions(
+                stressed_states
+            )
+            stressed_top_state = max(
+                stressed_allocated,
+                key=lambda state: float(state["allocated_risk_fraction"] or 0.0),
+            )
+
+            self.assertLess(
+                float(stressed_top_state["leader_dominance_boost"]),
+                float(normal_top_state["leader_dominance_boost"]),
+            )
+            self.assertLess(
+                float(stressed_top_state["allocation_priority"]),
+                float(normal_top_state["allocation_priority"]),
+            )
+            self.assertTrue(
+                all(
+                    bool(state["candidate"].get("allocation_brake_active"))
+                    for state in stressed_allocated
+                )
+            )
+
+    def test_snapshot_restore_preserves_allocator_concentration_brake_state(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config = DummyConfig(output_dir=temp_dir)
+            portfolio = LivePaperPortfolio(config=config)
+            timestamp = pd.Timestamp("2026-01-01 12:00:00")
+            portfolio.reset_daily_state_if_needed(timestamp)
+            portfolio.day_start_equity = 20_000.0
+            portfolio.daily_closed_trades = 4
+            portfolio.daily_closed_pnl = -140.0
+            portfolio.daily_loss_streak = 4
+
+            restored = LivePaperPortfolio(config=config)
+            restored.restore_state(portfolio.snapshot_state())
+            state = restored._allocator_concentration_state("core")
+
+            self.assertEqual(restored.daily_loss_streak, 4)
+            self.assertTrue(state["active"])
+            self.assertGreater(state["severity"], 0.0)
 
 
 if __name__ == "__main__":

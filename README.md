@@ -26,6 +26,8 @@ trade PnL.
 - [Timeframe Hierarchy](#timeframe-hierarchy)
 - [Configuration Model](#configuration-model)
 - [Current Research Baseline](#current-research-baseline)
+- [Allocator-V2 Status](#allocator-v2-status)
+- [Sequential Implementation Plan](#sequential-implementation-plan)
 - [Console Experience](#console-experience)
 - [Data Layer](#data-layer)
 - [Feature Layer](#feature-layer)
@@ -348,6 +350,7 @@ the locked gated baseline.
 | Lean edge selection | Optional `strategy.edge_selection` lookup table built from `main_edge_lab.py` |
 | Daily controls | Enabled by default: daily loss brake, target brake, risk cap, and trade-flow cap |
 | Recent control | Enabled: bucket and strategy health are driven by recent windows, not full-history averages |
+| Allocator v2 | Enabled in the active research branch: sleeve budgets, rank-normalized routing, leader-dominance shaping, HTF/rotation agreement bonus, and a daily concentration brake |
 | Convexity | Enabled: probe, promotion, and one earned add for validated trades |
 | HTF overlays | `swing_moonshot`, structural `htf_12h_moonshot`, and cross-sectional `htf_12h_rotation` are implemented and separately tracked |
 | Intraday moonshot | Implemented but disabled by default after failing broad historical validation |
@@ -609,6 +612,188 @@ So the current conclusion is:
 - `htf_12h_moonshot`: keep enabled
 - `htf_12h_rotation`: keep enabled as a calibrated sleeve, but treat it as a
   portfolio-routing problem rather than blindly stacking it into every branch
+
+#### Dedicated rotation-sleeve status
+
+The first broad full-stack rotation add-on failed because rotation was competing
+too directly with stronger sleeves. That is no longer the current interpretation.
+A dedicated rotation sleeve is now validated on the same recent regime:
+
+| Branch | Final Equity | PF | Median Daily PnL | Max DD |
+| --- | --- | --- | --- | --- |
+| `full_stack` | `EUR 22,745.59` | `1.1730` | `-EUR 0.270` | `-5.53%` |
+| `full_stack + rotation_sleeve` | `EUR 22,763.98` | `1.1813` | `-EUR 0.216` | `-3.92%` |
+
+That sleeve reroute only improved equity modestly (`+EUR 18.38`), but it also:
+
+- improved PF
+- improved daily distribution
+- reduced drawdown by `1.62` percentage points
+- preserved direct positive rotation contribution (`+EUR 625.26`)
+
+This matters because it shows the rotation problem is not missing edge. It is
+capital competition and routing discipline.
+
+## Allocator-V2 Status
+
+The current refactor focus is no longer signal invention. It is a capital brain
+that ranks valid opportunities cross-sectionally and then routes risk by sleeve,
+symbol, and current health.
+
+Allocator-v2 is now implemented in the shared live/backtest portfolio state
+machine with:
+
+- reserved sleeve budgets for `htf_12h_moonshot`, `htf_12h_rotation`, and
+  `swing_moonshot`
+- a shared flow pool for `core`
+- rank-normalized allocation inside each sleeve instead of simple pass/fail
+  sizing
+- leader-dominance shaping when one symbol materially outranks the rest
+- an HTF breakout + HTF rotation agreement bonus
+- a concentration brake that softens routing after clustered recent losses
+- checkpoint-safe validation so long scenario matrices can be stopped and
+  resumed without losing progress
+
+The starting allocator-v2 sleeve budget profile is:
+
+| Sleeve | Budget |
+| --- | --- |
+| `htf_12h_moonshot` | `0.012` |
+| `htf_12h_rotation` | `0.006` |
+| `swing_moonshot` | `0.003` |
+| Shared/core pool | `0.009` |
+
+That fits within the current `max_total_risk_fraction = 0.03`.
+
+### Calibrated recent-regime allocator-v2 result
+
+The current allocator-v2 calibration window is `2025-01-01` to `2026-05-22`.
+This is the most important live-like recent branch comparison so far:
+
+| Branch | Final Equity | PF | Avg R | Max DD | Median Daily PnL | Trades |
+| --- | --- | --- | --- | --- | --- | --- |
+| Baseline full stack | `EUR 23,007.25` | `1.1788` | `0.01178` | `-4.04%` | `-EUR 0.20` | `3,519` |
+| Allocator-v2, no agreement | `EUR 24,318.60` | `1.1633` | `0.01611` | `-12.08%` | `-EUR 0.56` | `3,510` |
+| Allocator-v2, calibrated agreement | `EUR 25,556.06` | `1.1868` | `0.01676` | `-7.60%` | `-EUR 0.56` | `3,472` |
+
+What this proves:
+
+- allocator-v2 is real and materially changes portfolio behavior
+- the calibrated agreement branch is the best allocator-v2 branch so far
+- return, PF, and average `R` can all improve through better routing
+- daily distribution and drawdown still remain below the intended income target
+
+The most important forensic split is the sleeve contribution mix in the best
+allocator-v2 branch:
+
+- `core`: `+EUR 4,059.48`
+- `htf_12h_rotation`: `+EUR 1,081.44`
+- `swing_moonshot`: `+EUR 235.67`
+- `htf_12h_moonshot`: `+EUR 179.47`
+
+That means the current allocator is concentrating better, but it is still
+concentrating too much into `core`. The capital brain is directionally right,
+but the opportunity set is still too narrow for HTF sleeves to dominate
+economically.
+
+In one line:
+
+> Allocator-v2 already improves capital concentration, but on the current
+> 9-symbol universe it still leans too hard on `core`, so the next problem is
+> opportunity scarcity and routing quality, not missing infrastructure.
+
+## Sequential Implementation Plan
+
+This repo is now at the point where discipline matters more than novelty. The
+system already has enough signal engines to keep learning from. The next work
+must happen one step at a time, with the existing stack frozen while the
+portfolio allocator is fed a better opportunity set.
+
+### Frozen current stack
+
+The following engines are considered implemented and should remain unchanged
+until the next validation step is complete:
+
+- `core`
+- `swing_moonshot`
+- `htf_12h_moonshot`
+- `htf_12h_rotation`
+- recent-control health gates
+- convexity probe/promote/add behavior
+- calibrated allocator-v2 with agreement bonus and concentration brake
+
+### What is intentionally deferred
+
+The following are explicitly **not** the next coding move:
+
+- a live `1H` execution sleeve
+- a live `6H` execution sleeve
+- broader moonshot-family invention
+- aggressive HTF pyramiding
+- cycle-based compounding
+- threshold loosening simply to force more trades
+
+### Next implementation sequence
+
+This is the current staged plan extracted from the allocator results and the
+`refactor.md` direction.
+
+1. Expand the scan universe to a clean Binance liquid universe.
+   Start with roughly `20-30` symbols, not `100` random coins.
+2. Keep the signal stack unchanged.
+   Reuse the current `core`, `swing`, `htf_12h_moonshot`,
+   `htf_12h_rotation`, and calibrated allocator-v2 agreement branch.
+3. Make the broader universe operationally safe.
+   Enforce liquidity filters, minimum history length, timestamp alignment after
+   resampling, and strict missing-bar / `NaN` controls.
+4. Validate the expanded-universe branch on the recent regime first.
+   Judge it against the current 9-symbol calibrated allocator-v2 baseline.
+5. Only if HTF sleeves remain too economically weak after broader opportunity
+   flow, run a `6H` candidate forward-return study.
+6. Only if the `6H` study proves unique positive edge, implement a true
+   `6H` live sleeve.
+7. Run a `1H` candidate study after `6H`, not before.
+   `1H` is more likely to overlap with `15m`, so it should be justified by
+   evidence rather than architecture excitement.
+8. Only after sleeve mix and routing are stable, add promotion logic and later
+   conservative HTF pyramiding.
+9. Only after monthly distribution improves and drawdown remains controlled,
+   add cycle-based compounding.
+
+### Why this order is deliberate
+
+The current bottleneck is not that the system lacks signals. It is that the
+allocator still does not have enough independent high-quality HTF leaders to
+route capital toward. On just 9 symbols, the best branch still pushes too much
+profit into `core`.
+
+So the immediate question is:
+
+> can the current calibrated allocator become more HTF-dominant and more
+> economically stable if it scans a broader but still liquid Binance universe?
+
+That is the next serious test. New timeframes come after that, not before.
+
+### Pass criteria for the next stage
+
+The expanded-universe validation should only be considered successful if it
+improves the metrics that matter for the business objective:
+
+- median daily PnL
+- recent `2025+` median daily PnL
+- profit factor
+- max drawdown
+- HTF and rotation contribution share
+- average monthly PnL
+- months `>= EUR 10k`
+- trade count staying controlled rather than exploding
+
+### Checkpointing discipline
+
+Every long validation in this sequence should remain checkpoint-safe. The
+system already supports resume-aware replay and scenario progress files. That
+is now a hard requirement, not a nice-to-have, because the heavier universe and
+future matrix work must be interruptible and resumable.
 
 ### Lean edge-selection layer
 

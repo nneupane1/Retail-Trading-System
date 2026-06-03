@@ -283,6 +283,90 @@
         "htf_12h_moonshot": ["long"],
         "htf_12h_rotation": ["long"]
       },
+      "strategy_sleeves": {
+        "htf_12h_moonshot": {
+          "enabled": true,
+          "reserved_risk_fraction": 0.012,
+          "max_new_positions_per_step": 2,
+          "block_if_symbol_has_other_strategy_position": false,
+          "ignore_global_step_cap": true
+        },
+        "htf_12h_rotation": {
+          "enabled": true,
+          "reserved_risk_fraction": 0.006,
+          "max_new_positions_per_step": 1,
+          "block_if_symbol_has_other_strategy_position": true,
+          "ignore_global_step_cap": true
+        },
+        "swing_moonshot": {
+          "enabled": true,
+          "reserved_risk_fraction": 0.003,
+          "max_new_positions_per_step": 1,
+          "block_if_symbol_has_other_strategy_position": false,
+          "ignore_global_step_cap": false
+        }
+      },
+      "allocator_v2": {
+        "enabled": true,
+        "leader_dominance": {
+          "enabled": true,
+          "min_gap": 0.10,
+          "boost": 0.12
+        },
+        "agreement_bonus": {
+          "enabled": true,
+          "pairs": [
+            {
+              "primary": "htf_12h_moonshot",
+              "secondary": "htf_12h_rotation",
+              "primary_bonus": 0.06,
+              "secondary_bonus": 0.00
+            }
+          ]
+        },
+        "concentration_brake": {
+          "enabled": true,
+          "min_closed_trades": 2,
+          "daily_loss_fraction_trigger": 0.0045,
+          "loss_streak_trigger": 3,
+          "budget_multiplier": 0.80,
+          "core_budget_multiplier": 0.55,
+          "priority_multiplier": 0.92,
+          "core_priority_multiplier": 0.78,
+          "leader_boost_multiplier": 0.45,
+          "uniform_weight_blend": 0.45
+        },
+        "sleeves": {
+          "core": {
+            "priority_multiplier": 0.78,
+            "rank_weights": [1.0, 0.45, 0.20],
+            "max_candidates": 3,
+            "max_risk_fraction_multiplier": 0.85,
+            "absolute_max_risk_fraction": 0.0025
+          },
+          "swing_moonshot": {
+            "priority_multiplier": 0.98,
+            "rank_weights": [1.0, 0.35],
+            "max_candidates": 2,
+            "max_risk_fraction_multiplier": 1.20,
+            "absolute_max_risk_fraction": 0.0030
+          },
+          "htf_12h_moonshot": {
+            "priority_multiplier": 1.24,
+            "rank_weights": [1.0, 0.50, 0.18],
+            "max_candidates": 3,
+            "max_risk_fraction_multiplier": 2.00,
+            "absolute_max_risk_fraction": 0.0085
+          },
+          "htf_12h_rotation": {
+            "priority_multiplier": 1.08,
+            "rank_weights": [1.0, 0.35],
+            "max_candidates": 2,
+            "max_risk_fraction_multiplier": 1.40,
+            "absolute_max_risk_fraction": 0.0040
+          }
+        }
+      },
       "disable_non_core_negative_strategies": true,
       "strategy_emergency_disable_min_trades": 8,
       "strategy_emergency_disable_avg_r": -0.20,

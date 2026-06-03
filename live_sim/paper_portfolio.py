@@ -190,12 +190,158 @@ class LivePaperPortfolio:
                 raw.get("strategy_allowed_sides", {}) or {}
             ).items()
         }
+        def _strategy_feature_enabled(strategy_type):
+            strategy_type = str(strategy_type or "core")
+            if strategy_type == "core":
+                return True
+            if not callable(getter):
+                return False
+            if strategy_type == "swing_moonshot":
+                return bool(
+                    getter("strategy", "moonshots", "swing", "enabled", default=False)
+                )
+            if strategy_type == "intraday_moonshot":
+                return bool(
+                    getter("strategy", "moonshots", "intraday", "enabled", default=False)
+                )
+            return bool(getter("strategy", strategy_type, "enabled", default=False))
+
+        self.strategy_sleeves = {}
+        for strategy_type, values in dict(raw.get("strategy_sleeves", {}) or {}).items():
+            if not _strategy_feature_enabled(strategy_type):
+                continue
+            sleeve = dict(values or {})
+            if not bool(sleeve.get("enabled", True)):
+                continue
+            self.strategy_sleeves[str(strategy_type)] = {
+                "reserved_risk_fraction": max(
+                    0.0,
+                    float(sleeve.get("reserved_risk_fraction", 0.0) or 0.0),
+                ),
+                "max_new_positions_per_step": (
+                    None
+                    if sleeve.get("max_new_positions_per_step") in (None, "")
+                    else int(sleeve.get("max_new_positions_per_step"))
+                ),
+                "block_if_symbol_has_other_strategy_position": bool(
+                    sleeve.get("block_if_symbol_has_other_strategy_position", False)
+                ),
+                "ignore_global_step_cap": bool(
+                    sleeve.get("ignore_global_step_cap", False)
+                ),
+            }
+        self.total_reserved_sleeve_risk_fraction = sum(
+            float(values.get("reserved_risk_fraction", 0.0) or 0.0)
+            for values in self.strategy_sleeves.values()
+        )
+        self.shared_pool_risk_fraction_cap = max(
+            0.0,
+            self.max_total_risk_fraction - self.total_reserved_sleeve_risk_fraction,
+        )
+        allocator_v2 = dict(raw.get("allocator_v2", {}) or {})
+        self.allocator_v2_enabled = bool(allocator_v2.get("enabled", False))
+        leader_dominance = dict(allocator_v2.get("leader_dominance", {}) or {})
+        self.allocator_v2_leader_enabled = bool(
+            leader_dominance.get("enabled", True)
+        )
+        self.allocator_v2_leader_min_gap = float(
+            leader_dominance.get("min_gap", 0.08)
+        )
+        self.allocator_v2_leader_boost = float(
+            leader_dominance.get("boost", 0.25)
+        )
+        agreement_bonus = dict(allocator_v2.get("agreement_bonus", {}) or {})
+        self.allocator_v2_agreement_enabled = bool(
+            agreement_bonus.get("enabled", True)
+        )
+        concentration_brake = dict(allocator_v2.get("concentration_brake", {}) or {})
+        self.allocator_v2_concentration_brake_enabled = bool(
+            concentration_brake.get("enabled", False)
+        )
+        self.allocator_v2_brake_min_closed_trades = int(
+            concentration_brake.get("min_closed_trades", 2) or 2
+        )
+        self.allocator_v2_brake_daily_loss_fraction_trigger = float(
+            concentration_brake.get("daily_loss_fraction_trigger", 0.005) or 0.005
+        )
+        self.allocator_v2_brake_loss_streak_trigger = int(
+            concentration_brake.get("loss_streak_trigger", 3) or 3
+        )
+        self.allocator_v2_brake_budget_multiplier = float(
+            concentration_brake.get("budget_multiplier", 0.75) or 0.75
+        )
+        self.allocator_v2_brake_core_budget_multiplier = float(
+            concentration_brake.get("core_budget_multiplier", 0.60) or 0.60
+        )
+        self.allocator_v2_brake_priority_multiplier = float(
+            concentration_brake.get("priority_multiplier", 0.90) or 0.90
+        )
+        self.allocator_v2_brake_core_priority_multiplier = float(
+            concentration_brake.get("core_priority_multiplier", 0.80) or 0.80
+        )
+        self.allocator_v2_brake_leader_boost_multiplier = float(
+            concentration_brake.get("leader_boost_multiplier", 0.40) or 0.40
+        )
+        self.allocator_v2_brake_uniform_weight_blend = float(
+            concentration_brake.get("uniform_weight_blend", 0.50) or 0.50
+        )
+        self.allocator_v2_agreement_pairs = []
+        for values in list(agreement_bonus.get("pairs") or []):
+            entry = dict(values or {})
+            primary = str(entry.get("primary") or "").strip()
+            secondary = str(entry.get("secondary") or "").strip()
+            if not primary or not secondary:
+                continue
+            self.allocator_v2_agreement_pairs.append(
+                {
+                    "primary": primary,
+                    "secondary": secondary,
+                    "primary_bonus": float(entry.get("primary_bonus", 0.10) or 0.10),
+                    "secondary_bonus": float(
+                        entry.get("secondary_bonus", 0.0) or 0.0
+                    ),
+                }
+            )
+        self.allocator_v2_sleeves = {}
+        for sleeve_name, values in dict(allocator_v2.get("sleeves", {}) or {}).items():
+            sleeve = dict(values or {})
+            rank_weights = []
+            for value in list(sleeve.get("rank_weights") or [1.0]):
+                try:
+                    numeric = float(value)
+                except (TypeError, ValueError):
+                    continue
+                if numeric > 0.0:
+                    rank_weights.append(numeric)
+            if not rank_weights:
+                rank_weights = [1.0]
+            max_candidates = sleeve.get("max_candidates")
+            self.allocator_v2_sleeves[str(sleeve_name)] = {
+                "priority_multiplier": float(
+                    sleeve.get("priority_multiplier", 1.0) or 1.0
+                ),
+                "rank_weights": rank_weights,
+                "max_candidates": (
+                    len(rank_weights)
+                    if max_candidates in (None, "")
+                    else max(1, int(max_candidates))
+                ),
+                "max_risk_fraction_multiplier": float(
+                    sleeve.get("max_risk_fraction_multiplier", 1.0) or 1.0
+                ),
+                "absolute_max_risk_fraction": (
+                    None
+                    if sleeve.get("absolute_max_risk_fraction") in (None, "")
+                    else float(sleeve.get("absolute_max_risk_fraction"))
+                ),
+            }
 
         self.current_trading_day = None
         self.day_start_equity = self.account.equity
         self.daily_entries_taken = 0
         self.daily_closed_trades = 0
         self.daily_closed_pnl = 0.0
+        self.daily_loss_streak = 0
         self.daily_history = []
 
         self.score_stats = defaultdict(
@@ -430,10 +576,20 @@ class LivePaperPortfolio:
             return False
 
         added_structural_risk = abs(float(entry_price) - float(trade.stop)) * float(add_size)
-        projected_total_risk = self._active_risk_fraction() + (
-            added_structural_risk / float(self.account.equity or 1.0)
-        )
+        added_risk_fraction = added_structural_risk / float(self.account.equity or 1.0)
+        projected_total_risk = self._active_risk_fraction() + added_risk_fraction
         if projected_total_risk > self.max_total_risk_fraction:
+            return False
+        strategy_sleeve_cap = self._strategy_reserved_risk_fraction(
+            getattr(trade, "strategy_type", "core")
+        )
+        if (
+            strategy_sleeve_cap > 0.0
+            and (
+                self._active_strategy_risk_fraction(getattr(trade, "strategy_type", "core"))
+                + added_risk_fraction
+            ) > strategy_sleeve_cap
+        ):
             return False
 
         risk_group = getattr(trade, "risk_group", None)
@@ -447,7 +603,7 @@ class LivePaperPortfolio:
             and group_cap not in (None, "")
             and (
                 self._active_risk_fraction(risk_group=risk_group)
-                + (added_structural_risk / float(self.account.equity or 1.0))
+                + added_risk_fraction
             ) > float(group_cap)
         ):
             return False
@@ -490,6 +646,30 @@ class LivePaperPortfolio:
             total += float(trade.total_risk_to_stop())
         return total / equity
 
+    def _active_strategy_risk_fraction(self, strategy_type):
+        equity = float(self.account.equity or 0.0)
+        if equity <= 0:
+            return 0.0
+        normalized = str(strategy_type or "core")
+        total = 0.0
+        for trade in self.open_positions:
+            if str(getattr(trade, "strategy_type", "core") or "core") != normalized:
+                continue
+            total += float(trade.total_risk_to_stop())
+        return total / equity
+
+    def _active_shared_risk_fraction(self):
+        equity = float(self.account.equity or 0.0)
+        if equity <= 0:
+            return 0.0
+        total = 0.0
+        for trade in self.open_positions:
+            strategy_type = str(getattr(trade, "strategy_type", "core") or "core")
+            if self._strategy_reserved_risk_fraction(strategy_type) > 0.0:
+                continue
+            total += float(trade.total_risk_to_stop())
+        return total / equity
+
     def _asset_open_count(self, symbol):
         return sum(1 for trade in self.open_positions if getattr(trade, "symbol", None) == symbol)
 
@@ -518,6 +698,33 @@ class LivePaperPortfolio:
         if allowed:
             return allowed
         return self.allowed_sides
+
+    def _strategy_sleeve_config(self, strategy_type):
+        return self.strategy_sleeves.get(str(strategy_type or "core"), {})
+
+    def _strategy_reserved_risk_fraction(self, strategy_type):
+        sleeve = self._strategy_sleeve_config(strategy_type)
+        return float(sleeve.get("reserved_risk_fraction", 0.0) or 0.0)
+
+    def _allocator_v2_sleeve_config(self, strategy_type):
+        return self.allocator_v2_sleeves.get(
+            str(strategy_type or "core"),
+            {
+                "priority_multiplier": 1.0,
+                "rank_weights": [1.0],
+                "max_candidates": 1,
+                "max_risk_fraction_multiplier": 1.0,
+                "absolute_max_risk_fraction": None,
+            },
+        )
+
+    def _symbol_has_other_strategy_open(self, symbol, strategy_type):
+        normalized = str(strategy_type or "core")
+        return any(
+            getattr(trade, "symbol", None) == symbol
+            and str(getattr(trade, "strategy_type", "core") or "core") != normalized
+            for trade in self.open_positions
+        )
 
     @staticmethod
     def _is_htf_strategy_type(strategy_type):
@@ -1081,6 +1288,7 @@ class LivePaperPortfolio:
         self.daily_entries_taken = 0
         self.daily_closed_trades = 0
         self.daily_closed_pnl = 0.0
+        self.daily_loss_streak = 0
 
     def adaptive_threshold(self, timestamp):
         threshold = float(self.current_threshold)
@@ -1146,6 +1354,8 @@ class LivePaperPortfolio:
             "threshold": threshold,
             "selected": selected,
             "selection_reason": selection_reason,
+            "strategy_sleeve_cap": candidate.get("strategy_sleeve_cap"),
+            "shared_pool_cap": candidate.get("shared_pool_cap"),
             "bucket_valid": candidate.get("bucket_valid"),
             "bucket_expected_return": candidate.get("bucket_expected_return"),
             "bucket_risk_mult": candidate.get("bucket_risk_mult"),
@@ -1153,7 +1363,419 @@ class LivePaperPortfolio:
             "bucket_health_source": candidate.get("bucket_health_source"),
             "strategy_health_mult": candidate.get("strategy_health_mult"),
             "strategy_health_source": candidate.get("strategy_health_source"),
+            "allocation_sleeve": candidate.get("allocation_sleeve"),
+            "allocation_priority": candidate.get("allocation_priority"),
+            "allocation_rank": candidate.get("allocation_rank"),
+            "allocated_risk_fraction": candidate.get("allocated_risk_fraction"),
+            "agreement_bonus": candidate.get("agreement_bonus"),
+            "leader_dominance_boost": candidate.get("leader_dominance_boost"),
+            "allocation_brake_active": candidate.get("allocation_brake_active"),
+            "allocation_brake_severity": candidate.get("allocation_brake_severity"),
         }
+
+    def _build_candidate_selection_state(self, candidate, timestamp, candidate_id):
+        threshold = float(self._threshold_for_candidate(candidate, timestamp))
+        score = float(candidate.get("score", 0.0) or 0.0)
+        selection_score = float(
+            candidate.get("selection_score", candidate.get("score", 0.0)) or 0.0
+        )
+        score_bucket = candidate.get("score_bucket")
+        strategy_type = str(candidate.get("strategy_type", "core") or "core")
+        apply_score_bucket_filters = bool(
+            candidate.get("apply_score_bucket_filters", True)
+        )
+        if apply_score_bucket_filters:
+            base_bucket_risk_mult = self._score_bucket_risk_multiplier(score_bucket)
+            bucket_health_mult, bucket_health_source = self._bucket_health_multiplier(
+                score_bucket
+            )
+            strategy_bucket_health_mult, strategy_bucket_health_source = (
+                self._strategy_bucket_health_multiplier(strategy_type, score_bucket)
+            )
+        else:
+            base_bucket_risk_mult = 1.0
+            bucket_health_mult, bucket_health_source = 1.0, "bypass"
+            strategy_bucket_health_mult, strategy_bucket_health_source = 1.0, "bypass"
+
+        strategy_health_mult, strategy_health_source = self._strategy_health_multiplier(
+            strategy_type
+        )
+        effective_bucket_risk_mult = (
+            base_bucket_risk_mult
+            * bucket_health_mult
+            * strategy_bucket_health_mult
+        )
+        risk_group = candidate.get("risk_group")
+        group_risk_cap = candidate.get("group_risk_cap")
+        max_strategy_positions = candidate.get("max_open_positions_for_strategy")
+        block_same_symbol_same_side = bool(
+            candidate.get("block_same_symbol_same_side", False)
+        )
+        sleeve_config = self._strategy_sleeve_config(strategy_type)
+        strategy_sleeve_cap = float(
+            candidate.get(
+                "strategy_sleeve_cap",
+                sleeve_config.get("reserved_risk_fraction", 0.0),
+            )
+            or 0.0
+        )
+        strategy_step_cap = candidate.get(
+            "max_new_positions_per_step_for_strategy",
+            sleeve_config.get("max_new_positions_per_step"),
+        )
+        block_if_symbol_has_other_strategy = bool(
+            candidate.get(
+                "block_if_symbol_has_other_strategy_position",
+                sleeve_config.get("block_if_symbol_has_other_strategy_position", False),
+            )
+        )
+        ignore_global_step_cap = bool(
+            candidate.get(
+                "ignore_global_step_cap",
+                sleeve_config.get("ignore_global_step_cap", False),
+            )
+        )
+
+        candidate["bucket_health_mult"] = bucket_health_mult
+        candidate["bucket_health_source"] = bucket_health_source
+        candidate["strategy_health_mult"] = strategy_health_mult
+        candidate["strategy_health_source"] = strategy_health_source
+        candidate["strategy_bucket_health_mult"] = strategy_bucket_health_mult
+        candidate["strategy_bucket_health_source"] = strategy_bucket_health_source
+        candidate["strategy_sleeve_cap"] = strategy_sleeve_cap
+        candidate["shared_pool_cap"] = self.shared_pool_risk_fraction_cap
+        candidate["allocation_sleeve"] = strategy_type
+
+        allowed_sides = self._allowed_sides_for_strategy(strategy_type)
+        reason = None
+        if str(candidate.get("side") or "long").lower() not in allowed_sides:
+            reason = "side_disabled"
+        elif apply_score_bucket_filters and effective_bucket_risk_mult <= 0.0:
+            reason = "score_bucket_filtered"
+        elif apply_score_bucket_filters and strategy_bucket_health_mult <= 0.0:
+            reason = "strategy_bucket_filtered"
+        elif strategy_health_mult <= 0.0:
+            reason = "strategy_health_filtered"
+        elif (
+            apply_score_bucket_filters
+            and strategy_type == "core"
+            and bucket_health_mult <= 0.0
+        ):
+            reason = "score_bucket_filtered"
+        elif selection_score < threshold:
+            reason = "score_below_threshold"
+        elif (
+            block_if_symbol_has_other_strategy
+            and self._symbol_has_other_strategy_open(candidate["symbol"], strategy_type)
+        ):
+            reason = "symbol_strategy_conflict"
+        elif self._asset_open_count(candidate["symbol"]) >= self.max_trades_per_asset:
+            reason = "asset_cap"
+        elif (
+            max_strategy_positions not in (None, "")
+            and self._strategy_open_count(strategy_type) >= int(max_strategy_positions)
+        ):
+            reason = "strategy_position_cap"
+        elif (
+            block_same_symbol_same_side
+            and self._same_symbol_same_side_open(
+                candidate["symbol"], candidate.get("side")
+            )
+        ):
+            reason = "same_symbol_same_side_cap"
+        elif self._direction_open_count(candidate["side"]) >= self.max_same_direction_positions:
+            reason = "direction_cap"
+
+        if candidate.get("risk_fraction_override") not in (None, ""):
+            base_risk_fraction = float(candidate.get("risk_fraction_override")) * float(
+                strategy_health_mult
+            )
+        else:
+            base_risk_fraction = self._risk_fraction_for_score(
+                score,
+                risk_mult=(
+                    float(candidate.get("risk_mult", 1.0) or 1.0)
+                    * effective_bucket_risk_mult
+                    * float(strategy_health_mult)
+                ),
+            )
+        convexity_enabled = self._convexity_enabled_for_candidate(candidate)
+
+        return {
+            "id": candidate_id,
+            "candidate": candidate,
+            "threshold": threshold,
+            "score": score,
+            "selection_score": selection_score,
+            "score_bucket": score_bucket,
+            "strategy_type": strategy_type,
+            "risk_group": risk_group,
+            "group_risk_cap": group_risk_cap,
+            "strategy_sleeve_cap": strategy_sleeve_cap,
+            "strategy_step_cap": strategy_step_cap,
+            "ignore_global_step_cap": ignore_global_step_cap,
+            "base_risk_fraction": float(base_risk_fraction or 0.0),
+            "convexity_enabled": convexity_enabled,
+            "probe_risk_fraction": (
+                float(base_risk_fraction or 0.0) * self.convexity_probe_fraction
+                if convexity_enabled
+                else float(base_risk_fraction or 0.0)
+            ),
+            "reason": reason,
+        }
+
+    def _build_allocator_agreement_bonus_map(self, states):
+        bonuses = defaultdict(float)
+        if not self.allocator_v2_enabled or not self.allocator_v2_agreement_enabled:
+            return bonuses
+
+        states_by_symbol = defaultdict(lambda: defaultdict(list))
+        for state in states:
+            states_by_symbol[str(state["candidate"].get("symbol"))][
+                state["strategy_type"]
+            ].append(state)
+
+        for grouped in states_by_symbol.values():
+            for pair in self.allocator_v2_agreement_pairs:
+                primary_states = grouped.get(pair["primary"], [])
+                secondary_states = grouped.get(pair["secondary"], [])
+                if not primary_states or not secondary_states:
+                    continue
+                for state in primary_states:
+                    bonuses[state["id"]] += float(pair["primary_bonus"])
+                for state in secondary_states:
+                    bonuses[state["id"]] += float(pair["secondary_bonus"])
+
+        return bonuses
+
+    def _allocator_concentration_state(self, sleeve_name):
+        default = {
+            "active": False,
+            "severity": 0.0,
+            "budget_multiplier": 1.0,
+            "priority_multiplier": 1.0,
+            "leader_boost_multiplier": 1.0,
+            "uniform_weight_blend": 0.0,
+        }
+        if (
+            not self.allocator_v2_enabled
+            or not self.allocator_v2_concentration_brake_enabled
+        ):
+            return default
+        if self.daily_closed_trades < self.allocator_v2_brake_min_closed_trades:
+            return default
+
+        day_start_equity = float(self.day_start_equity or 0.0)
+        realized_loss_fraction = 0.0
+        if day_start_equity > 0.0 and self.daily_closed_pnl < 0.0:
+            realized_loss_fraction = abs(float(self.daily_closed_pnl)) / day_start_equity
+
+        streak_scale = 0.0
+        if self.allocator_v2_brake_loss_streak_trigger > 0:
+            streak_scale = min(
+                1.0,
+                float(self.daily_loss_streak)
+                / float(self.allocator_v2_brake_loss_streak_trigger),
+            )
+        loss_scale = 0.0
+        if self.allocator_v2_brake_daily_loss_fraction_trigger > 0.0:
+            loss_scale = min(
+                1.0,
+                realized_loss_fraction
+                / float(self.allocator_v2_brake_daily_loss_fraction_trigger),
+            )
+        severity = max(streak_scale, loss_scale)
+        if severity <= 0.0:
+            return default
+
+        budget_floor = self.allocator_v2_brake_budget_multiplier
+        priority_floor = self.allocator_v2_brake_priority_multiplier
+        if str(sleeve_name or "core") == "core":
+            budget_floor = min(
+                budget_floor,
+                self.allocator_v2_brake_core_budget_multiplier,
+            )
+            priority_floor = min(
+                priority_floor,
+                self.allocator_v2_brake_core_priority_multiplier,
+            )
+
+        return {
+            "active": True,
+            "severity": float(severity),
+            "budget_multiplier": 1.0 - severity * (1.0 - float(budget_floor)),
+            "priority_multiplier": 1.0 - severity * (1.0 - float(priority_floor)),
+            "leader_boost_multiplier": 1.0
+            - severity
+            * (1.0 - float(self.allocator_v2_brake_leader_boost_multiplier)),
+            "uniform_weight_blend": severity
+            * float(self.allocator_v2_brake_uniform_weight_blend),
+        }
+
+    def _allocate_candidate_risk_fractions(self, states):
+        if not states:
+            return []
+
+        agreement_bonuses = self._build_allocator_agreement_bonus_map(states)
+        for state in states:
+            candidate = state["candidate"]
+            sleeve_name = str(state["strategy_type"] or "core")
+            sleeve_cfg = self._allocator_v2_sleeve_config(sleeve_name)
+            agreement_bonus = float(agreement_bonuses.get(state["id"], 0.0) or 0.0)
+            allocation_priority = (
+                float(state["selection_score"])
+                * float(sleeve_cfg.get("priority_multiplier", 1.0) or 1.0)
+                + agreement_bonus
+            )
+            state["allocation_sleeve"] = sleeve_name
+            state["allocation_priority"] = float(allocation_priority)
+            state["leader_dominance_boost"] = 0.0
+            state["agreement_bonus"] = agreement_bonus
+            candidate["allocation_sleeve"] = sleeve_name
+            candidate["agreement_bonus"] = agreement_bonus
+
+        if not self.allocator_v2_enabled:
+            ordered = sorted(
+                states,
+                key=lambda item: float(item["selection_score"]),
+                reverse=True,
+            )
+            for rank, state in enumerate(ordered, start=1):
+                state["allocation_priority"] = float(state["selection_score"])
+                state["allocation_rank"] = rank
+                state["allocated_risk_fraction"] = float(state["probe_risk_fraction"])
+                state["candidate"]["allocation_priority"] = state["allocation_priority"]
+                state["candidate"]["allocation_rank"] = rank
+                state["candidate"]["allocated_risk_fraction"] = state[
+                    "allocated_risk_fraction"
+                ]
+            return ordered
+
+        grouped = defaultdict(list)
+        for state in states:
+            grouped[state["allocation_sleeve"]].append(state)
+
+        allocated = []
+        for sleeve_name, group in grouped.items():
+            sleeve_cfg = self._allocator_v2_sleeve_config(sleeve_name)
+            concentration_state = self._allocator_concentration_state(sleeve_name)
+            ranked = sorted(
+                group,
+                key=lambda item: float(item["allocation_priority"]),
+                reverse=True,
+            )
+            if (
+                self.allocator_v2_leader_enabled
+                and len(ranked) > 1
+                and (
+                    float(ranked[0]["allocation_priority"])
+                    - float(ranked[1]["allocation_priority"])
+                )
+                >= self.allocator_v2_leader_min_gap
+            ):
+                gap = float(ranked[0]["allocation_priority"]) - float(
+                    ranked[1]["allocation_priority"]
+                )
+                gap_scale = min(
+                    1.0,
+                    gap / max(self.allocator_v2_leader_min_gap, 1e-9),
+                )
+                ranked[0]["leader_dominance_boost"] = (
+                    self.allocator_v2_leader_boost
+                    * gap_scale
+                    * float(concentration_state["leader_boost_multiplier"])
+                )
+                ranked[0]["allocation_priority"] *= (
+                    1.0 + ranked[0]["leader_dominance_boost"]
+                )
+                ranked = sorted(
+                    ranked,
+                    key=lambda item: float(item["allocation_priority"]),
+                    reverse=True,
+                )
+
+            rank_weights = list(sleeve_cfg.get("rank_weights") or [1.0])
+            max_candidates = int(
+                sleeve_cfg.get("max_candidates", len(rank_weights)) or len(rank_weights)
+            )
+            if len(rank_weights) < max_candidates:
+                rank_weights.extend(
+                    [rank_weights[-1]] * (max_candidates - len(rank_weights))
+                )
+            ranked = ranked[: max(1, max_candidates)]
+            if not ranked:
+                continue
+            blend = float(concentration_state["uniform_weight_blend"])
+            if blend > 0.0:
+                rank_weights = [
+                    ((1.0 - blend) * float(weight)) + blend
+                    for weight in rank_weights
+                ]
+            raw_weights = []
+            for rank_index, state in enumerate(ranked):
+                rank_weight = float(rank_weights[rank_index] or 0.0)
+                state["allocation_priority"] *= float(
+                    concentration_state["priority_multiplier"]
+                )
+                state["candidate"]["allocation_brake_active"] = bool(
+                    concentration_state["active"]
+                )
+                state["candidate"]["allocation_brake_severity"] = float(
+                    concentration_state["severity"]
+                )
+                raw_weights.append(
+                    rank_weight * max(float(state["allocation_priority"]), 0.01)
+                )
+
+            total_weight = sum(raw_weights)
+            sleeve_budget = float(
+                ranked[0]["strategy_sleeve_cap"]
+                if float(ranked[0]["strategy_sleeve_cap"] or 0.0) > 0.0
+                else self.shared_pool_risk_fraction_cap
+            )
+            sleeve_budget *= float(concentration_state["budget_multiplier"])
+            absolute_cap = sleeve_cfg.get("absolute_max_risk_fraction")
+            risk_multiplier_cap = float(
+                sleeve_cfg.get("max_risk_fraction_multiplier", 1.0) or 1.0
+            )
+            for rank_index, state in enumerate(ranked):
+                normalized_weight = (
+                    raw_weights[rank_index] / total_weight if total_weight > 0.0 else 0.0
+                )
+                allocated_fraction = sleeve_budget * normalized_weight
+                allocated_fraction = min(
+                    allocated_fraction,
+                    float(state["base_risk_fraction"]) * risk_multiplier_cap,
+                )
+                if absolute_cap not in (None, ""):
+                    allocated_fraction = min(
+                        allocated_fraction, float(absolute_cap or 0.0)
+                    )
+                state["allocation_rank"] = rank_index + 1
+                state["allocated_risk_fraction"] = max(
+                    0.0, float(allocated_fraction or 0.0)
+                )
+                state["candidate"]["allocation_priority"] = state["allocation_priority"]
+                state["candidate"]["allocation_rank"] = state["allocation_rank"]
+                state["candidate"]["allocated_risk_fraction"] = state[
+                    "allocated_risk_fraction"
+                ]
+                state["candidate"]["leader_dominance_boost"] = state[
+                    "leader_dominance_boost"
+                ]
+                state["candidate"]["allocation_brake_active"] = bool(
+                    concentration_state["active"]
+                )
+                state["candidate"]["allocation_brake_severity"] = float(
+                    concentration_state["severity"]
+                )
+                allocated.append(state)
+
+        return sorted(
+            allocated,
+            key=lambda item: float(item["allocation_priority"]),
+            reverse=True,
+        )
 
     def _register_score_outcome(self, trade):
         score_bucket = getattr(trade, "score_bucket", None) or score_bucket_label(
@@ -1302,6 +1924,7 @@ class LivePaperPortfolio:
                 "daily_entries_taken": self.daily_entries_taken,
                 "daily_closed_trades": self.daily_closed_trades,
                 "daily_closed_pnl": self.daily_closed_pnl,
+                "daily_loss_streak": self.daily_loss_streak,
                 "current_threshold": self.current_threshold,
                 "current_threshold_floor": self.current_threshold_floor,
                 "current_threshold_source": self.current_threshold_source,
@@ -1371,6 +1994,7 @@ class LivePaperPortfolio:
             "daily_entries_taken": self.daily_entries_taken,
             "daily_closed_trades": self.daily_closed_trades,
             "daily_closed_pnl": self.daily_closed_pnl,
+            "daily_loss_streak": self.daily_loss_streak,
             "daily_history": [
                 {
                     **dict(row),
@@ -1456,6 +2080,9 @@ class LivePaperPortfolio:
         )
         self.daily_closed_pnl = float(
             snapshot.get("daily_closed_pnl", self.daily_closed_pnl)
+        )
+        self.daily_loss_streak = int(
+            snapshot.get("daily_loss_streak", self.daily_loss_streak)
         )
         self.daily_history = [
             {
@@ -1568,7 +2195,12 @@ class LivePaperPortfolio:
         trade.close(row, exit_price=exit_price)
         self.account.update(trade)
         self.daily_closed_trades += 1
-        self.daily_closed_pnl += float(getattr(trade, "pnl", 0.0) or 0.0)
+        realized_pnl = float(getattr(trade, "pnl", 0.0) or 0.0)
+        self.daily_closed_pnl += realized_pnl
+        if realized_pnl > 0.0:
+            self.daily_loss_streak = 0
+        else:
+            self.daily_loss_streak += 1
         self._register_score_outcome(trade)
         if self.trade_logger is not None:
             self.trade_logger.log_trade(trade)
@@ -1703,238 +2335,230 @@ class LivePaperPortfolio:
                 reverse=True,
             )[:3]
         ]
-
-        ordered = sorted(
-            candidates,
-            key=lambda item: float(item.get("selection_score", item.get("score", 0.0))),
-            reverse=True,
-        )
+        states = [
+            self._build_candidate_selection_state(candidate, timestamp, candidate_id=index)
+            for index, candidate in enumerate(candidates)
+        ]
+        eligible_states = [state for state in states if state["reason"] is None]
+        ordered_states = self._allocate_candidate_risk_fractions(eligible_states)
+        allocated_state_ids = {state["id"] for state in ordered_states}
+        final_reason_by_id = {
+            state["id"]: str(state["reason"])
+            for state in states
+            if state["reason"] is not None
+        }
         opened_this_step = 0
+        opened_by_strategy = defaultdict(int)
 
-        for candidate in ordered:
-            reason = "score_below_threshold"
-            selected = False
-            threshold = self._threshold_for_candidate(candidate, timestamp)
-            score = float(candidate.get("score", 0.0) or 0.0)
-            selection_score = float(
-                candidate.get("selection_score", candidate.get("score", 0.0)) or 0.0
-            )
-            score_bucket = candidate.get("score_bucket")
-            strategy_type = str(candidate.get("strategy_type", "core") or "core")
-            apply_score_bucket_filters = bool(candidate.get("apply_score_bucket_filters", True))
-            if apply_score_bucket_filters:
-                base_bucket_risk_mult = self._score_bucket_risk_multiplier(score_bucket)
-                bucket_health_mult, bucket_health_source = self._bucket_health_multiplier(
-                    score_bucket
-                )
-                strategy_bucket_health_mult, strategy_bucket_health_source = (
-                    self._strategy_bucket_health_multiplier(strategy_type, score_bucket)
-                )
-            else:
-                base_bucket_risk_mult = 1.0
-                bucket_health_mult, bucket_health_source = 1.0, "bypass"
-            strategy_health_mult, strategy_health_source = self._strategy_health_multiplier(
-                strategy_type
-            )
-            if not apply_score_bucket_filters:
-                strategy_bucket_health_mult, strategy_bucket_health_source = 1.0, "bypass"
-            effective_bucket_risk_mult = (
-                base_bucket_risk_mult
-                * bucket_health_mult
-                * strategy_bucket_health_mult
-            )
-            risk_group = candidate.get("risk_group")
-            group_risk_cap = candidate.get("group_risk_cap")
-            max_strategy_positions = candidate.get("max_open_positions_for_strategy")
-            block_same_symbol_same_side = bool(candidate.get("block_same_symbol_same_side", False))
-            candidate["bucket_health_mult"] = bucket_health_mult
-            candidate["bucket_health_source"] = bucket_health_source
-            candidate["strategy_health_mult"] = strategy_health_mult
-            candidate["strategy_health_source"] = strategy_health_source
-            candidate["strategy_bucket_health_mult"] = strategy_bucket_health_mult
-            candidate["strategy_bucket_health_source"] = strategy_bucket_health_source
-
-            allowed_sides = self._allowed_sides_for_strategy(strategy_type)
-            if str(candidate.get("side") or "long").lower() not in allowed_sides:
-                reason = "side_disabled"
-            elif apply_score_bucket_filters and effective_bucket_risk_mult <= 0.0:
-                reason = "score_bucket_filtered"
-            elif apply_score_bucket_filters and strategy_bucket_health_mult <= 0.0:
-                reason = "strategy_bucket_filtered"
-            elif strategy_health_mult <= 0.0:
-                reason = "strategy_health_filtered"
-            elif apply_score_bucket_filters and strategy_type == "core" and bucket_health_mult <= 0.0:
-                reason = "score_bucket_filtered"
-            elif selection_score < threshold:
-                reason = "score_below_threshold"
-            elif opened_this_step >= self.max_new_positions_per_step:
-                reason = "step_position_cap"
-            elif self._asset_open_count(candidate["symbol"]) >= self.max_trades_per_asset:
-                reason = "asset_cap"
-            elif (
-                max_strategy_positions not in (None, "")
-                and self._strategy_open_count(strategy_type) >= int(max_strategy_positions)
+        for state in ordered_states:
+            candidate = state["candidate"]
+            state_id = state["id"]
+            strategy_type = state["strategy_type"]
+            risk_group = state["risk_group"]
+            group_risk_cap = state["group_risk_cap"]
+            strategy_sleeve_cap = float(state["strategy_sleeve_cap"] or 0.0)
+            strategy_step_cap = state["strategy_step_cap"]
+            ignore_global_step_cap = bool(state["ignore_global_step_cap"])
+            if state["allocated_risk_fraction"] <= 0.0:
+                final_reason_by_id[state_id] = "allocator_zero_risk"
+                continue
+            if self.daily_entries_taken >= self.max_trades_per_day:
+                final_reason_by_id[state_id] = "daily_trade_cap"
+                continue
+            if (
+                strategy_step_cap not in (None, "")
+                and opened_by_strategy[strategy_type] >= int(strategy_step_cap)
             ):
-                reason = "strategy_position_cap"
-            elif (
-                block_same_symbol_same_side
-                and self._same_symbol_same_side_open(candidate["symbol"], candidate.get("side"))
+                final_reason_by_id[state_id] = "strategy_step_cap"
+                continue
+            if (
+                not ignore_global_step_cap
+                and opened_this_step >= self.max_new_positions_per_step
             ):
-                reason = "same_symbol_same_side_cap"
-            elif self._direction_open_count(candidate["side"]) >= self.max_same_direction_positions:
-                reason = "direction_cap"
-            else:
-                if candidate.get("risk_fraction_override") not in (None, ""):
-                    base_risk_fraction = float(candidate.get("risk_fraction_override")) * float(
-                        strategy_health_mult
-                    )
-                else:
-                    base_risk_fraction = self._risk_fraction_for_score(
-                        score,
-                        risk_mult=(
-                            float(candidate.get("risk_mult", 1.0) or 1.0)
-                            * effective_bucket_risk_mult
-                            * float(strategy_health_mult)
-                        ),
-                    )
-                convexity_enabled = self._convexity_enabled_for_candidate(candidate)
-                risk_fraction = (
-                    base_risk_fraction * self.convexity_probe_fraction
-                    if convexity_enabled
-                    else base_risk_fraction
-                )
-                projected_total_risk = self._active_risk_fraction() + risk_fraction
-                if projected_total_risk > self.max_total_risk_fraction:
-                    reason = "risk_cap"
-                elif (
-                    risk_group
-                    and group_risk_cap not in (None, "")
-                    and (self._active_risk_fraction(risk_group=risk_group) + risk_fraction)
-                    > float(group_risk_cap)
-                ):
-                    reason = "strategy_risk_cap"
-                else:
-                    row = candidate["row"]
-                    trade = Trade(
-                        row=row,
-                        score=score,
-                        side=candidate["side"],
-                        config=self.config,
-                    )
-                    stop_price = float(candidate.get("stop_price_override", trade.stop) or trade.stop)
-                    size = self.position_sizer.calculate(
-                        equity=self.account.equity,
-                        risk_per_trade=risk_fraction,
-                        entry_price=row["close"],
-                        stop_price=stop_price,
-                    )
-                    if size <= 0:
-                        reason = "invalid_size"
-                    else:
-                        if candidate.get("stop_price_override") not in (None, ""):
-                            trade.stop = stop_price
-                            trade.active_stop = stop_price
-                            trade.R = abs(float(trade.entry_price) - float(stop_price))
-                        trade.annotate_live_scoring(
-                            symbol=candidate["symbol"],
-                            opportunity_score=score,
-                            score_bucket=candidate.get("score_bucket"),
-                            momentum_rank=candidate.get("momentum_rank"),
-                            feature_values=candidate.get("feature_values"),
-                            strategy_type=candidate.get("strategy_type"),
-                            risk_group=candidate.get("risk_group"),
-                            selection_score=selection_score,
-                            moonshot_score=candidate.get("moonshot_score"),
-                            range_expansion_factor=candidate.get("range_expansion_factor"),
-                        )
-                        trade.annotate_signal_family(
-                            candidate.get("signal_family", "live_paper"),
-                            pressure_score=None,
-                        )
-                        trade.annotate_edge_bucket(
-                            edge_type=candidate.get("edge_type"),
-                            body_bucket=candidate.get("body_bucket"),
-                            vwap_bucket=candidate.get("vwap_bucket"),
-                            bucket_key=candidate.get("bucket_key_text"),
-                            bucket_expected_return=candidate.get("bucket_expected_return"),
-                            bucket_risk_mult=candidate.get("bucket_risk_mult"),
-                        )
-                        trade.annotate_weighted_context(
-                            score_norm=score,
-                            momentum_strength=candidate.get("momentum_rank"),
-                            final_strength=score,
-                            bias_weight=None,
-                            regime_weight=None,
-                            event_bonus=None,
-                        )
-                        trade.annotate_entry_context(
-                            bias=candidate.get("bias"),
-                            regime_score=None,
-                            regime_class=None,
-                            entry_threshold=threshold,
-                        )
-                        trade.annotate_risk_context(
-                            equity_at_entry=self.account.equity,
-                            entry_risk_multiplier=candidate.get("risk_mult", 1.0),
-                            runtime_risk_multiplier=(
-                                float(bucket_health_mult) * float(strategy_health_mult)
-                            ),
-                            intended_risk_per_trade=base_risk_fraction,
-                            effective_risk_fraction=risk_fraction,
-                        )
-                        trade.annotate_edge_execution_profile(
-                            **dict(candidate.get("execution_profile") or {})
-                        )
-                        if candidate.get("htf_signal_family") is not None:
-                            trade.annotate_htf_context(
-                                signal_family=candidate.get("htf_signal_family"),
-                                htf_score=candidate.get("htf_score"),
-                                context_1d=candidate.get("htf_context_1d"),
-                                context_1w=candidate.get("htf_context_1w"),
-                                entry_reason=candidate.get("htf_entry_reason"),
-                                stop_reason=candidate.get("htf_stop_reason"),
-                                trailing_state=candidate.get("htf_trailing_state"),
-                                decay_reason=candidate.get("htf_decay_reason"),
-                                candidate_rank=candidate.get("htf_candidate_rank"),
-                            )
-                        trade.add_entry(row["close"], size)
-                        trade.conditions["group_risk_cap"] = group_risk_cap
-                        if convexity_enabled:
-                            base_risk_amount = float(trade.equity_at_entry or 0.0) * float(
-                                base_risk_fraction
-                            )
-                            trade.initial_risk_amount = base_risk_amount
-                            trade.annotate_convexity_profile(
-                                enabled=True,
-                                state="probe",
-                                stage=0,
-                                base_risk_fraction=base_risk_fraction,
-                                probe_fraction=self.convexity_probe_fraction,
-                                target_risk_fraction=base_risk_fraction,
-                                base_risk_amount=base_risk_amount,
-                                promote_target_multiple=self.convexity_promote_target_multiple,
-                                add_target_multiple=self.convexity_add_target_multiple,
-                                max_target_multiple=self.convexity_max_target_multiple,
-                                add_count=0,
-                                last_add_bar=0,
-                            )
-                        self.open_positions.append(trade)
-                        self.daily_entries_taken += 1
-                        opened_this_step += 1
-                        selected = True
-                        reason = "opened"
+                final_reason_by_id[state_id] = "step_position_cap"
+                continue
 
+            risk_fraction = float(state["allocated_risk_fraction"])
+            projected_total_risk = self._active_risk_fraction() + risk_fraction
+            projected_group_risk = (
+                self._active_risk_fraction(risk_group=risk_group) + risk_fraction
+                if risk_group and group_risk_cap not in (None, "")
+                else None
+            )
+            projected_strategy_risk = (
+                self._active_strategy_risk_fraction(strategy_type) + risk_fraction
+            )
+            projected_shared_risk = self._active_shared_risk_fraction() + risk_fraction
+            if (
+                strategy_sleeve_cap > 0.0
+                and projected_total_risk > self.max_total_risk_fraction
+            ):
+                final_reason_by_id[state_id] = "risk_cap"
+                continue
+            if (
+                strategy_sleeve_cap > 0.0
+                and projected_strategy_risk > strategy_sleeve_cap
+            ):
+                final_reason_by_id[state_id] = "strategy_sleeve_cap"
+                continue
+            if (
+                strategy_sleeve_cap <= 0.0
+                and self.total_reserved_sleeve_risk_fraction > 0.0
+                and projected_shared_risk > self.shared_pool_risk_fraction_cap
+            ):
+                final_reason_by_id[state_id] = "shared_risk_cap"
+                continue
+            if projected_total_risk > self.max_total_risk_fraction:
+                final_reason_by_id[state_id] = "risk_cap"
+                continue
+            if (
+                projected_group_risk is not None
+                and projected_group_risk > float(group_risk_cap)
+            ):
+                final_reason_by_id[state_id] = "strategy_risk_cap"
+                continue
+
+            row = candidate["row"]
+            trade = Trade(
+                row=row,
+                score=state["score"],
+                side=candidate["side"],
+                config=self.config,
+            )
+            stop_price = float(
+                candidate.get("stop_price_override", trade.stop) or trade.stop
+            )
+            size = self.position_sizer.calculate(
+                equity=self.account.equity,
+                risk_per_trade=risk_fraction,
+                entry_price=row["close"],
+                stop_price=stop_price,
+            )
+            if size <= 0:
+                final_reason_by_id[state_id] = "invalid_size"
+                continue
+
+            if candidate.get("stop_price_override") not in (None, ""):
+                trade.stop = stop_price
+                trade.active_stop = stop_price
+                trade.R = abs(float(trade.entry_price) - float(stop_price))
+            trade.annotate_live_scoring(
+                symbol=candidate["symbol"],
+                opportunity_score=state["score"],
+                score_bucket=candidate.get("score_bucket"),
+                momentum_rank=candidate.get("momentum_rank"),
+                feature_values=candidate.get("feature_values"),
+                strategy_type=candidate.get("strategy_type"),
+                risk_group=candidate.get("risk_group"),
+                selection_score=state["selection_score"],
+                moonshot_score=candidate.get("moonshot_score"),
+                range_expansion_factor=candidate.get("range_expansion_factor"),
+            )
+            trade.annotate_signal_family(
+                candidate.get("signal_family", "live_paper"),
+                pressure_score=None,
+            )
+            trade.annotate_edge_bucket(
+                edge_type=candidate.get("edge_type"),
+                body_bucket=candidate.get("body_bucket"),
+                vwap_bucket=candidate.get("vwap_bucket"),
+                bucket_key=candidate.get("bucket_key_text"),
+                bucket_expected_return=candidate.get("bucket_expected_return"),
+                bucket_risk_mult=candidate.get("bucket_risk_mult"),
+            )
+            trade.annotate_weighted_context(
+                score_norm=state["score"],
+                momentum_strength=candidate.get("momentum_rank"),
+                final_strength=state["score"],
+                bias_weight=None,
+                regime_weight=None,
+                event_bonus=None,
+            )
+            trade.annotate_entry_context(
+                bias=candidate.get("bias"),
+                regime_score=None,
+                regime_class=None,
+                entry_threshold=state["threshold"],
+            )
+            trade.annotate_risk_context(
+                equity_at_entry=self.account.equity,
+                entry_risk_multiplier=candidate.get("risk_mult", 1.0),
+                runtime_risk_multiplier=float(
+                    candidate.get("bucket_health_mult", 1.0)
+                )
+                * float(candidate.get("strategy_health_mult", 1.0)),
+                intended_risk_per_trade=state["base_risk_fraction"],
+                effective_risk_fraction=risk_fraction,
+            )
+            trade.annotate_edge_execution_profile(
+                **dict(candidate.get("execution_profile") or {})
+            )
+            if candidate.get("htf_signal_family") is not None:
+                trade.annotate_htf_context(
+                    signal_family=candidate.get("htf_signal_family"),
+                    htf_score=candidate.get("htf_score"),
+                    context_1d=candidate.get("htf_context_1d"),
+                    context_1w=candidate.get("htf_context_1w"),
+                    entry_reason=candidate.get("htf_entry_reason"),
+                    stop_reason=candidate.get("htf_stop_reason"),
+                    trailing_state=candidate.get("htf_trailing_state"),
+                    decay_reason=candidate.get("htf_decay_reason"),
+                    candidate_rank=candidate.get("htf_candidate_rank"),
+                )
+            trade.add_entry(row["close"], size)
+            trade.conditions["group_risk_cap"] = group_risk_cap
+            trade.conditions["strategy_sleeve_cap"] = strategy_sleeve_cap
+            trade.conditions["allocation_sleeve"] = candidate.get("allocation_sleeve")
+            trade.conditions["allocation_rank"] = candidate.get("allocation_rank")
+            trade.conditions["allocation_priority"] = candidate.get(
+                "allocation_priority"
+            )
+            if (
+                strategy_sleeve_cap <= 0.0
+                and self.total_reserved_sleeve_risk_fraction > 0.0
+            ):
+                trade.conditions["shared_pool_cap"] = self.shared_pool_risk_fraction_cap
+            if state["convexity_enabled"]:
+                base_risk_amount = float(trade.equity_at_entry or 0.0) * float(
+                    state["base_risk_fraction"]
+                )
+                trade.initial_risk_amount = base_risk_amount
+                trade.annotate_convexity_profile(
+                    enabled=True,
+                    state="probe",
+                    stage=0,
+                    base_risk_fraction=state["base_risk_fraction"],
+                    probe_fraction=self.convexity_probe_fraction,
+                    target_risk_fraction=state["base_risk_fraction"],
+                    base_risk_amount=base_risk_amount,
+                    promote_target_multiple=self.convexity_promote_target_multiple,
+                    add_target_multiple=self.convexity_add_target_multiple,
+                    max_target_multiple=self.convexity_max_target_multiple,
+                    add_count=0,
+                    last_add_bar=0,
+                )
+            self.open_positions.append(trade)
+            self.daily_entries_taken += 1
+            opened_this_step += 1
+            opened_by_strategy[strategy_type] += 1
+            final_reason_by_id[state_id] = "opened"
+
+        for state in states:
+            candidate = state["candidate"]
+            reason = final_reason_by_id.get(state["id"])
+            if reason is None:
+                if state["id"] in allocated_state_ids:
+                    reason = "allocator_not_selected"
+                else:
+                    reason = "allocator_rank_filtered"
             if self.signal_logger is not None:
                 self.signal_logger.log_signal(
                     self.build_signal_log_row(
                         candidate,
-                        threshold=threshold,
-                        selected=selected,
+                        threshold=state["threshold"],
+                        selected=(reason == "opened"),
                         selection_reason=reason,
                     )
                 )
-
-            if self.daily_entries_taken >= self.max_trades_per_day:
-                break
 
         self._write_state_artifacts()
