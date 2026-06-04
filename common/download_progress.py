@@ -1,5 +1,6 @@
 """Rich-based live console display for historical downloads."""
 
+import builtins
 from collections import deque
 from datetime import datetime
 
@@ -49,6 +50,26 @@ class DownloadProgressDisplay:
         self.task_id = None
         self.events = deque(maxlen=8)
         self.state = {}
+
+    def _disable_due_to_encoding(self, exc):
+        """Fall back to plain console-safe logging when Rich hits encoding limits."""
+        try:
+            if self.live is not None:
+                self.live.stop()
+        except Exception:  # pragma: no cover - defensive cleanup only
+            pass
+
+        self.live = None
+        self.progress = None
+        self.task_id = None
+        self.enabled = False
+        self.console = None
+
+        builtins.print(
+            "Rich download progress disabled due to console encoding limits; "
+            "falling back to plain progress output."
+        )
+        builtins.print(f"Reason: {exc}")
 
     def start(
         self,
@@ -108,13 +129,17 @@ class DownloadProgressDisplay:
             completed=initial_progress_pct,
         )
 
-        self.live = Live(
-            self._build_renderable(),
-            console=self.console,
-            refresh_per_second=6,
-            transient=False,
-        )
-        self.live.start()
+        try:
+            self.live = Live(
+                self._build_renderable(),
+                console=self.console,
+                refresh_per_second=6,
+                transient=False,
+            )
+            self.live.start()
+        except UnicodeEncodeError as exc:
+            self._disable_due_to_encoding(exc)
+            return
 
         if resumed:
             self.add_event(
@@ -313,4 +338,7 @@ class DownloadProgressDisplay:
 
     def refresh(self):
         if self.enabled and self.live is not None:
-            self.live.update(self._build_renderable(), refresh=True)
+            try:
+                self.live.update(self._build_renderable(), refresh=True)
+            except UnicodeEncodeError as exc:
+                self._disable_due_to_encoding(exc)
