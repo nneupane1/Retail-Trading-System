@@ -111,6 +111,7 @@ Current active research branch:
 - calibrated allocator-v2 agreement branch
 - `15m` core
 - `swing_moonshot`
+- `htf_12h_standard`
 - `htf_12h_moonshot`
 - `htf_12h_rotation`
 - convexity probe/promote/add behavior
@@ -161,6 +162,7 @@ So the current blocker is:
 | --- | --- | --- | --- | --- |
 | Core | `15m` | Tactical flow and frequent opportunities | Active | Shared/core pool |
 | Swing moonshot | `15m` with HTF context | Medium-convex participation | Active | Reserved sleeve |
+| HTF standard | `12H` | Normal higher-timeframe continuation and pullback participation | Active | Reserved sleeve |
 | HTF moonshot | `12H` | Structural trend birth | Active | Reserved sleeve |
 | HTF rotation | `12H` cross-sectional | Leader reinforcement | Active | Reserved sleeve |
 | `1H` execution | `1H` | Premium intraday trend layer | Dormant scaffold | Not routed |
@@ -203,6 +205,7 @@ can find large moves, but it is too sparse to carry the whole business alone.
 The repo therefore combines:
 
 - a `15m` core for tactical flow and day-to-day market participation
+- a normal `12H` sleeve for slower but still frequent higher-timeframe profit opportunities
 - higher-timeframe sleeves for structural leaders and convex multi-day moves
 - an allocator layer that decides how much the current market deserves from
   each sleeve
@@ -342,13 +345,15 @@ flowchart TD
 
     C1 --> D1[15m core candidates]
     C1 --> D2[Swing moonshot candidates]
-    C4 --> D3[12H structural HTF candidates]
-    C4 --> D4[12H rotation leader candidates]
+    C4 --> D3[12H standard candidates]
+    C4 --> D4[12H structural HTF candidates]
+    C4 --> D5[12H rotation leader candidates]
 
     D1 --> E1[Recent health gates]
     D2 --> E1
     D3 --> E1
     D4 --> E1
+    D5 --> E1
     C2 --> E1
     C3 --> E1
 
@@ -393,6 +398,7 @@ sequence in both historical replay and live paper trading.
 4. It generates candidate sleeves rather than one monolithic signal:
    - `core` for dense `15m` flow
    - `swing_moonshot` for slower convex participation
+   - `htf_12h_standard` for normal `12H` continuation and pullback trades
    - `htf_12h_moonshot` for structural higher-timeframe breakouts
    - `htf_12h_rotation` for cross-sectional leader reinforcement
 5. It runs recent bucket and strategy health gates, duplicate-exposure checks,
@@ -612,7 +618,7 @@ the locked gated baseline.
 | Recent control | Enabled: bucket and strategy health are driven by recent windows, not full-history averages |
 | Allocator v2 | Enabled in the active research branch: sleeve budgets, rank-normalized routing, leader-dominance shaping, HTF/rotation agreement bonus, and a daily concentration brake |
 | Convexity | Enabled: probe, promotion, and one earned add for validated trades |
-| HTF overlays | `swing_moonshot`, structural `htf_12h_moonshot`, and cross-sectional `htf_12h_rotation` are implemented and separately tracked |
+| HTF overlays | `swing_moonshot`, `htf_12h_standard`, structural `htf_12h_moonshot`, and cross-sectional `htf_12h_rotation` are implemented and separately tracked |
 | Intraday moonshot | Implemented but disabled by default after failing broad historical validation |
 | Exploration layer | Implemented but `strategy.exploration.enabled = false` by default |
 
@@ -626,6 +632,7 @@ engine with:
 - `15m` weighted core flow
 - recency-aware bucket and strategy control
 - convexity behavior that starts small and earns size only after proof
+- normal `12H` higher-timeframe participation through `htf_12h_standard`
 - structural `12H` moonshot participation
 - a separate `12H` cross-sectional rotation sleeve for leader reinforcement
 - dormant `1H` and `6H` scaffolds that exist in code/config but are not wired
@@ -756,6 +763,7 @@ The currently recognized strategy layers are:
 
 - `core`
 - `swing_moonshot`
+- `htf_12h_standard`
 - `htf_12h_moonshot`
 - `htf_12h_rotation`
 - `intraday_moonshot` remains implemented, but is disabled by default after
@@ -792,6 +800,34 @@ that smoke:
 So the first-pass convexity logic behaved correctly: most trades stayed small,
 and only proven trades earned additional size.
 
+#### Standard 12H status
+
+The repo now includes a separate `htf_12h_standard` execution sleeve for
+normal higher-timeframe trades. Its purpose is not moonshot convexity. Its
+purpose is to capture ordinary profitable `12H` opportunities that are too slow
+and structurally important to be treated like `15m` flow, but too common to be
+restricted only to rare moonshot breakouts.
+
+It is intentionally calibrated as a middle layer:
+
+- closed `12H` signal timing
+- `1D` confirmation by default, but no mandatory `1W` confirmation
+- structural `12H` stop placement and HTF trade management
+- lower score floor than moonshot
+- no hard `signal_event` requirement
+- smaller sleeve and smaller risk than `htf_12h_moonshot`
+- no HTF convexity or pyramiding yet
+
+So the active `12H` stack is now deliberately split into two economic roles:
+
+- `htf_12h_standard`: normal higher-timeframe continuation and pullback participation
+- `htf_12h_moonshot`: rarer structural breakout participation with more convex upside intent
+
+This separation exists because `12H` moves can generate meaningful `1R` or
+`2R` profit without needing a full moonshot setup, and forcing every `12H`
+trade through the moonshot gate would leave too much valid HTF profit
+untraded.
+
 #### Structural 12H moonshot status
 
 The structural `htf_12h_moonshot` sleeve is now a distinct higher-timeframe
@@ -816,6 +852,7 @@ allocator in `entry/htf_rotation.py`. This layer asks:
 It does not duplicate the structural breakout sleeve. The role separation is:
 
 - `htf_12h_moonshot`: early structural trend birth
+- `htf_12h_standard`: normal higher-timeframe follow-through
 - `htf_12h_rotation`: leader reinforcement once leadership is already visible
 
 The recent-regime rotation funnel over the 9-symbol universe from
@@ -1186,6 +1223,7 @@ until the next validation step is complete:
 
 - `core`
 - `swing_moonshot`
+- `htf_12h_standard`
 - `htf_12h_moonshot`
 - `htf_12h_rotation`
 - recent-control health gates

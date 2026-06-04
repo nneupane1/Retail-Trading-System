@@ -19,7 +19,11 @@ from data.downloader import load_from_csv
 from data.resampler import TimeframeBuilder
 from entry.edge_buckets import build_signal_bucket
 from entry.edge_selector import EdgeSelector
-from entry.htf_moonshot import HTFMoonshotEngine, build_htf_12h_snapshots
+from entry.htf_moonshot import (
+    HTFMoonshotEngine,
+    HTFStandardEngine,
+    build_htf_12h_snapshots,
+)
 from entry.htf_rotation import (
     HTFRotationEngine,
     build_htf_rotation_snapshots_by_symbol,
@@ -509,6 +513,7 @@ def _build_candidate(
     portfolio,
     swing_snapshot=None,
     htf_snapshot=None,
+    htf_standard_engine=None,
     htf_engine=None,
     htf_rotation_snapshot=None,
     htf_rotation_engine=None,
@@ -572,6 +577,17 @@ def _build_candidate(
             candidates.append(
                 moonshot_overlay.apply_to_candidate(candidate, swing_snapshot=swing_snapshot)
             )
+    if htf_standard_engine is not None:
+        htf_standard_candidate = htf_standard_engine.build_candidate(
+            symbol=symbol,
+            timestamp=row.name,
+            execution_row=row,
+            snapshot=htf_snapshot or {},
+            momentum_rank=momentum_rank,
+            top_symbols=top_symbols,
+        )
+        if htf_standard_candidate is not None:
+            candidates.append(htf_standard_candidate)
     if htf_engine is not None:
         htf_candidate = htf_engine.build_candidate(
             symbol=symbol,
@@ -754,6 +770,7 @@ def run_portfolio_backtest(config=None):
         )
     edge_selector = EdgeSelector(config=config)
     moonshot_overlay = MoonshotOverlay(config=config)
+    htf_standard_engine = HTFStandardEngine(config=config)
     htf_engine = HTFMoonshotEngine(config=config)
     htf_rotation_engine = HTFRotationEngine(config=config)
 
@@ -830,6 +847,7 @@ def run_portfolio_backtest(config=None):
                     portfolio=portfolio,
                     swing_snapshot=swing_snapshot,
                     htf_snapshot=latest_htf_context_by_symbol.get(symbol),
+                    htf_standard_engine=htf_standard_engine,
                     htf_engine=htf_engine,
                     htf_rotation_snapshot=(
                         htf_rotation_frames[symbol].loc[timestamp].to_dict()

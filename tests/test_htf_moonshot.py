@@ -2,7 +2,11 @@ import unittest
 
 import pandas as pd
 
-from entry.htf_moonshot import HTFMoonshotEngine, build_htf_12h_snapshots
+from entry.htf_moonshot import (
+    HTFMoonshotEngine,
+    HTFStandardEngine,
+    build_htf_12h_snapshots,
+)
 
 
 class DummyConfig:
@@ -12,6 +16,27 @@ class DummyConfig:
                 "ema_periods": {"fast": 20, "slow": 50},
             },
             "strategy": {
+                "htf_12h_standard": {
+                    "enabled": True,
+                    "base_risk_fraction": 0.0020,
+                    "max_total_risk_fraction": 0.006,
+                    "max_open_positions": 2,
+                    "min_score": 5.5,
+                    "min_expansion": 1.0,
+                    "selection_bonus": 0.02,
+                    "signal_event_bonus": 0.03,
+                    "top_mover_bonus": 0.02,
+                    "long_risk_multiplier": 1.0,
+                    "short_risk_multiplier": 0.7,
+                    "selection_threshold_offset": -0.18,
+                    "selection_min_threshold": 0.58,
+                    "selection_max_threshold": 0.84,
+                    "vwap_near_threshold": 0.01,
+                    "vwap_moderate_threshold": 0.02,
+                    "allow_pyramiding": False,
+                    "require_weekly_confirmation": False,
+                    "max_hold_12h_candles": 36,
+                },
                 "htf_12h_moonshot": {
                     "enabled": True,
                     "base_risk_fraction": 0.0035,
@@ -166,6 +191,10 @@ class HTFMoonshotTests(unittest.TestCase):
             "signal_event_long": False,
             "signal_event_short": True,
             "signal_family_short": "structure_breakout",
+            "htf_pass_structure_short": True,
+            "htf_pass_1d_context_short": True,
+            "htf_pass_1w_context_short": True,
+            "htf_pass_stretch_short": True,
             "htf_score_short": 8.0,
             "htf_stop_short": 103.0,
             "htf_vwap_distance_ratio_12h": 0.01,
@@ -191,6 +220,64 @@ class HTFMoonshotTests(unittest.TestCase):
         self.assertIsNotNone(candidate)
         self.assertEqual(candidate["side"], "short")
         self.assertAlmostEqual(candidate["risk_fraction_override"], 0.0035 * 0.6, places=7)
+
+    def test_htf_standard_engine_can_take_non_event_12h_trades(self):
+        config = DummyConfig()
+        standard_engine = HTFStandardEngine(config=config)
+        moonshot_engine = HTFMoonshotEngine(config=config)
+        timestamp = pd.Timestamp("2026-01-02 12:00:00")
+        execution_row = pd.Series(
+            {
+                "close": 108.0,
+                "low": 107.5,
+                "high": 108.2,
+            },
+            name=timestamp,
+        )
+        snapshot = {
+            "htf_12h_new_candle": True,
+            "signal_event_long": False,
+            "signal_event_short": False,
+            "signal_family_long": "trend_pullback",
+            "htf_pass_structure_long": True,
+            "htf_pass_1d_context_long": True,
+            "htf_pass_1w_context_long": False,
+            "htf_pass_stretch_long": True,
+            "htf_score_long": 6.2,
+            "htf_stop_long": 104.0,
+            "htf_vwap_distance_ratio_12h": 0.009,
+            "htf_body_strength_12h": 1.6,
+            "htf_close_position_12h": 0.74,
+            "htf_context_1d": "bullish",
+            "htf_context_1w": "neutral",
+            "htf_entry_reason_long": "12h pullback continuation",
+            "htf_stop_reason_long": "12h pullback structure low",
+            "htf_trailing_state_long": "init",
+            "htf_range_expansion_12h": 1.05,
+        }
+
+        standard_candidate = standard_engine.build_candidate(
+            symbol="BTCUSDT",
+            timestamp=timestamp,
+            execution_row=execution_row,
+            snapshot=snapshot,
+            momentum_rank=0.82,
+            top_symbols=["BTCUSDT"],
+        )
+        moonshot_candidate = moonshot_engine.build_candidate(
+            symbol="BTCUSDT",
+            timestamp=timestamp,
+            execution_row=execution_row,
+            snapshot=snapshot,
+            momentum_rank=0.82,
+            top_symbols=["BTCUSDT"],
+        )
+
+        self.assertIsNotNone(standard_candidate)
+        self.assertEqual(standard_candidate["strategy_type"], "htf_12h_standard")
+        self.assertEqual(standard_candidate["edge_type"], "htf_12h_standard")
+        self.assertIsNone(standard_candidate["moonshot_score"])
+        self.assertIsNone(moonshot_candidate)
 
 
 if __name__ == "__main__":

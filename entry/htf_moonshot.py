@@ -1,4 +1,4 @@
-"""High-timeframe 12H moonshot engine isolated from the 15m core flow."""
+"""High-timeframe 12H execution engines isolated from the 15m core flow."""
 
 from __future__ import annotations
 
@@ -49,6 +49,204 @@ def _vwap_bucket(abs_distance_ratio, near_threshold, moderate_threshold):
     if abs_distance_ratio <= moderate_threshold:
         return "moderate"
     return "far"
+
+
+def _htf_body_bucket(body_strength):
+    return "strong" if float(body_strength or 0.0) >= 1.5 else "weak"
+
+
+def _build_candidate_from_snapshot(
+    *,
+    symbol,
+    timestamp,
+    execution_row,
+    snapshot,
+    momentum_rank,
+    top_symbols,
+    strategy_type,
+    edge_type,
+    risk_group,
+    min_score,
+    base_risk_fraction,
+    max_group_risk_fraction,
+    max_open_positions,
+    max_hold_12h_candles,
+    selection_bonus,
+    top_mover_bonus,
+    long_risk_multiplier,
+    short_risk_multiplier,
+    selection_threshold_offset,
+    selection_min_threshold,
+    selection_max_threshold,
+    allow_pyramiding,
+    vwap_near_threshold,
+    vwap_moderate_threshold,
+    require_signal_event,
+    require_weekly_confirmation,
+    min_expansion,
+    selection_score_weight,
+    selection_momentum_weight,
+    signal_event_bonus,
+):
+    if not snapshot:
+        return None
+    if not _bool_value(snapshot.get("htf_12h_new_candle")):
+        return None
+
+    side_candidates = []
+    for side in ("long", "short"):
+        signal_family = str(snapshot.get(f"signal_family_{side}", "") or "")
+        if not signal_family:
+            continue
+        if not _bool_value(snapshot.get(f"htf_pass_structure_{side}")):
+            continue
+        if not _bool_value(snapshot.get(f"htf_pass_1d_context_{side}")):
+            continue
+        if require_weekly_confirmation and not _bool_value(
+            snapshot.get(f"htf_pass_1w_context_{side}")
+        ):
+            continue
+        if not _bool_value(snapshot.get(f"htf_pass_stretch_{side}")):
+            continue
+        if require_signal_event and not _bool_value(snapshot.get(f"signal_event_{side}")):
+            continue
+
+        raw_score = _safe_float(snapshot.get(f"htf_score_{side}"), default=0.0)
+        if raw_score < min_score:
+            continue
+
+        expansion = _safe_float(snapshot.get("htf_range_expansion_12h"), default=0.0)
+        if expansion < float(min_expansion or 0.0):
+            continue
+
+        side_candidates.append(
+            {
+                "side": side,
+                "raw_score": raw_score,
+                "signal_family": signal_family,
+                "signal_event": _bool_value(snapshot.get(f"signal_event_{side}")),
+            }
+        )
+
+    if not side_candidates:
+        return None
+
+    side_payload = sorted(
+        side_candidates,
+        key=lambda item: (
+            float(item["raw_score"]),
+            1 if item["signal_event"] else 0,
+        ),
+        reverse=True,
+    )[0]
+    side = str(side_payload["side"])
+    raw_score = float(side_payload["raw_score"])
+    signal_family = str(side_payload["signal_family"])
+
+    score_norm = clamp(raw_score / HTFMoonshotEngine.MAX_SCORE)
+    is_top_mover = symbol in set(top_symbols or [])
+    selection_score = clamp(
+        float(selection_score_weight) * score_norm
+        + float(selection_momentum_weight) * float(momentum_rank or 0.0)
+        + float(selection_bonus or 0.0)
+        + (float(signal_event_bonus or 0.0) if side_payload["signal_event"] else 0.0)
+        + (float(top_mover_bonus or 0.0) if is_top_mover else 0.0)
+    )
+
+    stop_price = _safe_float(snapshot.get(f"htf_stop_{side}"), default=np.nan)
+    if not np.isfinite(stop_price):
+        return None
+    entry_price = _safe_float(execution_row.get("close"), default=np.nan)
+    if not np.isfinite(entry_price):
+        return None
+    if side == "long" and stop_price >= entry_price:
+        return None
+    if side == "short" and stop_price <= entry_price:
+        return None
+
+    abs_vwap_distance = abs(
+        _safe_float(snapshot.get("htf_vwap_distance_ratio_12h"), default=0.0)
+    )
+    body_strength = _safe_float(snapshot.get("htf_body_strength_12h"), default=0.0)
+    close_position = _safe_float(snapshot.get("htf_close_position_12h"), default=0.5)
+    vwap_bucket = _vwap_bucket(
+        abs_vwap_distance,
+        vwap_near_threshold,
+        vwap_moderate_threshold,
+    )
+    body_bucket = _htf_body_bucket(body_strength)
+    daily_context = str(snapshot.get("htf_context_1d", "neutral") or "neutral")
+    entry_reason = str(
+        snapshot.get(f"htf_entry_reason_{side}", signal_family) or signal_family
+    )
+    stop_reason = str(
+        snapshot.get(f"htf_stop_reason_{side}", "12h structure") or "12h structure"
+    )
+    risk_fraction_override = float(base_risk_fraction) * (
+        float(short_risk_multiplier) if side == "short" else float(long_risk_multiplier)
+    )
+
+    return {
+        "symbol": symbol,
+        "timestamp": timestamp,
+        "side": side,
+        "row": execution_row,
+        "bias": daily_context,
+        "edge_type": edge_type,
+        "body_bucket": body_bucket,
+        "vwap_bucket": vwap_bucket,
+        "bucket_key_text": f"{strategy_type}|{daily_context}|{body_bucket}|{vwap_bucket}",
+        "bucket_valid": True,
+        "bucket_expected_return": None,
+        "bucket_risk_mult": 1.0,
+        "risk_mult": 1.0,
+        "momentum_rank": float(momentum_rank or 0.0),
+        "is_top_mover": is_top_mover,
+        "score": score_norm,
+        "score_bucket": score_bucket_label(score_norm),
+        "selection_score": selection_score,
+        "strategy_type": strategy_type,
+        "signal_family": strategy_type,
+        "risk_group": risk_group,
+        "group_risk_cap": max_group_risk_fraction,
+        "max_open_positions_for_strategy": max_open_positions,
+        "block_same_symbol_same_side": True,
+        "apply_score_bucket_filters": False,
+        "selection_threshold_offset": selection_threshold_offset,
+        "selection_min_threshold": selection_min_threshold,
+        "selection_max_threshold": selection_max_threshold,
+        "risk_fraction_override": risk_fraction_override,
+        "moonshot_score": score_norm if strategy_type.endswith("moonshot") else None,
+        "range_expansion_factor": _safe_float(
+            snapshot.get("htf_range_expansion_12h"),
+            default=0.0,
+        ),
+        "feature_values": {
+            "body_strength": body_strength,
+            "close_position": close_position,
+            "vwap_score": {"near": 0.3, "moderate": 0.6, "far": 1.0}[vwap_bucket],
+            "momentum": float(momentum_rank or 0.0),
+        },
+        "execution_profile": {
+            "disable_pyramiding": not allow_pyramiding,
+            "disable_trailing": True,
+            "max_hold_candles": int(max_hold_12h_candles) * 48,
+            "slow_grind_max_bars": int(max_hold_12h_candles) * 48,
+            "slow_grind_open_r_max": -999.0,
+        },
+        "stop_price_override": stop_price,
+        "htf_signal_family": signal_family,
+        "htf_score": raw_score,
+        "htf_context_1d": daily_context,
+        "htf_context_1w": str(snapshot.get("htf_context_1w", "neutral") or "neutral"),
+        "htf_entry_reason": entry_reason,
+        "htf_stop_reason": stop_reason,
+        "htf_trailing_state": str(
+            snapshot.get(f"htf_trailing_state_{side}", "init") or "init"
+        ),
+        "htf_decay_reason": None,
+        "htf_candidate_rank": selection_score,
+    }
 
 
 def build_htf_12h_snapshots(execution_index, df_12h, df_1d, df_1w, config=None):
@@ -511,131 +709,157 @@ class HTFMoonshotEngine:
         momentum_rank,
         top_symbols,
     ):
-        if not self.enabled or not snapshot:
+        if not self.enabled:
             return None
-        if not _bool_value(snapshot.get("htf_12h_new_candle")):
-            return None
-
-        event_long = _bool_value(snapshot.get("signal_event_long"))
-        event_short = _bool_value(snapshot.get("signal_event_short"))
-        if not event_long and not event_short:
-            return None
-
-        side = None
-        raw_score = 0.0
-        if event_long and event_short:
-            long_score = _safe_float(snapshot.get("htf_score_long"), default=0.0)
-            short_score = _safe_float(snapshot.get("htf_score_short"), default=0.0)
-            side = "long" if long_score >= short_score else "short"
-            raw_score = max(long_score, short_score)
-        elif event_long:
-            side = "long"
-            raw_score = _safe_float(snapshot.get("htf_score_long"), default=0.0)
-        else:
-            side = "short"
-            raw_score = _safe_float(snapshot.get("htf_score_short"), default=0.0)
-
-        if raw_score < self.min_score:
-            return None
-
-        signal_family = str(snapshot.get(f"signal_family_{side}", "") or "")
-        if not signal_family:
-            return None
-
-        score_norm = clamp(raw_score / self.MAX_SCORE)
-        is_top_mover = symbol in set(top_symbols or [])
-        selection_score = clamp(
-            0.70 * score_norm
-            + 0.20 * float(momentum_rank or 0.0)
-            + self.selection_bonus
-            + (self.top_mover_bonus if is_top_mover else 0.0)
-        )
-
-        stop_price = _safe_float(snapshot.get(f"htf_stop_{side}"), default=np.nan)
-        if not np.isfinite(stop_price):
-            return None
-        entry_price = _safe_float(execution_row.get("close"), default=np.nan)
-        if not np.isfinite(entry_price):
-            return None
-        if side == "long" and stop_price >= entry_price:
-            return None
-        if side == "short" and stop_price <= entry_price:
-            return None
-
-        abs_vwap_distance = abs(
-            _safe_float(snapshot.get("htf_vwap_distance_ratio_12h"), default=0.0)
-        )
-        body_strength = _safe_float(snapshot.get("htf_body_strength_12h"), default=0.0)
-        close_position = _safe_float(snapshot.get("htf_close_position_12h"), default=0.5)
-        vwap_bucket = _vwap_bucket(
-            abs_vwap_distance,
-            self.vwap_near_threshold,
-            self.vwap_moderate_threshold,
-        )
-        body_bucket = "strong" if body_strength >= 1.5 else "weak"
-        daily_context = str(snapshot.get("htf_context_1d", "neutral") or "neutral")
-        entry_reason = str(snapshot.get(f"htf_entry_reason_{side}", signal_family) or signal_family)
-        stop_reason = str(snapshot.get(f"htf_stop_reason_{side}", "12h structure") or "12h structure")
-        risk_fraction_override = self.base_risk_fraction * (
-            self.short_risk_multiplier if side == "short" else self.long_risk_multiplier
-        )
-
-        return {
-            "symbol": symbol,
-            "timestamp": timestamp,
-            "side": side,
-            "row": execution_row,
-            "bias": daily_context,
-            "edge_type": "htf_12h_moonshot",
-            "body_bucket": body_bucket,
-            "vwap_bucket": vwap_bucket,
-            "bucket_key_text": f"htf_12h_moonshot|{daily_context}|{body_bucket}|{vwap_bucket}",
-            "bucket_valid": True,
-            "bucket_expected_return": None,
-            "bucket_risk_mult": 1.0,
-            "risk_mult": 1.0,
-            "momentum_rank": float(momentum_rank or 0.0),
-            "is_top_mover": is_top_mover,
-            "score": score_norm,
-            "score_bucket": score_bucket_label(score_norm),
-            "selection_score": selection_score,
-            "strategy_type": "htf_12h_moonshot",
-            "signal_family": "htf_12h_moonshot",
-            "risk_group": "htf_12h_moonshot",
-            "group_risk_cap": self.max_group_risk_fraction,
-            "max_open_positions_for_strategy": self.max_open_positions,
-            "block_same_symbol_same_side": True,
-            "apply_score_bucket_filters": False,
-            "selection_threshold_offset": self.selection_threshold_offset,
-            "selection_min_threshold": self.selection_min_threshold,
-            "selection_max_threshold": self.selection_max_threshold,
-            "risk_fraction_override": risk_fraction_override,
-            "moonshot_score": score_norm,
-            "range_expansion_factor": _safe_float(
-                snapshot.get("htf_range_expansion_12h"),
-                default=0.0,
+        return _build_candidate_from_snapshot(
+            symbol=symbol,
+            timestamp=timestamp,
+            execution_row=execution_row,
+            snapshot=snapshot,
+            momentum_rank=momentum_rank,
+            top_symbols=top_symbols,
+            strategy_type="htf_12h_moonshot",
+            edge_type="htf_12h_moonshot",
+            risk_group="htf_12h_moonshot",
+            min_score=self.min_score,
+            base_risk_fraction=self.base_risk_fraction,
+            max_group_risk_fraction=self.max_group_risk_fraction,
+            max_open_positions=self.max_open_positions,
+            max_hold_12h_candles=self.max_hold_12h_candles,
+            selection_bonus=self.selection_bonus,
+            top_mover_bonus=self.top_mover_bonus,
+            long_risk_multiplier=self.long_risk_multiplier,
+            short_risk_multiplier=self.short_risk_multiplier,
+            selection_threshold_offset=self.selection_threshold_offset,
+            selection_min_threshold=self.selection_min_threshold,
+            selection_max_threshold=self.selection_max_threshold,
+            allow_pyramiding=self.allow_pyramiding,
+            vwap_near_threshold=self.vwap_near_threshold,
+            vwap_moderate_threshold=self.vwap_moderate_threshold,
+            require_signal_event=True,
+            require_weekly_confirmation=True,
+            min_expansion=_safe_float(
+                self.raw.get("supportive_expansion", 1.15),
+                default=1.15,
             ),
-            "feature_values": {
-                "body_strength": body_strength,
-                "close_position": close_position,
-                "vwap_score": {"near": 0.3, "moderate": 0.6, "far": 1.0}[vwap_bucket],
-                "momentum": float(momentum_rank or 0.0),
-            },
-            "execution_profile": {
-                "disable_pyramiding": not self.allow_pyramiding,
-                "disable_trailing": True,
-                "max_hold_candles": self.max_hold_12h_candles * 48,
-                "slow_grind_max_bars": self.max_hold_12h_candles * 48,
-                "slow_grind_open_r_max": -999.0,
-            },
-            "stop_price_override": stop_price,
-            "htf_signal_family": signal_family,
-            "htf_score": raw_score,
-            "htf_context_1d": daily_context,
-            "htf_context_1w": str(snapshot.get("htf_context_1w", "neutral") or "neutral"),
-            "htf_entry_reason": entry_reason,
-            "htf_stop_reason": stop_reason,
-            "htf_trailing_state": str(snapshot.get(f"htf_trailing_state_{side}", "init") or "init"),
-            "htf_decay_reason": None,
-            "htf_candidate_rank": selection_score,
-        }
+            selection_score_weight=0.70,
+            selection_momentum_weight=0.20,
+            signal_event_bonus=0.0,
+        )
+
+
+class HTFStandardEngine:
+    """Builds smaller, more frequent 12H standard candidates beside moonshots."""
+
+    MAX_SCORE = HTFMoonshotEngine.MAX_SCORE
+
+    def __init__(self, config=None):
+        self.config = config or AppConfig.load()
+        getter = getattr(self.config, "get", None)
+        self.raw = (
+            getter("strategy", "htf_12h_standard", default={})
+            if callable(getter)
+            else {}
+        ) or {}
+        self.enabled = bool(self.raw.get("enabled", False))
+        self.min_score = _safe_float(self.raw.get("min_score", 5.5), default=5.5)
+        self.min_expansion = _safe_float(self.raw.get("min_expansion", 1.0), default=1.0)
+        self.base_risk_fraction = _safe_float(
+            self.raw.get("base_risk_fraction", 0.0020),
+            default=0.0020,
+        )
+        self.max_group_risk_fraction = _safe_float(
+            self.raw.get("max_total_risk_fraction", 0.006),
+            default=0.006,
+        )
+        self.max_open_positions = int(self.raw.get("max_open_positions", 2))
+        self.max_hold_12h_candles = int(self.raw.get("max_hold_12h_candles", 36))
+        self.selection_bonus = _safe_float(
+            self.raw.get("selection_bonus", 0.02),
+            default=0.02,
+        )
+        self.signal_event_bonus = _safe_float(
+            self.raw.get("signal_event_bonus", 0.03),
+            default=0.03,
+        )
+        self.top_mover_bonus = _safe_float(
+            self.raw.get("top_mover_bonus", 0.02),
+            default=0.02,
+        )
+        self.long_risk_multiplier = _safe_float(
+            self.raw.get("long_risk_multiplier", 1.0),
+            default=1.0,
+        )
+        self.short_risk_multiplier = _safe_float(
+            self.raw.get("short_risk_multiplier", 0.7),
+            default=0.7,
+        )
+        self.selection_threshold_offset = _safe_float(
+            self.raw.get("selection_threshold_offset", -0.18),
+            default=-0.18,
+        )
+        self.selection_min_threshold = _safe_float(
+            self.raw.get("selection_min_threshold", 0.58),
+            default=0.58,
+        )
+        self.selection_max_threshold = _safe_float(
+            self.raw.get("selection_max_threshold", 0.84),
+            default=0.84,
+        )
+        self.allow_pyramiding = bool(self.raw.get("allow_pyramiding", False))
+        self.vwap_near_threshold = _safe_float(
+            self.raw.get("vwap_near_threshold", 0.01),
+            default=0.01,
+        )
+        self.vwap_moderate_threshold = _safe_float(
+            self.raw.get("vwap_moderate_threshold", 0.02),
+            default=0.02,
+        )
+        self.require_weekly_confirmation = bool(
+            self.raw.get("require_weekly_confirmation", False)
+        )
+
+    def build_candidate(
+        self,
+        *,
+        symbol,
+        timestamp,
+        execution_row,
+        snapshot,
+        momentum_rank,
+        top_symbols,
+    ):
+        if not self.enabled:
+            return None
+        return _build_candidate_from_snapshot(
+            symbol=symbol,
+            timestamp=timestamp,
+            execution_row=execution_row,
+            snapshot=snapshot,
+            momentum_rank=momentum_rank,
+            top_symbols=top_symbols,
+            strategy_type="htf_12h_standard",
+            edge_type="htf_12h_standard",
+            risk_group="htf_12h_standard",
+            min_score=self.min_score,
+            base_risk_fraction=self.base_risk_fraction,
+            max_group_risk_fraction=self.max_group_risk_fraction,
+            max_open_positions=self.max_open_positions,
+            max_hold_12h_candles=self.max_hold_12h_candles,
+            selection_bonus=self.selection_bonus,
+            top_mover_bonus=self.top_mover_bonus,
+            long_risk_multiplier=self.long_risk_multiplier,
+            short_risk_multiplier=self.short_risk_multiplier,
+            selection_threshold_offset=self.selection_threshold_offset,
+            selection_min_threshold=self.selection_min_threshold,
+            selection_max_threshold=self.selection_max_threshold,
+            allow_pyramiding=self.allow_pyramiding,
+            vwap_near_threshold=self.vwap_near_threshold,
+            vwap_moderate_threshold=self.vwap_moderate_threshold,
+            require_signal_event=False,
+            require_weekly_confirmation=self.require_weekly_confirmation,
+            min_expansion=self.min_expansion,
+            selection_score_weight=0.65,
+            selection_momentum_weight=0.25,
+            signal_event_bonus=self.signal_event_bonus,
+        )

@@ -36,6 +36,27 @@ class DummyConfig:
                 },
             },
             "strategy": {
+                "htf_12h_standard": {
+                    "enabled": True,
+                    "base_risk_fraction": 0.0020,
+                    "max_total_risk_fraction": 0.006,
+                    "max_open_positions": 2,
+                    "min_score": 5.5,
+                    "min_expansion": 1.0,
+                    "selection_bonus": 0.02,
+                    "signal_event_bonus": 0.03,
+                    "top_mover_bonus": 0.02,
+                    "long_risk_multiplier": 1.0,
+                    "short_risk_multiplier": 0.7,
+                    "selection_threshold_offset": -0.18,
+                    "selection_min_threshold": 0.58,
+                    "selection_max_threshold": 0.84,
+                    "vwap_near_threshold": 0.01,
+                    "vwap_moderate_threshold": 0.02,
+                    "allow_pyramiding": False,
+                    "require_weekly_confirmation": False,
+                    "max_hold_12h_candles": 36,
+                },
                 "htf_12h_moonshot": {
                     "enabled": True,
                     "base_risk_fraction": 0.0035,
@@ -134,6 +155,18 @@ class DummyConfig:
                     "strategy_positive_floor_multiplier": 0.75,
                     "strategy_positive_cap": 1.20,
                     "strategy_health_profiles": {
+                        "htf_12h_standard": {
+                            "recency_lookback_days": 180,
+                            "recency_max_trades": 80,
+                            "recency_min_trades": 12,
+                            "neutral_below_min_trades": True,
+                            "disable_when_negative": False,
+                            "negative_risk_multiplier": 0.75,
+                            "positive_floor_multiplier": 0.90,
+                            "positive_cap": 1.10,
+                            "emergency_disable_min_trades": 28,
+                            "emergency_disable_avg_r": -0.30,
+                        },
                         "htf_12h_moonshot": {
                             "recency_lookback_days": 180,
                             "recency_max_trades": 50,
@@ -148,14 +181,23 @@ class DummyConfig:
                         }
                     },
                     "strategy_threshold_offsets": {
+                        "htf_12h_standard": -0.18,
                         "htf_12h_moonshot": -0.05,
                         "htf_12h_rotation": -0.04,
                     },
                     "strategy_allowed_sides": {
+                        "htf_12h_standard": ["long"],
                         "htf_12h_moonshot": ["long"],
                         "htf_12h_rotation": ["long"],
                     },
                     "strategy_sleeves": {
+                        "htf_12h_standard": {
+                            "enabled": True,
+                            "reserved_risk_fraction": 0.004,
+                            "max_new_positions_per_step": 1,
+                            "block_if_symbol_has_other_strategy_position": False,
+                            "ignore_global_step_cap": False,
+                        },
                         "htf_12h_moonshot": {
                             "enabled": True,
                             "reserved_risk_fraction": 0.012,
@@ -222,6 +264,13 @@ class DummyConfig:
                                 "max_candidates": 2,
                                 "max_risk_fraction_multiplier": 1.20,
                                 "absolute_max_risk_fraction": 0.0030,
+                            },
+                            "htf_12h_standard": {
+                                "priority_multiplier": 1.02,
+                                "rank_weights": [1.0, 0.40],
+                                "max_candidates": 2,
+                                "max_risk_fraction_multiplier": 1.35,
+                                "absolute_max_risk_fraction": 0.0045,
                             },
                             "htf_12h_moonshot": {
                                 "priority_multiplier": 1.24,
@@ -1054,6 +1103,117 @@ class LivePaperPortfolioTests(unittest.TestCase):
             self.assertEqual(len(portfolio.open_positions), 1)
             trade = portfolio.open_positions[0]
             self.assertEqual(trade.strategy_type, "htf_12h_moonshot")
+            self.assertEqual(trade.htf_trailing_state, "confirmation")
+
+    def test_htf_standard_trade_uses_same_htf_management_path(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            portfolio = LivePaperPortfolio(config=DummyConfig(output_dir=temp_dir))
+            timestamp = pd.Timestamp("2026-01-01 12:00:00")
+            row = pd.Series(
+                {
+                    "close": 112.0,
+                    "low": 111.0,
+                    "high": 113.0,
+                    "ll2": 108.0,
+                    "ema2": 110.0,
+                    "ema3": 109.0,
+                    "atr": 2.0,
+                },
+                name=timestamp,
+            )
+
+            portfolio.reset_daily_state_if_needed(timestamp)
+            portfolio.select_and_open(
+                [
+                    {
+                        "symbol": "ADAUSDT",
+                        "timestamp": timestamp,
+                        "side": "long",
+                        "row": row,
+                        "bias": "bullish",
+                        "edge_type": "htf_12h_standard",
+                        "body_bucket": "strong",
+                        "vwap_bucket": "near",
+                        "bucket_key_text": "htf_12h_standard|bullish|strong|near",
+                        "bucket_valid": True,
+                        "bucket_expected_return": None,
+                        "bucket_risk_mult": 1.0,
+                        "risk_mult": 1.0,
+                        "momentum_rank": 0.91,
+                        "is_top_mover": True,
+                        "score": 0.78,
+                        "selection_score": 0.83,
+                        "score_bucket": "0.7-0.8",
+                        "strategy_type": "htf_12h_standard",
+                        "signal_family": "htf_12h_standard",
+                        "risk_group": "htf_12h_standard",
+                        "group_risk_cap": 0.006,
+                        "max_open_positions_for_strategy": 2,
+                        "block_same_symbol_same_side": True,
+                        "apply_score_bucket_filters": False,
+                        "selection_threshold_offset": -0.18,
+                        "selection_min_threshold": 0.58,
+                        "selection_max_threshold": 0.84,
+                        "risk_fraction_override": 0.0020,
+                        "moonshot_score": None,
+                        "range_expansion_factor": 1.1,
+                        "stop_price_override": 108.0,
+                        "htf_signal_family": "trend_pullback",
+                        "htf_score": 6.5,
+                        "htf_context_1d": "bullish",
+                        "htf_context_1w": "neutral",
+                        "htf_entry_reason": "12h continuation pullback",
+                        "htf_stop_reason": "12h pullback structure low",
+                        "htf_trailing_state": "init",
+                        "htf_decay_reason": None,
+                        "htf_candidate_rank": 0.83,
+                        "execution_profile": {
+                            "disable_pyramiding": True,
+                            "disable_trailing": True,
+                            "max_hold_candles": 1728,
+                        },
+                        "feature_values": {
+                            "body_strength": 1.6,
+                            "close_position": 0.74,
+                            "vwap_score": 0.3,
+                            "momentum": 0.91,
+                        },
+                    }
+                ],
+                timestamp,
+            )
+            self.assertEqual(len(portfolio.open_positions), 1)
+
+            noisy_row = pd.Series(
+                {
+                    "close": 111.4,
+                    "low": 111.0,
+                    "high": 111.8,
+                    "ll2": 109.0,
+                    "ema2": 111.7,
+                    "ema3": 111.9,
+                    "session_vwap": 112.0,
+                    "atr": 1.8,
+                },
+                name=pd.Timestamp("2026-01-01 12:15:00"),
+            )
+            portfolio.manage_open_positions(
+                {"ADAUSDT": noisy_row},
+                htf_context_by_symbol={
+                    "ADAUSDT": {
+                        "htf_context_1d": "bullish",
+                        "htf_context_1w": "neutral",
+                        "htf_trailing_state_long": "confirmation",
+                        "htf_trailing_long": 108.1,
+                        "htf_decay_active_long": False,
+                        "htf_decay_12h_candles": 3,
+                    }
+                },
+            )
+
+            self.assertEqual(len(portfolio.open_positions), 1)
+            trade = portfolio.open_positions[0]
+            self.assertEqual(trade.strategy_type, "htf_12h_standard")
             self.assertEqual(trade.htf_trailing_state, "confirmation")
 
     def test_htf_rotation_trade_uses_same_htf_management_path(self):

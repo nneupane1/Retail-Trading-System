@@ -368,6 +368,18 @@
       "strategy_positive_floor_multiplier": 0.75,
       "strategy_positive_cap": 1.20,
       "strategy_health_profiles": {
+        "htf_12h_standard": {
+          "recency_lookback_days": 180,
+          "recency_max_trades": 80,
+          "recency_min_trades": 12,
+          "neutral_below_min_trades": true,
+          "disable_when_negative": false,
+          "negative_risk_multiplier": 0.75,
+          "positive_floor_multiplier": 0.90,
+          "positive_cap": 1.10,
+          "emergency_disable_min_trades": 28,
+          "emergency_disable_avg_r": -0.30
+        },
         "htf_12h_moonshot": {
           "recency_lookback_days": 180,
           "recency_max_trades": 50,
@@ -418,6 +430,18 @@
           "positive_cap": 1.10,
           "apply_to_threshold_derivation": false
         },
+        "htf_12h_standard": {
+          "enabled": true,
+          "recency_lookback_days": 180,
+          "recency_max_trades": 80,
+          "recency_min_trades": 12,
+          "neutral_below_min_trades": true,
+          "disable_when_negative": false,
+          "negative_risk_multiplier": 0.75,
+          "positive_floor_multiplier": 0.90,
+          "positive_cap": 1.10,
+          "apply_to_threshold_derivation": false
+        },
         "htf_12h_moonshot": {
           "enabled": true,
           "recency_lookback_days": 180,
@@ -444,14 +468,23 @@
         }
       },
       "strategy_threshold_offsets": {
+        "htf_12h_standard": -0.18,
         "htf_12h_moonshot": -0.05,
         "htf_12h_rotation": -0.04
       },
       "strategy_allowed_sides": {
+        "htf_12h_standard": ["long"],
         "htf_12h_moonshot": ["long"],
         "htf_12h_rotation": ["long"]
       },
       "strategy_sleeves": {
+        "htf_12h_standard": {
+          "enabled": true,
+          "reserved_risk_fraction": 0.004,
+          "max_new_positions_per_step": 1,
+          "block_if_symbol_has_other_strategy_position": false,
+          "ignore_global_step_cap": false
+        },
         "htf_12h_moonshot": {
           "enabled": true,
           "reserved_risk_fraction": 0.012,
@@ -518,6 +551,13 @@
             "max_candidates": 2,
             "max_risk_fraction_multiplier": 1.20,
             "absolute_max_risk_fraction": 0.0030
+          },
+          "htf_12h_standard": {
+            "priority_multiplier": 1.02,
+            "rank_weights": [1.0, 0.40],
+            "max_candidates": 2,
+            "max_risk_fraction_multiplier": 1.35,
+            "absolute_max_risk_fraction": 0.0045
           },
           "htf_12h_moonshot": {
             "priority_multiplier": 1.24,
@@ -674,6 +714,29 @@
         "slow_grind_max_bars": 2880,
         "slow_grind_open_r_max": 1.2
       }
+    },
+    "htf_12h_standard": {
+      "enabled": true,
+      "execution_timeframe": "12h",
+      "confirmation_timeframes": ["1d"],
+      "base_risk_fraction": 0.002,
+      "max_open_positions": 2,
+      "max_total_risk_fraction": 0.006,
+      "min_score": 5.5,
+      "min_expansion": 1.0,
+      "selection_bonus": 0.02,
+      "signal_event_bonus": 0.03,
+      "top_mover_bonus": 0.02,
+      "long_risk_multiplier": 1.0,
+      "short_risk_multiplier": 0.7,
+      "selection_threshold_offset": -0.18,
+      "selection_min_threshold": 0.58,
+      "selection_max_threshold": 0.84,
+      "vwap_near_threshold": 0.01,
+      "vwap_moderate_threshold": 0.02,
+      "allow_pyramiding": false,
+      "require_weekly_confirmation": false,
+      "max_hold_12h_candles": 36
     },
     "htf_12h_moonshot": {
       "enabled": true,

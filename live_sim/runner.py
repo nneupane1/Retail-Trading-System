@@ -13,7 +13,11 @@ from data.downloader import fetch_recent, load_from_csv
 from data.resampler import TimeframeBuilder
 from entry.edge_buckets import build_signal_bucket
 from entry.edge_selector import EdgeSelector
-from entry.htf_moonshot import HTFMoonshotEngine, build_htf_12h_snapshots
+from entry.htf_moonshot import (
+    HTFMoonshotEngine,
+    HTFStandardEngine,
+    build_htf_12h_snapshots,
+)
 from entry.htf_rotation import (
     HTFRotationEngine,
     build_htf_rotation_snapshots_by_symbol,
@@ -115,7 +119,10 @@ def _required_live_warmup_minutes(config):
         swing_minutes = 0
 
     htf_enabled = bool(
-        getter("strategy", "htf_12h_moonshot", "enabled", default=False)
+        (
+            getter("strategy", "htf_12h_moonshot", "enabled", default=False)
+            or getter("strategy", "htf_12h_standard", "enabled", default=False)
+        )
         if callable(getter)
         else False
     )
@@ -450,6 +457,7 @@ def _build_live_candidate(
     portfolio,
     swing_snapshot=None,
     htf_snapshot=None,
+    htf_standard_engine=None,
     htf_engine=None,
     htf_rotation_snapshot=None,
     htf_rotation_engine=None,
@@ -514,6 +522,17 @@ def _build_live_candidate(
             candidates.append(
                 moonshot_overlay.apply_to_candidate(candidate, swing_snapshot=swing_snapshot)
             )
+    if htf_standard_engine is not None:
+        htf_standard_candidate = htf_standard_engine.build_candidate(
+            symbol=symbol,
+            timestamp=row.name,
+            execution_row=row,
+            snapshot=htf_snapshot or {},
+            momentum_rank=momentum_rank,
+            top_symbols=top_symbols,
+        )
+        if htf_standard_candidate is not None:
+            candidates.append(htf_standard_candidate)
     if htf_engine is not None:
         htf_candidate = htf_engine.build_candidate(
             symbol=symbol,
@@ -586,6 +605,7 @@ def _run_portfolio_live_paper_sim(config=None):
     bias_detector = BiasDetector(config=config)
     edge_selector = EdgeSelector(config=config)
     moonshot_overlay = MoonshotOverlay(config=config)
+    htf_standard_engine = HTFStandardEngine(config=config)
     htf_engine = HTFMoonshotEngine(config=config)
     htf_rotation_engine = HTFRotationEngine(config=config)
     portfolio = LivePaperPortfolio(
@@ -708,6 +728,7 @@ def _run_portfolio_live_paper_sim(config=None):
                     portfolio=portfolio,
                     swing_snapshot=item.get("swing_snapshot"),
                     htf_snapshot=item.get("htf_snapshot"),
+                    htf_standard_engine=htf_standard_engine,
                     htf_engine=htf_engine,
                     htf_rotation_snapshot=(
                         htf_rotation_snapshots[item["symbol"]].loc[item["row"].name].to_dict()
