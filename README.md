@@ -1021,6 +1021,16 @@ results.
    Those are scale amplifiers, not discovery tools. They only make sense after
    broader opportunity flow and allocator behavior have already been proven.
 
+### Decision gate after expanded-universe validation
+
+| Result | Decision |
+| --- | --- |
+| HTF/rotation PnL rises and drawdown stays controlled | Proceed to full-history expanded validation |
+| Equity rises but drawdown worsens badly | Tune allocator risk and concentration; do not add new layers |
+| Core dominance increases further | Do not accept the expansion as successful |
+| No meaningful new symbols accepted | Fix data coverage first |
+| Expanded universe passes recent and full-history checks | Then consider the `6H` candidate study |
+
 ## Failure Modes / What Not to Misread
 
 Do **not** treat higher final equity as success if:
