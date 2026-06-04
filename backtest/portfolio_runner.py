@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import time
 from pathlib import Path
 import json
@@ -12,6 +13,7 @@ import pandas as pd
 from backtest.checkpoint import BacktestCheckpointStore
 from bias.bias_detector import BiasDetector
 from common.debug import configure_debug, debug_print as print
+from common.universe import resolve_symbols_from_config
 from config import AppConfig
 from data.downloader import load_from_csv
 from data.resampler import TimeframeBuilder
@@ -60,16 +62,23 @@ def _resolve_history_file(folder, symbol, interval, start_date, end_date):
         except Exception:
             continue
 
-        if candidate_start <= requested_start:
+        overlaps_window = candidate_end >= requested_start and candidate_start <= requested_end
+        if overlaps_window:
             candidates.append(
-                (candidate_end >= requested_end, candidate_end, -candidate_start.value, candidate)
+                (
+                    candidate_end >= requested_end,
+                    candidate_start <= requested_start,
+                    candidate_end,
+                    -candidate_start.value,
+                    candidate,
+                )
             )
 
     if not candidates:
         return None
 
     candidates.sort(reverse=True)
-    return candidates[0][3]
+    return candidates[0][4]
 
 
 def _load_full_history(symbol, interval, config):
@@ -98,22 +107,20 @@ def _load_full_history(symbol, interval, config):
 
 
 def _discover_portfolio_symbols(config):
-    getter = getattr(config, "get", None)
-    configured = (
-        getter("backtest", "portfolio_replay", "symbols", default=None)
-        if callable(getter)
-        else None
+    configured = resolve_symbols_from_config(
+        config,
+        explicit_paths=[
+            ("backtest", "portfolio_replay", "symbols"),
+            ("live_sim", "universe", "symbols"),
+        ],
+        active_name_paths=[
+            ("backtest", "portfolio_replay", "universe_name"),
+            ("live_sim", "universe", "active_set"),
+            ("universe", "active_set"),
+        ],
     )
     if configured:
-        return [str(symbol).upper() for symbol in configured]
-
-    configured = (
-        getter("live_sim", "universe", "symbols", default=None)
-        if callable(getter)
-        else None
-    )
-    if configured:
-        return [str(symbol).upper() for symbol in configured]
+        return configured
 
     base_path = Path(config.require("storage", "base_path"))
     if not base_path.exists():
@@ -132,17 +139,26 @@ def _build_checkpoint_store(config, output_dir, symbols):
         return None
 
     checkpoint_dir_value = config.get("backtest", "checkpoint_dir", default="_checkpoints")
+    output_dir = Path(output_dir).expanduser().resolve()
     checkpoint_dir = Path(checkpoint_dir_value)
     if not checkpoint_dir.is_absolute():
-        checkpoint_dir = Path(output_dir) / checkpoint_dir
+        checkpoint_dir = output_dir / checkpoint_dir
 
     suffix = config.get("backtest", "checkpoint_suffix", default=".checkpoint.json")
     start_date = config.require("history", "start_date")
     end_date = config.require("history", "end_date")
     symbol_key = f"{len(symbols)}symbols"
-    checkpoint_path = checkpoint_dir / (
-        f"portfolio_replay_{symbol_key}_{start_date}_to_{end_date}{suffix}"
+    digest_source = "|".join(
+        [str(output_dir), symbol_key, str(start_date), str(end_date), *[str(symbol).upper() for symbol in symbols]]
     )
+    digest = hashlib.sha1(digest_source.encode("utf-8")).hexdigest()[:12]
+    filename = f"portfolio_replay_{symbol_key}_{start_date}_to_{end_date}{suffix}"
+    checkpoint_path = (checkpoint_dir / filename).expanduser().resolve()
+    if len(str(checkpoint_path.with_name(f"{checkpoint_path.name}.tmp"))) >= 240:
+        compact_start = str(start_date).replace("-", "")
+        compact_end = str(end_date).replace("-", "")
+        checkpoint_dir = output_dir.parent / "_checkpoints"
+        checkpoint_path = checkpoint_dir / f"pr_{symbol_key}_{compact_start}_{compact_end}_{digest}{suffix}"
     return BacktestCheckpointStore(checkpoint_path)
 
 

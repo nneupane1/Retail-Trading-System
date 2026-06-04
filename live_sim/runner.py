@@ -7,6 +7,7 @@ import pandas as pd
 
 from bias.bias_detector import BiasDetector
 from common.debug import configure_debug, debug_print as print
+from common.universe import resolve_symbols_from_config
 from config import AppConfig
 from data.downloader import fetch_recent, load_from_csv
 from data.resampler import TimeframeBuilder
@@ -245,16 +246,23 @@ def _resolve_live_history_file(folder, symbol, interval, start_date, end_date):
         except Exception:
             continue
 
-        if candidate_start <= requested_start:
+        overlaps_window = candidate_end >= requested_start and candidate_start <= requested_end
+        if overlaps_window:
             candidates.append(
-                (candidate_end >= requested_end, candidate_end, -candidate_start.value, candidate)
+                (
+                    candidate_end >= requested_end,
+                    candidate_start <= requested_start,
+                    candidate_end,
+                    -candidate_start.value,
+                    candidate,
+                )
             )
 
     if not candidates:
         return None
 
     candidates.sort(reverse=True)
-    return candidates[0][3]
+    return candidates[0][4]
 
 
 def _load_live_bootstrap_history(symbol, interval, warmup_minutes, config):
@@ -282,14 +290,17 @@ def _load_live_bootstrap_history(symbol, interval, warmup_minutes, config):
 
 
 def _discover_live_symbols(config):
-    getter = getattr(config, "get", None)
-    configured = (
-        getter("live_sim", "universe", "symbols", default=None)
-        if callable(getter)
-        else None
+    configured = resolve_symbols_from_config(
+        config,
+        explicit_paths=[("live_sim", "universe", "symbols")],
+        active_name_paths=[
+            ("live_sim", "universe", "active_set"),
+            ("backtest", "portfolio_replay", "universe_name"),
+            ("universe", "active_set"),
+        ],
     )
     if configured:
-        return [str(symbol).upper() for symbol in configured]
+        return configured
 
     base_path = Path(config.require("storage", "base_path"))
     if not base_path.exists():

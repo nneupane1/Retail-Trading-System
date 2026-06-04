@@ -11,7 +11,7 @@ class BacktestCheckpointStore:
     """
 
     def __init__(self, path):
-        self.path = Path(path)
+        self.path = Path(path).expanduser().resolve()
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
     def exists(self):
@@ -26,10 +26,11 @@ class BacktestCheckpointStore:
 
     def save(self, payload):
         normalized = self._normalize(payload)
-        temp_path = Path(f"{self.path}.tmp")
+        temp_path = self.path.parent / f"{self.path.name}.tmp"
         for attempt in range(8):
             try:
                 self.path.parent.mkdir(parents=True, exist_ok=True)
+                temp_path.parent.mkdir(parents=True, exist_ok=True)
                 with temp_path.open("w") as file_handle:
                     json.dump(normalized, file_handle, indent=2)
                 temp_path.replace(self.path)

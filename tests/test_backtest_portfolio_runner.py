@@ -40,6 +40,13 @@ class DummyConfig:
                 "start_date": "2026-01-01",
                 "end_date": "2026-01-02",
             },
+            "universe": {
+                "active_set": "current_9",
+                "symbol_sets": {
+                    "current_9": ["BTCUSDT", "ETHUSDT"],
+                    "expanded_liquid_28": ["BTCUSDT", "ETHUSDT", "SOLUSDT"],
+                },
+            },
             "position": {
                 "min_stop_distance_ratio": 0.0001,
                 "min_stop_distance_absolute": 0.0,
@@ -213,6 +220,62 @@ def _write_symbol_history(folder, symbol):
 
 
 class PortfolioBacktestRunnerTests(unittest.TestCase):
+    def test_discover_portfolio_symbols_can_use_named_universe(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            storage_dir = Path(temp_dir) / "data_storage"
+            output_dir = Path(temp_dir) / "backtest_output"
+            config = DummyConfig(
+                storage_base_path=str(storage_dir),
+                output_dir=str(output_dir),
+            )
+            config.data["backtest"]["portfolio_replay"]["symbols"] = []
+            config.data["live_sim"]["universe"]["symbols"] = []
+            config.data["backtest"]["portfolio_replay"]["universe_name"] = "expanded_liquid_28"
+
+            symbols = portfolio_runner._discover_portfolio_symbols(config)
+
+            self.assertEqual(symbols, ["BTCUSDT", "ETHUSDT", "SOLUSDT"])
+
+    def test_resolve_history_file_accepts_later_starting_timestamped_file(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            folder = Path(temp_dir)
+            candidate = folder / "SUIUSDT_1m_2023-05-01T00.00.00_to_2026-01-03T00.00.00.csv"
+            candidate.write_text("timestamp,open,high,low,close,volume\n", encoding="utf-8")
+
+            resolved = portfolio_runner._resolve_history_file(
+                folder,
+                symbol="SUIUSDT",
+                interval="1m",
+                start_date="2026-01-01",
+                end_date="2026-01-02",
+            )
+
+            self.assertEqual(resolved, candidate)
+
+    def test_build_checkpoint_store_uses_compact_name_for_long_output_path(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_dir = (
+                Path(temp_dir)
+                / "expanded_universe_allocator_validation_20260604"
+                / "scenario_current_9_symbol_calibrated_allocator"
+            )
+            config = DummyConfig(
+                storage_base_path=str(Path(temp_dir) / "data_storage"),
+                output_dir=str(output_dir),
+            )
+
+            checkpoint_store = portfolio_runner._build_checkpoint_store(
+                config,
+                output_dir,
+                ["BTCUSDT", "ETHUSDT", "SOLUSDT"],
+            )
+
+            self.assertLess(len(str(checkpoint_store.path)), 240)
+            self.assertTrue(
+                checkpoint_store.path.name.startswith("portfolio_replay_3symbols_")
+                or checkpoint_store.path.name.startswith("pr_3symbols_")
+            )
+
     def test_portfolio_replay_ignores_broken_artifact_resume_payload(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             storage_dir = Path(temp_dir) / "data_storage"

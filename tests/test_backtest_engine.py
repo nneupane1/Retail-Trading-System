@@ -1,4 +1,6 @@
+import shutil
 import unittest
+from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
@@ -221,6 +223,19 @@ class BacktestEngineTests(unittest.TestCase):
             self.assertTrue(checkpoint_store.exists())
             payload = checkpoint_store.load()
             self.assertEqual(payload["next_index"], 123)
+
+    def test_checkpoint_store_recreates_parent_before_writing_temp_file(self):
+        with TemporaryDirectory() as temp_dir:
+            checkpoint_path = Path(temp_dir) / "nested" / "deeper" / "backtest.checkpoint.json"
+            checkpoint_store = BacktestCheckpointStore(checkpoint_path)
+
+            shutil.rmtree(checkpoint_path.parent)
+
+            checkpoint_store.save({"next_index": 321, "metadata": {"symbol": "ETHUSDT"}})
+
+            self.assertTrue(checkpoint_store.exists())
+            payload = checkpoint_store.load()
+            self.assertEqual(payload["next_index"], 321)
 
 
 if __name__ == "__main__":

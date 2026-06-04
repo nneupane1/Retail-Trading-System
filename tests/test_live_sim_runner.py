@@ -25,6 +25,10 @@ class DummyConfig:
             },
             "live_sim": {
                 "poll_seconds": 30,
+                "universe": {
+                    "symbols": ["BTCUSDT", "ETHUSDT"],
+                    "active_set": "current_9",
+                },
             },
             "storage": {
                 "base_path": storage_base_path,
@@ -36,6 +40,13 @@ class DummyConfig:
             "downloads": {
                 "history": {
                     "partial_suffix": ".partial.csv",
+                },
+            },
+            "universe": {
+                "active_set": "current_9",
+                "symbol_sets": {
+                    "current_9": ["BTCUSDT", "ETHUSDT"],
+                    "expanded_liquid_28": ["BTCUSDT", "ETHUSDT", "SOLUSDT"],
                 },
             },
             "features": {
@@ -78,6 +89,14 @@ class DummyConfig:
             value = value[key]
         return value
 
+    def get(self, *keys, default=None):
+        value = self.data
+        for key in keys:
+            if not isinstance(value, dict) or key not in value:
+                return default
+            value = value[key]
+        return value
+
 
 class LiveSimRunnerTests(unittest.TestCase):
     def test_discover_live_symbols_uses_local_symbol_folders(self):
@@ -89,6 +108,16 @@ class LiveSimRunnerTests(unittest.TestCase):
             symbols = _discover_live_symbols(config)
 
             self.assertEqual(symbols, ["BTCUSDT", "ETHUSDT"])
+
+    def test_discover_live_symbols_can_use_named_universe(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config = DummyConfig(storage_base_path=temp_dir)
+            config.data["live_sim"]["universe"]["symbols"] = []
+            config.data["live_sim"]["universe"]["active_set"] = "expanded_liquid_28"
+
+            symbols = _discover_live_symbols(config)
+
+            self.assertEqual(symbols, ["BTCUSDT", "ETHUSDT", "SOLUSDT"])
 
     def test_required_live_warmup_minutes_covers_macro_requirement(self):
         config = DummyConfig(storage_base_path="data_storage")
@@ -209,6 +238,32 @@ class LiveSimRunnerTests(unittest.TestCase):
 
             df_1m, source_path = _load_live_bootstrap_history(
                 symbol="BTCUSDT",
+                interval="1m",
+                warmup_minutes=60,
+                config=config,
+            )
+
+            self.assertEqual(source_path, timestamped)
+            self.assertEqual(len(df_1m), 2)
+
+    def test_load_live_bootstrap_history_accepts_later_starting_timestamped_file(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config = DummyConfig(storage_base_path=temp_dir)
+            folder = Path(temp_dir) / "SUIUSDT" / "1m"
+            folder.mkdir(parents=True, exist_ok=True)
+
+            timestamped = folder / (
+                "SUIUSDT_1m_2023-05-01T00.00.00_to_2026-05-23T00.00.00.csv"
+            )
+            timestamped.write_text(
+                "timestamp,open,high,low,close,volume\n"
+                "2026-01-01 00:00:00,1,1,1,1,1\n"
+                "2026-01-01 00:01:00,2,2,2,2,2\n",
+                encoding="utf-8",
+            )
+
+            df_1m, source_path = _load_live_bootstrap_history(
+                symbol="SUIUSDT",
                 interval="1m",
                 warmup_minutes=60,
                 config=config,

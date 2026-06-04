@@ -189,13 +189,14 @@ than assuming everything starts from `main_backtest.py`.
 | Step | Command | Purpose |
 | --- | --- | --- |
 | `1` | `python main_download.py` | Download and checkpoint local `1m` history from Binance |
-| `2` | `python main_resample.py` | Optional: materialize `15m`, `1h`, `5h`, and `12h` CSVs for inspection |
-| `3` | `python main_backtest.py` | Run the historical replay path: by default a multi-asset portfolio backtest aligned with the live paper portfolio |
-| `4` | `python main_edge_lab.py --symbols BTCUSDT ETHUSDT SOLUSDT` | Isolate hidden edge families and build a small deployable edge table |
-| `5` | `python main_calibrate.py` | Build opportunity-to-trade calibration reports from the latest backtest outputs |
-| `6` | `python main_walkforward.py --scheme multifold --branch-spec ...` | Run controlled multi-fold validation across candidate branches |
-| `7` | `python main_monte_carlo.py ...` | Stress-test completed trades with bootstrap and concentration analysis |
-| `8` | `python main_live.py` | Run the live path: by default a multi-asset paper portfolio scanner with local warmup history plus fresh Binance `1m` candles |
+| `2` | `python -m backtest.fill_expanded_universe_history` | Fill missing local `1m` history for liquid expanded-universe symbols, checkpoint-safe |
+| `3` | `python main_resample.py` | Optional: materialize `15m`, `1h`, `5h`, and `12h` CSVs for inspection |
+| `4` | `python main_backtest.py` | Run the historical replay path: by default a multi-asset portfolio backtest aligned with the live paper portfolio |
+| `5` | `python main_edge_lab.py --symbols BTCUSDT ETHUSDT SOLUSDT` | Isolate hidden edge families and build a small deployable edge table |
+| `6` | `python main_calibrate.py` | Build opportunity-to-trade calibration reports from the latest backtest outputs |
+| `7` | `python main_walkforward.py --scheme multifold --branch-spec ...` | Run controlled multi-fold validation across candidate branches |
+| `8` | `python main_monte_carlo.py ...` | Stress-test completed trades with bootstrap and concentration analysis |
+| `9` | `python main_live.py` | Run the live path: by default a multi-asset paper portfolio scanner with local warmup history plus fresh Binance `1m` candles |
 
 Two practical clarifications matter:
 
@@ -283,7 +284,7 @@ not scattered across the codebase.
 
 ### Environment variables
 
-The repository includes [`.env.template`](.env.template). The typical local
+The repository includes [`.env.example`](.env.example). The typical local
 variables are:
 
 ```text
@@ -368,6 +369,8 @@ engine with:
 - convexity behavior that starts small and earns size only after proof
 - structural `12H` moonshot participation
 - a separate `12H` cross-sectional rotation sleeve for leader reinforcement
+- dormant `1H` and `6H` scaffolds that exist in code/config but are not wired
+  into live or backtest routing yet
 
 ### Validated portfolio replay status
 
@@ -722,6 +725,16 @@ until the next validation step is complete:
 - convexity probe/promote/add behavior
 - calibrated allocator-v2 with agreement bonus and concentration brake
 
+The following future layers now exist only as non-operational scaffolds:
+
+- `strategy.h1_execution`
+- `strategy.h6_moonshot`
+
+They are intentionally disabled in config and are not routed by the current
+portfolio engine. Their only purpose right now is to preserve a clean growth
+path toward the `refactor.md` timeframe hierarchy without contaminating the
+validated stack.
+
 ### What is intentionally deferred
 
 The following are explicitly **not** the next coding move:
@@ -732,6 +745,8 @@ The following are explicitly **not** the next coding move:
 - aggressive HTF pyramiding
 - cycle-based compounding
 - threshold loosening simply to force more trades
+- switching on the dormant `1H` or `6H` layers before candidate studies justify
+  them
 
 ### Next implementation sequence
 
@@ -740,24 +755,31 @@ This is the current staged plan extracted from the allocator results and the
 
 1. Expand the scan universe to a clean Binance liquid universe.
    Start with roughly `20-30` symbols, not `100` random coins.
-2. Keep the signal stack unchanged.
+2. Fill local `1m` history for every new liquid symbol before judging the
+   allocator.
+   The current blocker is data coverage, not missing strategy logic.
+   Use `python -m backtest.fill_expanded_universe_history` and let it resume
+   across interruptions.
+3. Keep the signal stack unchanged.
    Reuse the current `core`, `swing`, `htf_12h_moonshot`,
    `htf_12h_rotation`, and calibrated allocator-v2 agreement branch.
-3. Make the broader universe operationally safe.
+4. Make the broader universe operationally safe.
    Enforce liquidity filters, minimum history length, timestamp alignment after
    resampling, and strict missing-bar / `NaN` controls.
-4. Validate the expanded-universe branch on the recent regime first.
+5. Validate the expanded-universe branch on the recent regime first.
    Judge it against the current 9-symbol calibrated allocator-v2 baseline.
-5. Only if HTF sleeves remain too economically weak after broader opportunity
+6. Only if HTF sleeves remain too economically weak after broader opportunity
    flow, run a `6H` candidate forward-return study.
-6. Only if the `6H` study proves unique positive edge, implement a true
+7. Only if the `6H` study proves unique positive edge, implement a true
    `6H` live sleeve.
-7. Run a `1H` candidate study after `6H`, not before.
+   The current scaffold exists, but it is intentionally dormant.
+8. Run a `1H` candidate study after `6H`, not before.
    `1H` is more likely to overlap with `15m`, so it should be justified by
    evidence rather than architecture excitement.
-8. Only after sleeve mix and routing are stable, add promotion logic and later
+   The current scaffold exists, but it is intentionally dormant.
+9. Only after sleeve mix and routing are stable, add promotion logic and later
    conservative HTF pyramiding.
-9. Only after monthly distribution improves and drawdown remains controlled,
+10. Only after monthly distribution improves and drawdown remains controlled,
    add cycle-based compounding.
 
 ### Why this order is deliberate
@@ -2146,6 +2168,8 @@ deliberate incompleteness.
   incremental edge, but portfolio interaction is still the hard problem.
 - The current full stack is still limited more by capital competition and
   distribution than by missing signal families.
+- `1H` and `6H` future sleeves now have placeholder modules and config, but
+  they are deliberately not active in runtime selection, allocation, or risk.
 
 ### Execution realism
 
@@ -2223,11 +2247,11 @@ pip install -r requirements.txt
 ### 2. Create your local environment file
 
 ```bash
-cp .env.template .env
+cp .env.example .env
 ```
 
 If you are on PowerShell and do not have `cp` aliased as expected, create the
-file manually from `.env.template`.
+file manually from `.env.example`.
 
 ### 3. Configure the strategy
 
@@ -2259,6 +2283,17 @@ Use the dedicated downloader:
 ```bash
 python main_download.py
 ```
+
+For the expanded-universe phase, use the dedicated batch filler:
+
+```bash
+python -m backtest.fill_expanded_universe_history
+```
+
+That command reads the latest expanded-universe validation report, targets only
+symbols that failed because of `missing_local_history`, and keeps both
+per-symbol download checkpoints and a batch-level progress file so the run can
+be stopped and resumed safely.
 
 The downloader writes a resumable `1m` history under:
 
