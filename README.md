@@ -31,16 +31,24 @@ was filtered, suppressed, or left idle.
 
 ## Table of Contents
 
+- [Current Mission](#current-mission)
+- [Current State / Do Not Touch](#current-state--do-not-touch)
+- [Current Bottleneck](#current-bottleneck)
+- [Strategy Layer Map](#strategy-layer-map)
+- [Validation Ladder](#validation-ladder)
 - [System Overview](#system-overview)
 - [Architectural Philosophy](#architectural-philosophy)
 - [Repository Map](#repository-map)
 - [High-Level Operating Model](#high-level-operating-model)
 - [What Actually Happens Each Cycle](#what-actually-happens-each-cycle)
 - [Operational Workflow](#operational-workflow)
+- [Next Commands](#next-commands)
 - [Timeframe Hierarchy](#timeframe-hierarchy)
 - [Configuration Model](#configuration-model)
 - [Current Research Baseline](#current-research-baseline)
 - [Allocator-V2 Status](#allocator-v2-status)
+- [Expanded-Universe Readiness](#expanded-universe-readiness)
+- [Failure Modes / What Not to Misread](#failure-modes--what-not-to-misread)
 - [Sequential Implementation Plan](#sequential-implementation-plan)
 - [Console Experience](#console-experience)
 - [Data Layer](#data-layer)
@@ -58,6 +66,90 @@ was filtered, suppressed, or left idle.
 - [Extension Guide](#extension-guide)
 - [Quick Start](#quick-start)
 - [Dependencies](#dependencies)
+
+## Current Mission
+
+The immediate mission is not to invent new strategy logic; it is to complete
+expanded-universe data coverage so the frozen calibrated allocator can be
+tested on a real broader opportunity set.
+
+| Area | Current status | Action |
+| --- | --- | --- |
+| Signal stack | Frozen | Do not add new signals |
+| Allocator-v2 | Calibrated agreement branch is the active research baseline | Keep active |
+| `1H` / `6H` layers | Dormant scaffolds only | Do not activate yet |
+| Expanded universe | Data fill in progress | Let it finish and monitor readiness |
+| Current blocker | Missing local `1m` history for liquid Binance symbols | Fill rejected symbols first |
+| Next validation | Expanded-universe allocator replay | Run only after `ready_for_rerun = true` |
+
+## Current State / Do Not Touch
+
+Current active research branch:
+
+- calibrated allocator-v2 agreement branch
+- `15m` core
+- `swing_moonshot`
+- `htf_12h_moonshot`
+- `htf_12h_rotation`
+- convexity probe/promote/add behavior
+- expanded-universe history fill workflow
+
+Do **not** currently implement:
+
+- live `1H` execution
+- live `6H` execution
+- extra pyramiding
+- cycle-based compounding
+- threshold loosening
+- new indicators
+
+The `1H` and `6H` layers already exist as dormant scaffolds in code and config.
+They are intentionally **not** routed into the live or backtest portfolio
+engine yet.
+
+## Current Bottleneck
+
+The current limitation is not missing signals or missing allocator
+infrastructure. The current limitation is data coverage.
+
+Until the expanded liquid Binance universe has complete, usable local `1m`
+history, the system cannot answer the next real research question:
+
+> does broader clean opportunity flow improve HTF and rotation contribution
+> without degrading distribution or drawdown?
+
+So the present blocker is simple:
+
+- the allocator already exists
+- the sleeves already exist
+- the broader universe list already exists
+- but the expanded universe is not yet fully admissible because several liquid
+  symbols still lack validated local `1m` history
+
+## Strategy Layer Map
+
+| Layer | Timeframe | Purpose | Current status | Capital behavior |
+| --- | --- | --- | --- | --- |
+| Core | `15m` | Tactical flow and frequent opportunities | Active | Shared/core pool |
+| Swing moonshot | `15m` with HTF context | Medium-convex participation | Active | Reserved sleeve |
+| HTF moonshot | `12H` | Structural trend birth | Active | Reserved sleeve |
+| HTF rotation | `12H` cross-sectional | Leader reinforcement | Active | Reserved sleeve |
+| `1H` execution | `1H` | Premium intraday trend layer | Dormant scaffold | Not routed |
+| `6H` moonshot | `6H` | Early swing expansion bridge | Dormant scaffold | Not routed |
+| Compounding | Portfolio level | Scale after proven stability | Deferred | Not active |
+
+## Validation Ladder
+
+| Stage | Question answered | Status |
+| --- | --- | --- |
+| Unit tests | Does the code behave mechanically? | Passing |
+| 9-symbol recent regime | Does allocator-v2 improve the current stack? | Completed |
+| Expanded-universe data fill | Do extra liquid symbols have usable local `1m` history? | In progress |
+| Expanded-universe recent validation | Does broader opportunity flow help? | Next |
+| Full-history expanded validation | Does it survive older regimes too? | Pending |
+| Walk-forward validation | Does it generalize out of sample? | Pending |
+| Monte Carlo / stress | Is the path survivable? | Pending |
+| Compounding simulation | Can it scale safely? | Deferred |
 
 ## System Overview
 
@@ -328,6 +420,22 @@ Two practical clarifications matter:
 - `main_backtest.py` and `main_live.py` serve different jobs: the backtest path
   is the historical research layer, while the live path is a near-live paper
   execution layer and does not replay the full dataset trade-by-trade.
+
+## Next Commands
+
+```bash
+# Check expanded-universe fill status
+python -m backtest.check_expanded_universe_fill_status
+
+# Resume missing history fill
+python -m backtest.fill_expanded_universe_history
+
+# Rerun expanded-universe allocator validation only after ready_for_rerun=true
+python -m backtest.validate_expanded_universe_allocator
+
+# Run the full test suite
+python -m unittest discover -s tests -v
+```
 
 ## Timeframe Hierarchy
 
@@ -819,6 +927,65 @@ In one line:
 > Allocator-v2 already improves capital concentration, but on the current
 > 9-symbol universe it still leans too hard on `core`, so the next problem is
 > opportunity scarcity and routing quality, not missing infrastructure.
+
+## Expanded-Universe Readiness
+
+The expanded-universe stage is not complete just because the downloader has
+been running for a while. It is only complete when the following operational
+conditions are satisfied.
+
+| Artifact | Purpose | Good state |
+| --- | --- | --- |
+| `history_fill_status.csv` | Per-symbol fill status | All target symbols completed or explicitly failed |
+| `history_fill_summary.json` | Batch-level fill snapshot | No hidden partial state or silent stalls |
+| `history_fill_readiness_summary.json` | Rerun decision report | `ready_for_rerun = true` |
+| `expanded_universe_quality.csv` | Quality admission report | Regenerated after rerun |
+| `expanded_universe_rejected_symbols.csv` | Rejection audit | No unexplained failures |
+| `summary.json` | Final allocator comparison | Expanded branch compared against the frozen 9-symbol baseline |
+
+### Definition of done for the expanded-universe stage
+
+The expanded-universe stage should be treated as complete only when:
+
+1. `history_fill_status.csv` shows every target symbol as completed or
+   explicitly failed.
+2. `python -m backtest.check_expanded_universe_fill_status` reports
+   `ready_for_rerun = true`.
+3. `expanded_universe_quality.csv` has been regenerated by the expanded-universe
+   allocator validator.
+4. accepted symbols exceed the current 9-symbol universe, or the validation
+   makes it explicit that broader coverage still failed to produce a larger
+   admissible set.
+5. the expanded-universe replay completes through the recent validation window
+   ending at `2026-05-22`.
+6. `summary.json` compares `current_9_symbol_calibrated_allocator` against
+   `expanded_universe_calibrated_allocator`.
+7. the final verdict explains whether HTF/rotation PnL increased, whether core
+   dominance reduced, whether median daily PnL improved, and whether drawdown
+   remained acceptable.
+
+## Failure Modes / What Not to Misread
+
+Do **not** treat higher final equity as success if:
+
+- drawdown expands materially
+- PF drops
+- median daily PnL worsens
+- core becomes even more dominant
+- one new symbol dominates all PnL
+- trade count explodes
+- HTF and rotation contribution do not improve
+
+Do **not** treat lower equity as failure if:
+
+- drawdown improves sharply
+- PF improves
+- daily distribution improves
+- unstable tail exposure is removed
+
+This matters because one of the core lessons from the current research path is
+that lower but cleaner equity can be more valuable than a higher, noisier
+equity spike driven by unstable exposure.
 
 ## Sequential Implementation Plan
 
