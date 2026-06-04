@@ -76,12 +76,35 @@ def _quality_thresholds(config):
         "min_recent_12h_rows": int(read("min_recent_12h_rows", 40) or 40),
         "min_recent_1d_rows": int(read("min_recent_1d_rows", 30) or 30),
         "min_recent_median_daily_quote_volume": float(
-            read("min_recent_median_daily_quote_volume", 10_000_000.0) or 10_000_000.0
+            read("min_recent_median_daily_quote_volume", 5_000_000.0) or 5_000_000.0
         ),
         "min_recent_min_daily_quote_volume": float(
-            read("min_recent_min_daily_quote_volume", 1_000_000.0) or 1_000_000.0
+            read("min_recent_min_daily_quote_volume", 750_000.0) or 750_000.0
         ),
         "max_recent_spread_proxy": float(read("max_recent_spread_proxy", 0.08) or 0.08),
+        "min_daily_bar_coverage_ratio_for_liquidity_stats": float(
+            read("min_daily_bar_coverage_ratio_for_liquidity_stats", 0.95) or 0.95
+        ),
+        "max_recent_terminal_gap_minutes": float(
+            read("max_recent_terminal_gap_minutes", 1440.0) or 1440.0
+        ),
+    }
+
+
+def _curation_thresholds(config):
+    getter = getattr(config, "get", None)
+
+    def read(name, default):
+        if callable(getter):
+            return getter("universe", "curation", name, default=default)
+        return default
+
+    return {
+        "min_keep_trade_count": int(read("min_keep_trade_count", 75) or 75),
+        "min_keep_net_pnl": float(read("min_keep_net_pnl", 0.0) or 0.0),
+        "min_keep_avg_R": float(read("min_keep_avg_R", 0.0) or 0.0),
+        "min_keep_profit_factor": float(read("min_keep_profit_factor", 1.0) or 1.0),
+        "min_review_trade_count": int(read("min_review_trade_count", 40) or 40),
     }
 
 
@@ -106,18 +129,30 @@ def _index_gap_metrics(index: pd.Index, frequency: str) -> tuple[int, float]:
     return missing, _safe_pct(missing, expected)
 
 
-def _daily_quote_volume_stats(frame: pd.DataFrame) -> tuple[float, float]:
+def _daily_quote_volume_stats(
+    frame: pd.DataFrame,
+    *,
+    min_bar_coverage_ratio: float = 0.95,
+    bars_per_day: int = 1440,
+) -> tuple[float, float, int]:
     if frame.empty:
-        return 0.0, 0.0
+        return 0.0, 0.0, 0
     working = frame.copy()
     working["quote_volume_proxy"] = (
         pd.to_numeric(working["close"], errors="coerce").fillna(0.0)
         * pd.to_numeric(working["volume"], errors="coerce").fillna(0.0)
     )
-    daily = working.groupby(working.index.floor("D"))["quote_volume_proxy"].sum()
+    daily = working.groupby(working.index.floor("D")).agg(
+        quote_volume_proxy=("quote_volume_proxy", "sum"),
+        bar_count=("quote_volume_proxy", "size"),
+    )
     if daily.empty:
-        return 0.0, 0.0
-    return float(daily.min()), float(daily.median())
+        return 0.0, 0.0, 0
+    min_bars = max(1, int(bars_per_day * float(min_bar_coverage_ratio)))
+    full_days = daily.loc[daily["bar_count"] >= min_bars, "quote_volume_proxy"]
+    if full_days.empty:
+        return 0.0, 0.0, 0
+    return float(full_days.min()), float(full_days.median()), int(len(full_days))
 
 
 def _spread_proxy(frame: pd.DataFrame) -> float:
@@ -149,6 +184,13 @@ def _recent_slice(frame: pd.DataFrame, start_ts: pd.Timestamp, end_ts: pd.Timest
     if frame.empty:
         return frame.copy()
     return frame.loc[(frame.index >= start_ts) & (frame.index < end_ts)].copy()
+
+
+def _terminal_gap_minutes(last_timestamp, expected_terminal_ts: pd.Timestamp) -> float:
+    if last_timestamp is None or pd.isna(last_timestamp):
+        return float("inf")
+    gap = (expected_terminal_ts - pd.Timestamp(last_timestamp)).total_seconds() / 60.0
+    return float(max(0.0, gap))
 
 
 def _first_true_timestamp(frame: pd.DataFrame, column: str):
@@ -241,12 +283,29 @@ def _validate_symbol_quality(
     )
     row["avg_spread_proxy"] = _spread_proxy(clean_1m.reset_index(drop=True))
     row["recent_avg_spread_proxy"] = _spread_proxy(recent_1m.reset_index(drop=True))
-    min_daily_quote, median_daily_quote = _daily_quote_volume_stats(clean_1m)
-    recent_min_daily_quote, recent_median_daily_quote = _daily_quote_volume_stats(recent_1m)
+    min_daily_quote, median_daily_quote, full_daily_count = _daily_quote_volume_stats(
+        clean_1m,
+        min_bar_coverage_ratio=thresholds["min_daily_bar_coverage_ratio_for_liquidity_stats"],
+    )
+    recent_min_daily_quote, recent_median_daily_quote, recent_full_daily_count = _daily_quote_volume_stats(
+        recent_1m,
+        min_bar_coverage_ratio=thresholds["min_daily_bar_coverage_ratio_for_liquidity_stats"],
+    )
     row["min_daily_quote_volume_proxy"] = min_daily_quote
     row["median_daily_quote_volume_proxy"] = median_daily_quote
+    row["full_daily_quote_volume_day_count"] = full_daily_count
     row["recent_min_daily_quote_volume_proxy"] = recent_min_daily_quote
     row["recent_median_daily_quote_volume_proxy"] = recent_median_daily_quote
+    row["recent_full_daily_quote_volume_day_count"] = recent_full_daily_count
+
+    expected_recent_terminal_ts = recent_end_ts - pd.Timedelta(minutes=1)
+    recent_last_timestamp = recent_1m.index.max() if not recent_1m.empty else None
+    row["recent_expected_terminal_timestamp"] = _serialize_timestamp(expected_recent_terminal_ts)
+    row["recent_terminal_gap_minutes"] = _terminal_gap_minutes(
+        recent_last_timestamp,
+        expected_recent_terminal_ts,
+    )
+    row["recent_terminal_gap_days"] = row["recent_terminal_gap_minutes"] / 1440.0
 
     try:
         df_15m, _, df_12h, df_1d, df_1w = _build_strategy_timeframes(clean_1m, config=base_config)
@@ -314,6 +373,8 @@ def _validate_symbol_quality(
         reasons.append("high_recent_missing_1m_ratio")
     if row["recent_missing_15m_ratio"] > thresholds["max_missing_15m_ratio"]:
         reasons.append("high_recent_missing_15m_ratio")
+    if row["recent_terminal_gap_minutes"] > thresholds["max_recent_terminal_gap_minutes"]:
+        reasons.append("insufficient_terminal_coverage")
     if row["recent_median_daily_quote_volume_proxy"] < thresholds["min_recent_median_daily_quote_volume"]:
         reasons.append("low_recent_median_quote_volume")
     if row["recent_min_daily_quote_volume_proxy"] < thresholds["min_recent_min_daily_quote_volume"]:
@@ -388,9 +449,6 @@ def _build_or_resume_quality_report(
     progress = _load_quality_progress(report_root)
     for symbol in candidate_symbols:
         symbol_key = str(symbol).upper()
-        cached = progress["symbols"].get(symbol_key)
-        if cached and bool(cached.get("complete")):
-            continue
         row = _validate_symbol_quality(
             symbol_key,
             base_config=base_config,
@@ -449,6 +507,9 @@ def _symbol_breakdown(trades: pd.DataFrame) -> list[dict]:
     working["pnl_R_initial"] = pd.to_numeric(working.get("pnl_R_initial"), errors="coerce").fillna(0.0)
     rows = []
     for symbol, group in working.groupby("symbol"):
+        pos = float(group.loc[group["pnl"] > 0, "pnl"].sum())
+        neg = float(group.loc[group["pnl"] < 0, "pnl"].sum())
+        pf = float("inf") if neg == 0.0 and pos > 0 else (pos / abs(neg) if neg != 0.0 else 0.0)
         loss_contribution = float(group.loc[group["pnl"] < 0, "pnl"].sum())
         rows.append(
             {
@@ -458,6 +519,8 @@ def _symbol_breakdown(trades: pd.DataFrame) -> list[dict]:
                 "avg_R": float(group["pnl_R_initial"].mean()) if not group.empty else 0.0,
                 "median_R": float(group["pnl_R_initial"].median()) if not group.empty else 0.0,
                 "max_R": float(group["pnl_R_initial"].max()) if not group.empty else 0.0,
+                "win_rate": float((group["pnl"] > 0).mean()) if not group.empty else 0.0,
+                "profit_factor": pf,
                 "loss_contribution_proxy": loss_contribution,
             }
         )
@@ -586,6 +649,141 @@ def _build_verdict(*, quality: dict, baseline: dict, expanded: dict, comparison:
     }
 
 
+def _build_candidate_branch_verdict(*, baseline: dict, candidate: dict, comparison: dict) -> dict:
+    candidate_pnl = candidate.get("strategy_pnl", {})
+    baseline_pnl = baseline.get("strategy_pnl", {})
+    return {
+        "is_better_than_current_9_symbol_branch": bool(
+            comparison["delta_final_equity"] > 0.0
+            and comparison["delta_profit_factor"] >= -0.02
+            and comparison["delta_median_daily_pnl"] >= -0.05
+            and comparison["delta_max_drawdown"] >= -0.02
+        ),
+        "did_drawdown_remain_acceptable": bool(comparison["delta_max_drawdown"] >= -0.02),
+        "did_median_daily_improve": bool(comparison["delta_median_daily_pnl"] > 0.0),
+        "did_profit_factor_hold_up": bool(comparison["delta_profit_factor"] >= -0.02),
+        "did_core_dominance_reduce": bool(
+            float(candidate.get("core_pnl_share", 0.0)) < float(baseline.get("core_pnl_share", 0.0))
+        ),
+        "did_htf_rotation_contribution_rise": bool(
+            float(candidate_pnl.get("htf_12h_rotation", 0.0)) > float(baseline_pnl.get("htf_12h_rotation", 0.0))
+        ),
+        "did_htf_moonshot_contribution_rise": bool(
+            float(candidate_pnl.get("htf_12h_moonshot", 0.0)) >= float(baseline_pnl.get("htf_12h_moonshot", 0.0))
+        ),
+    }
+
+
+def _build_lean_sleeve_report(report_root: Path, baseline: dict, candidate: dict, label: str) -> dict:
+    baseline_rows = {row["strategy_type"]: row for row in baseline.get("strategy_breakdown", [])}
+    candidate_rows = {row["strategy_type"]: row for row in candidate.get("strategy_breakdown", [])}
+    strategy_types = sorted(set(baseline_rows) | set(candidate_rows))
+    rows = []
+    for strategy_type in strategy_types:
+        base_row = baseline_rows.get(strategy_type, {})
+        cand_row = candidate_rows.get(strategy_type, {})
+        delta_pnl = float(cand_row.get("net_pnl", 0.0)) - float(base_row.get("net_pnl", 0.0))
+        rows.append(
+            {
+                "strategy_type": strategy_type,
+                "baseline_trade_count": int(base_row.get("trade_count", 0) or 0),
+                "candidate_trade_count": int(cand_row.get("trade_count", 0) or 0),
+                "baseline_net_pnl": float(base_row.get("net_pnl", 0.0) or 0.0),
+                "candidate_net_pnl": float(cand_row.get("net_pnl", 0.0) or 0.0),
+                "delta_net_pnl": delta_pnl,
+                "baseline_avg_R": float(base_row.get("avg_R", 0.0) or 0.0),
+                "candidate_avg_R": float(cand_row.get("avg_R", 0.0) or 0.0),
+                "baseline_profit_factor": float(base_row.get("profit_factor", 0.0) or 0.0),
+                "candidate_profit_factor": float(cand_row.get("profit_factor", 0.0) or 0.0),
+                "status": "improved" if delta_pnl > 0.0 else ("flat" if delta_pnl == 0.0 else "weakened"),
+            }
+        )
+    rows.sort(key=lambda item: item["delta_net_pnl"], reverse=True)
+    csv_path = report_root / f"lean_sleeve_report_{label}.csv"
+    json_path = report_root / f"lean_sleeve_report_{label}.json"
+    pd.DataFrame(rows).to_csv(csv_path, index=False)
+    payload = {
+        "label": label,
+        "rows": rows,
+        "csv_path": str(csv_path),
+        "json_path": str(json_path),
+    }
+    json_path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+    return payload
+
+
+def _classify_curated_symbol(row: dict, thresholds: dict) -> str:
+    trade_count = int(row.get("trade_count", 0) or 0)
+    net_pnl = float(row.get("net_pnl", 0.0) or 0.0)
+    avg_r = float(row.get("avg_R", 0.0) or 0.0)
+    profit_factor = float(row.get("profit_factor", 0.0) or 0.0)
+    if (
+        trade_count >= thresholds["min_keep_trade_count"]
+        and net_pnl > thresholds["min_keep_net_pnl"]
+        and avg_r > thresholds["min_keep_avg_R"]
+        and profit_factor >= thresholds["min_keep_profit_factor"]
+    ):
+        return "keep"
+    if trade_count >= thresholds["min_review_trade_count"] and net_pnl > 0.0 and avg_r > 0.0:
+        return "review"
+    return "drop"
+
+
+def _build_symbol_curation_report(
+    *,
+    base_config: AppConfig,
+    report_root: Path,
+    baseline_symbols: list[str],
+    expanded_snapshot: dict,
+    accepted_symbols: list[str],
+) -> dict:
+    thresholds = _curation_thresholds(base_config)
+    baseline_set = set(_effective_symbol_set(baseline_symbols))
+    accepted_set = set(_effective_symbol_set(accepted_symbols))
+    rows = []
+    for item in expanded_snapshot.get("symbol_breakdown", []):
+        symbol = str(item.get("symbol", "")).upper()
+        if not symbol or symbol not in accepted_set or symbol in baseline_set:
+            continue
+        status = _classify_curated_symbol(item, thresholds)
+        net_pnl = float(item.get("net_pnl", 0.0) or 0.0)
+        rows.append(
+            {
+                "symbol": symbol,
+                "trade_count": int(item.get("trade_count", 0) or 0),
+                "net_pnl": net_pnl,
+                "avg_R": float(item.get("avg_R", 0.0) or 0.0),
+                "median_R": float(item.get("median_R", 0.0) or 0.0),
+                "max_R": float(item.get("max_R", 0.0) or 0.0),
+                "win_rate": float(item.get("win_rate", 0.0) or 0.0),
+                "profit_factor": float(item.get("profit_factor", 0.0) or 0.0),
+                "loss_contribution_proxy": float(item.get("loss_contribution_proxy", 0.0) or 0.0),
+                "expanded_contribution_pct": _safe_pct(net_pnl, float(expanded_snapshot["metrics"]["net_pnl"])),
+                "status": status,
+            }
+        )
+    rows.sort(key=lambda item: ({"keep": 0, "review": 1, "drop": 2}.get(item["status"], 3), -item["net_pnl"]))
+    keep_symbols = [row["symbol"] for row in rows if row["status"] == "keep"]
+    review_symbols = [row["symbol"] for row in rows if row["status"] == "review"]
+    drop_symbols = [row["symbol"] for row in rows if row["status"] == "drop"]
+    curated_symbols = [str(symbol).upper() for symbol in baseline_symbols] + keep_symbols
+    csv_path = report_root / "lean_symbol_report.csv"
+    json_path = report_root / "lean_symbol_report.json"
+    pd.DataFrame(rows).to_csv(csv_path, index=False)
+    payload = {
+        "thresholds": thresholds,
+        "rows": rows,
+        "keep_symbols": keep_symbols,
+        "review_symbols": review_symbols,
+        "drop_symbols": drop_symbols,
+        "curated_symbols": curated_symbols,
+        "csv_path": str(csv_path),
+        "json_path": str(json_path),
+    }
+    json_path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+    return payload
+
+
 def _scenario_base_with_symbols(base: AppConfig, symbols: list[str]) -> AppConfig:
     cfg = _clone_config(base)
     cfg.data.setdefault("backtest", {}).setdefault("portfolio_replay", {})["symbols"] = list(symbols)
@@ -600,6 +798,59 @@ def _build_skipped_expanded_snapshot(baseline_snapshot: dict, symbols_used: list
     snapshot["skipped_due_to_identical_universe"] = True
     snapshot["not_run_reason"] = reason
     return snapshot
+
+
+def _effective_symbol_set(values) -> list[str]:
+    return [str(symbol).upper() for symbol in list(values or [])]
+
+
+def _should_skip_expanded_scenario(current_symbols: list[str], accepted_symbols: list[str]) -> tuple[bool, str | None]:
+    current_set = set(_effective_symbol_set(current_symbols))
+    accepted_set = set(_effective_symbol_set(accepted_symbols))
+    net_new = accepted_set - current_set
+    if not net_new:
+        return True, "no_net_universe_expansion_after_quality_validation"
+    return False, None
+
+
+def _progress_symbols_for_scenario(progress: dict, scenario_key: str) -> list[str]:
+    snapshot = progress.get(scenario_key) or {}
+    if not snapshot and scenario_key.startswith("scenario_"):
+        snapshot = progress.get(scenario_key.removeprefix("scenario_")) or {}
+    symbols_used = snapshot.get("symbols_used")
+    if isinstance(symbols_used, list):
+        return _effective_symbol_set(symbols_used)
+    return []
+
+
+def _scenario_requires_symbol_reset(progress: dict, scenario_key: str, symbols_used: list[str]) -> bool:
+    previous = set(_progress_symbols_for_scenario(progress, scenario_key))
+    current = set(_effective_symbol_set(symbols_used))
+    return bool(previous) and previous != current
+
+
+def _scenario_artifacts_require_symbol_reset(
+    report_root: Path,
+    scenario_key: str,
+    symbols_used: list[str],
+) -> bool:
+    trades_path = report_root / scenario_key / "trades.csv"
+    if not trades_path.exists():
+        return False
+    try:
+        trades = pd.read_csv(trades_path, usecols=["symbol"], on_bad_lines="skip", engine="python")
+    except Exception:
+        return True
+    if trades.empty or "symbol" not in trades.columns:
+        return False
+
+    observed = trades["symbol"].fillna("").astype(str).str.strip()
+    if observed.eq("").any():
+        return True
+
+    expected = set(_effective_symbol_set(symbols_used))
+    observed_set = {value.upper() for value in observed.tolist() if value}
+    return bool(observed_set - expected)
 
 
 def main():
@@ -639,6 +890,12 @@ def main():
     quality["summary"]["net_new_accepted_symbols"] = [str(symbol).upper() for symbol in net_new_symbols]
 
     progress = _load_progress(report_root)
+    baseline_scenario_name = "scenario_current_9_symbol_calibrated_allocator"
+    baseline_summary_key = "current_9_symbol_calibrated_allocator"
+    expanded_scenario_name = "scenario_expanded_universe_calibrated_allocator"
+    expanded_summary_key = "expanded_universe_calibrated_allocator"
+    curated_scenario_name = "scenario_curated_expanded_universe_calibrated_allocator"
+    curated_summary_key = "curated_expanded_universe_calibrated_allocator"
     scenarios = {}
     baseline_flags = {
         "core_enabled": True,
@@ -649,59 +906,155 @@ def main():
         "history_end_date": recent_end,
     }
     baseline_result = _run_or_resume_scenario(
-        "scenario_current_9_symbol_calibrated_allocator",
+        baseline_scenario_name,
         _scenario_base_with_symbols(base, current_symbols),
         report_root,
         progress,
+        reset_output=(
+            _scenario_requires_symbol_reset(
+                progress,
+                baseline_scenario_name,
+                current_symbols,
+            )
+            or _scenario_artifacts_require_symbol_reset(
+                report_root,
+                baseline_scenario_name,
+                current_symbols,
+            )
+        ),
         **baseline_flags,
     )
     baseline_snapshot = _scenario_snapshot(
         baseline_result,
         current_symbols,
         report_root,
-        "current_9_symbol_calibrated_allocator",
+        baseline_summary_key,
     )
-    scenarios["current_9_symbol_calibrated_allocator"] = baseline_snapshot
-    progress["current_9_symbol_calibrated_allocator"] = baseline_snapshot
+    scenarios[baseline_summary_key] = baseline_snapshot
+    progress.setdefault(baseline_scenario_name, {})["symbols_used"] = baseline_snapshot["symbols_used"]
     _save_progress(report_root, progress)
 
-    if accepted_symbol_set == current_symbol_set:
+    skip_expanded, skip_reason = _should_skip_expanded_scenario(
+        current_symbols,
+        quality["accepted_symbols"],
+    )
+    if skip_expanded:
         expanded_snapshot = _build_skipped_expanded_snapshot(
             baseline_snapshot,
             quality["accepted_symbols"],
-            reason="no_net_universe_expansion_after_quality_validation",
+            reason=skip_reason or "no_net_universe_expansion_after_quality_validation",
         )
-        scenarios["expanded_universe_calibrated_allocator"] = expanded_snapshot
-        progress["expanded_universe_calibrated_allocator"] = expanded_snapshot
+        scenarios[expanded_summary_key] = expanded_snapshot
+        progress.setdefault(expanded_scenario_name, {})["symbols_used"] = expanded_snapshot["symbols_used"]
         _save_progress(report_root, progress)
     else:
         expanded_result = _run_or_resume_scenario(
-            "scenario_expanded_universe_calibrated_allocator",
+            expanded_scenario_name,
             _scenario_base_with_symbols(base, quality["accepted_symbols"]),
             report_root,
             progress,
+            reset_output=(
+                _scenario_requires_symbol_reset(
+                    progress,
+                    expanded_scenario_name,
+                    quality["accepted_symbols"],
+                )
+                or _scenario_artifacts_require_symbol_reset(
+                    report_root,
+                    expanded_scenario_name,
+                    quality["accepted_symbols"],
+                )
+            ),
             **baseline_flags,
         )
         expanded_snapshot = _scenario_snapshot(
             expanded_result,
             quality["accepted_symbols"],
             report_root,
-            "expanded_universe_calibrated_allocator",
+            expanded_summary_key,
         )
-        scenarios["expanded_universe_calibrated_allocator"] = expanded_snapshot
-        progress["expanded_universe_calibrated_allocator"] = expanded_snapshot
-        _save_progress(report_root, progress)
+        scenarios[expanded_summary_key] = expanded_snapshot
 
     comparison = _build_comparison(
-        scenarios["current_9_symbol_calibrated_allocator"],
-        scenarios["expanded_universe_calibrated_allocator"],
+        scenarios[baseline_summary_key],
+        scenarios[expanded_summary_key],
     )
     verdict = _build_verdict(
         quality=quality,
-        baseline=scenarios["current_9_symbol_calibrated_allocator"],
-        expanded=scenarios["expanded_universe_calibrated_allocator"],
+        baseline=scenarios[baseline_summary_key],
+        expanded=scenarios[expanded_summary_key],
         comparison=comparison,
     )
+
+    lean_reports = {
+        expanded_summary_key: _build_lean_sleeve_report(
+            report_root,
+            scenarios[baseline_summary_key],
+            scenarios[expanded_summary_key],
+            label=expanded_summary_key,
+        )
+    }
+    curation = _build_symbol_curation_report(
+        base_config=base,
+        report_root=report_root,
+        baseline_symbols=current_symbols,
+        expanded_snapshot=scenarios[expanded_summary_key],
+        accepted_symbols=quality["accepted_symbols"],
+    )
+
+    curated_comparison = None
+    curated_verdict = None
+    curated_symbols = curation["curated_symbols"]
+    if set(_effective_symbol_set(curated_symbols)) != set(_effective_symbol_set(current_symbols)):
+        curated_result = _run_or_resume_scenario(
+            curated_scenario_name,
+            _scenario_base_with_symbols(base, curated_symbols),
+            report_root,
+            progress,
+            reset_output=(
+                _scenario_requires_symbol_reset(
+                    progress,
+                    curated_scenario_name,
+                    curated_symbols,
+                )
+                or _scenario_artifacts_require_symbol_reset(
+                    report_root,
+                    curated_scenario_name,
+                    curated_symbols,
+                )
+            ),
+            **baseline_flags,
+        )
+        curated_snapshot = _scenario_snapshot(
+            curated_result,
+            curated_symbols,
+            report_root,
+            curated_summary_key,
+        )
+        scenarios[curated_summary_key] = curated_snapshot
+        progress.setdefault(curated_scenario_name, {})["symbols_used"] = curated_snapshot["symbols_used"]
+        _save_progress(report_root, progress)
+        curated_comparison = _build_comparison(
+            scenarios[baseline_summary_key],
+            scenarios[curated_summary_key],
+        )
+        curated_verdict = _build_candidate_branch_verdict(
+            baseline=scenarios[baseline_summary_key],
+            candidate=scenarios[curated_summary_key],
+            comparison=curated_comparison,
+        )
+        lean_reports[curated_summary_key] = _build_lean_sleeve_report(
+            report_root,
+            scenarios[baseline_summary_key],
+            scenarios[curated_summary_key],
+            label=curated_summary_key,
+        )
+    else:
+        scenarios[curated_summary_key] = _build_skipped_expanded_snapshot(
+            scenarios[baseline_summary_key],
+            curated_symbols,
+            reason="no_curated_net_new_symbols_after_post_validation_report",
+        )
 
     summary = {
         "report_root": str(report_root),
@@ -713,6 +1066,10 @@ def main():
         "scenarios": scenarios,
         "comparison": comparison,
         "verdict": verdict,
+        "lean_reports": lean_reports,
+        "curation": curation,
+        "curated_comparison": curated_comparison,
+        "curated_verdict": curated_verdict,
     }
     with (report_root / "summary.json").open("w", encoding="utf-8") as file_handle:
         json.dump(summary, file_handle, indent=2, default=str)

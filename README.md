@@ -70,18 +70,27 @@ was filtered, suppressed, or left idle.
 
 ## Current Mission
 
-The immediate mission is not to invent new strategy logic; it is to complete
-expanded-universe data coverage so the frozen calibrated allocator can be
-tested on a real broader opportunity set.
+The immediate mission is no longer raw data collection. That stage is complete.
+The current mission is to prove whether **selective breadth** helps the system
+without tightening it into a low-frequency, over-engineered machine.
+
+In practical terms:
+
+- the signal stack stays frozen
+- the calibrated allocator-v2 agreement branch stays frozen
+- the broad 26-symbol expansion has already been tested and rejected
+- the next question is whether a **curated** subset of added symbols improves
+  the live-like `2026` holdout without killing opportunity flow
 
 | Area | Current status | Action |
 | --- | --- | --- |
 | Signal stack | Frozen | Do not add new signals |
 | Allocator-v2 | Calibrated agreement branch is the active research baseline | Keep active |
 | `1H` / `6H` layers | Dormant scaffolds only | Do not activate yet |
-| Expanded universe | Data fill in progress | Let it finish and monitor readiness |
-| Current blocker | Missing local `1m` history for liquid Binance symbols | Fill rejected symbols first |
-| Next validation | Expanded-universe allocator replay | Run only after `ready_for_rerun = true` |
+| Expanded universe data coverage | Complete for the current research snapshot | Do not reopen this unless a new universe is proposed |
+| Broad 26-symbol expansion | Completed and rejected | Do not treat raw breadth as automatically good |
+| Current blocker | Proving selective breadth out of sample | Use holdout validation, not tighter live rules |
+| Next validation | Lean curated holdout replay | Let `validate_curated_holdout` finish, then judge additions |
 
 ## Current State / Do Not Touch
 
@@ -93,7 +102,7 @@ Current active research branch:
 - `htf_12h_moonshot`
 - `htf_12h_rotation`
 - convexity probe/promote/add behavior
-- expanded-universe history fill workflow
+- expanded-universe curated holdout workflow
 
 Do **not** currently implement:
 
@@ -103,6 +112,8 @@ Do **not** currently implement:
 - cycle-based compounding
 - threshold loosening
 - new indicators
+- aggressive allocator tightening that suppresses trade flow just to make the
+  backtest look cleaner
 
 The `1H` and `6H` layers already exist as dormant scaffolds in code and config.
 They are intentionally **not** routed into the live or backtest portfolio
@@ -110,22 +121,23 @@ engine yet.
 
 ## Current Bottleneck
 
-The current limitation is not missing signals or missing allocator
-infrastructure. The current limitation is data coverage.
+The current limitation is no longer missing history or missing allocator
+infrastructure. The current limitation is **selection quality**.
 
-Until the expanded liquid Binance universe has complete, usable local `1m`
-history, the system cannot answer the next real research question:
+The repo has now proved three things:
 
-> does broader clean opportunity flow improve HTF and rotation contribution
-> without degrading distribution or drawdown?
+- the current 9-symbol allocator-v2 branch is a valid baseline
+- naive 26-symbol breadth degrades the portfolio
+- a smaller curated subset can improve the same recent window, but that
+  improvement still needs holdout proof
 
-So the present blocker is simple:
+So the current blocker is:
 
-- the allocator already exists
-- the sleeves already exist
-- the broader universe list already exists
-- but the expanded universe is not yet fully admissible because several liquid
-  symbols still lack validated local `1m` history
+- not more signals
+- not more timeframes
+- not more capital aggression
+- but proving which added symbols generalize out of sample without reducing the
+  system to a brittle, low-frequency filter
 
 ## Strategy Layer Map
 
@@ -145,8 +157,9 @@ So the present blocker is simple:
 | --- | --- | --- |
 | Unit tests | Does the code behave mechanically? | Passing |
 | 9-symbol recent regime | Does allocator-v2 improve the current stack? | Completed |
-| Expanded-universe data fill | Do extra liquid symbols have usable local `1m` history? | In progress |
-| Expanded-universe recent validation | Does broader opportunity flow help? | Next |
+| Expanded-universe data fill | Do extra liquid symbols have usable local `1m` history? | Completed |
+| Expanded-universe recent validation | Does broader opportunity flow help? | Completed |
+| Curated selective-breadth holdout | Do the added symbols survive out of sample? | In progress |
 | Full-history expanded validation | Does it survive older regimes too? | Pending |
 | Walk-forward validation | Does it generalize out of sample? | Pending |
 | Monte Carlo / stress | Is the path survivable? | Pending |
@@ -421,6 +434,19 @@ Two practical clarifications matter:
 - `main_backtest.py` and `main_live.py` serve different jobs: the backtest path
   is the historical research layer, while the live path is a near-live paper
   execution layer and does not replay the full dataset trade-by-trade.
+
+## Next Commands
+
+```bash
+# Rebuild the broad expanded-universe validation
+python -m backtest.validate_expanded_universe_allocator
+
+# Run the lean curated holdout validator
+python -m backtest.validate_curated_holdout
+
+# Run full test suite
+python -m unittest discover -s tests -v
+```
 
 ## Next Commands
 
@@ -929,11 +955,68 @@ In one line:
 > 9-symbol universe it still leans too hard on `core`, so the next problem is
 > opportunity scarcity and routing quality, not missing infrastructure.
 
+### Expanded-universe verdict
+
+The broad expanded universe has now been tested on the same recent-regime
+window (`2025-01-01` to `2026-05-22`).
+
+Quality admission:
+
+- candidate symbols: `28`
+- accepted: `26`
+- rejected: `2`
+  - `FTMUSDT` -> insufficient terminal coverage
+  - `MATICUSDT` -> stale / invalid recent coverage
+
+Recent-regime replay verdict:
+
+| Branch | Final Equity | PF | Median Daily PnL | Max DD | Trades | Verdict |
+| --- | --- | --- | --- | --- | --- | --- |
+| Current 9 | `EUR 25,556.06` | `1.1868` | `-EUR 0.56` | `-7.60%` | `3,471` | Active baseline |
+| Broad 26 | `EUR 23,821.93` | `1.1345` | `-EUR 5.01` | `-5.32%` | `2,746` | Failed expansion |
+| Curated in-sample (`9 + DOT + FIL`) | `EUR 26,301.58` | `1.2657` | `-EUR 0.42` | `-4.57%` | `2,564` | Candidate only |
+
+What this means:
+
+- broad raw breadth is **not** a free win
+- drawdown improved under the broad 26-symbol run, but economics got worse
+- the first pass of selective breadth looked promising
+- but the `DOT + FIL` branch was still selected on the same window and must be
+  treated as a candidate branch, not a production truth
+
+### Lean holdout curation status
+
+To avoid over-engineering the system into a frequency-killing filter, the next
+validation step is intentionally lean:
+
+- reuse the existing expanded-universe replay to derive training-period
+  curation
+- run only the shorter `2026-01-01` to `2026-05-22` holdout scenarios
+- do **not** change live signal logic while doing so
+
+Early training-slice curation from the lean holdout path currently prefers:
+
+- `DOTUSDT`
+- `APTUSDT`
+- `ADAUSDT`
+- `SUIUSDT`
+
+and it currently **drops** `FILUSDT`.
+
+That is already useful because it shows the system is separating:
+
+- symbols that only looked good in the original in-sample broad expansion
+- symbols that still survive a cleaner training / holdout split
+
+The economic goal of this stage is not to make the portfolio “tighter.” It is
+to improve selective breadth while preserving enough opportunity flow for the
+system to remain economically alive.
+
 ## Expanded-Universe Readiness
 
-The expanded-universe stage is not complete just because the downloader has
-been running for a while. It is only complete when the following operational
-conditions are satisfied.
+The original expanded-universe data-readiness stage is now complete for the
+current research snapshot. The table below is kept as the operational audit
+trail for how readiness was established.
 
 | Artifact | Purpose | Good state |
 | --- | --- | --- |
@@ -944,7 +1027,7 @@ conditions are satisfied.
 | `expanded_universe_rejected_symbols.csv` | Rejection audit | No unexplained failures |
 | `summary.json` | Final allocator comparison | Expanded branch compared against the frozen 9-symbol baseline |
 
-### Definition of done for the expanded-universe stage
+### Definition of done for the expanded-universe data stage
 
 The expanded-universe stage should be treated as complete only when:
 
@@ -965,11 +1048,14 @@ The expanded-universe stage should be treated as complete only when:
    dominance reduced, whether median daily PnL improved, and whether drawdown
    remained acceptable.
 
+That checklist has now been satisfied. The project has therefore moved from
+data-readiness into **curated holdout validation**.
+
 ## Expanded-Universe Decision Tree
 
 The current phase is intentionally procedural. The point is not to "do more
-research because we can"; it is to avoid invalid conclusions while the expanded
-universe is only partially built.
+research because we can"; it is to avoid invalid conclusions while moving from
+broad expansion toward selective breadth.
 
 The decision tree below is the operational story for this stage:
 
@@ -1014,9 +1100,11 @@ results.
 6. **Use the replay result to decide the next branch.**
    - If HTF and rotation improve, move deeper into validation with full-history,
      walk-forward, and stress testing.
-   - If they do not improve, that is evidence that the missing layer is not
-     more breadth alone, and the next justified step becomes the `6H`
-     candidate study rather than premature pyramiding or compounding.
+   - If broad expansion fails but a curated subset looks better, run a lean
+     holdout before touching live logic.
+   - If even curated breadth fails, that is evidence that the missing layer is
+     not more symbols alone, and only then does a study like `6H` become
+     justified.
 7. **Pyramiding and compounding stay at the end.**
    Those are scale amplifiers, not discovery tools. They only make sense after
    broader opportunity flow and allocator behavior have already been proven.
@@ -1029,6 +1117,7 @@ results.
 | Equity rises but drawdown worsens badly | Tune allocator risk and concentration; do not add new layers |
 | Core dominance increases further | Do not accept the expansion as successful |
 | No meaningful new symbols accepted | Fix data coverage first |
+| Broad expansion fails but curated subset improves | Run holdout before changing live logic |
 | Expanded universe passes recent and full-history checks | Then consider the `6H` candidate study |
 
 ## Failure Modes / What Not to Misread
@@ -1096,62 +1185,55 @@ The following are explicitly **not** the next coding move:
 - threshold loosening simply to force more trades
 - switching on the dormant `1H` or `6H` layers before candidate studies justify
   them
+- over-tightening the allocator or signal gates in a way that "improves" the
+  backtest only by starving the system of trade frequency
 
 ### Next implementation sequence
 
 This is the current staged plan extracted from the allocator results and the
 `refactor.md` direction.
 
-1. Expand the scan universe to a clean Binance liquid universe.
-   Start with roughly `20-30` symbols, not `100` random coins.
-2. Fill local `1m` history for every new liquid symbol before judging the
-   allocator.
-   The current blocker is data coverage, not missing strategy logic.
-   Use `python -m backtest.fill_expanded_universe_history` and let it resume
-   across interruptions.
-3. Keep the signal stack unchanged.
+1. Keep the signal stack unchanged.
    Reuse the current `core`, `swing`, `htf_12h_moonshot`,
    `htf_12h_rotation`, and calibrated allocator-v2 agreement branch.
-4. Make the broader universe operationally safe.
-   Enforce liquidity filters, minimum history length, timestamp alignment after
-   resampling, and strict missing-bar / `NaN` controls.
-5. Validate the expanded-universe branch on the recent regime first.
-   Judge it against the current 9-symbol calibrated allocator-v2 baseline.
-6. Use the fill-readiness checker before rerunning the expanded-universe
-   validator.
-   The correct trigger is `ready_for_rerun = true`, not just "the downloader has
-   been running for a while."
-7. Only if HTF sleeves remain too economically weak after broader opportunity
+2. Treat broad 26-symbol expansion as a completed experiment, not an open
+   hypothesis.
+   It improved drawdown but worsened PF, median daily PnL, and sleeve mix, so
+   raw breadth is not the answer by itself.
+3. Validate selective breadth instead of broad breadth.
+   Use the lean holdout path to test whether a curated subset of added symbols
+   improves the `2026` holdout without touching live signal logic.
+4. Only if selective breadth survives holdout should the project move to
+   full-history expanded validation and deeper walk-forward work.
+5. Only if HTF sleeves remain too economically weak after selective breadth
    flow, run a `6H` candidate forward-return study.
-8. Only if the `6H` study proves unique positive edge, implement a true
+6. Only if the `6H` study proves unique positive edge, implement a true
    `6H` live sleeve.
    The current scaffold exists, but it is intentionally dormant.
-9. Run a `1H` candidate study after `6H`, not before.
+7. Run a `1H` candidate study after `6H`, not before.
    `1H` is more likely to overlap with `15m`, so it should be justified by
    evidence rather than architecture excitement.
    The current scaffold exists, but it is intentionally dormant.
-10. Only after sleeve mix and routing are stable, add promotion logic and later
+8. Only after sleeve mix and routing are stable, add promotion logic and later
    conservative HTF pyramiding.
-11. Only after monthly distribution improves and drawdown remains controlled,
+9. Only after monthly distribution improves and drawdown remains controlled,
    add cycle-based compounding.
 
 ### Why this order is deliberate
 
-The current bottleneck is not that the system lacks signals. It is that the
-allocator still does not have enough independent high-quality HTF leaders to
-route capital toward. On just 9 symbols, the best branch still pushes too much
-profit into `core`.
+The current bottleneck is not that the system lacks signals. It is that
+selective breadth has not yet been proven out of sample.
 
 So the immediate question is:
 
-> can the current calibrated allocator become more HTF-dominant and more
-> economically stable if it scans a broader but still liquid Binance universe?
+> can the current calibrated allocator become more economically stable if it
+> adds only the right extra symbols, rather than just more symbols?
 
 That is the next serious test. New timeframes come after that, not before.
 
 ### Pass criteria for the next stage
 
-The expanded-universe validation should only be considered successful if it
+The selective-breadth validation should only be considered successful if it
 improves the metrics that matter for the business objective:
 
 - median daily PnL

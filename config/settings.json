@@ -236,9 +236,18 @@
       "min_recent_execution_rows": 500,
       "min_recent_12h_rows": 40,
       "min_recent_1d_rows": 30,
-      "min_recent_median_daily_quote_volume": 10000000.0,
-      "min_recent_min_daily_quote_volume": 1000000.0,
-      "max_recent_spread_proxy": 0.08
+      "min_recent_median_daily_quote_volume": 5000000.0,
+      "min_recent_min_daily_quote_volume": 750000.0,
+      "max_recent_spread_proxy": 0.08,
+      "min_daily_bar_coverage_ratio_for_liquidity_stats": 0.95,
+      "max_recent_terminal_gap_minutes": 1440.0
+    },
+    "curation": {
+      "min_keep_trade_count": 75,
+      "min_keep_net_pnl": 0.0,
+      "min_keep_avg_R": 0.0,
+      "min_keep_profit_factor": 1.0,
+      "min_review_trade_count": 40
     }
   },
   "live_sim": {
