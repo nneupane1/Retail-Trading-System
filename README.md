@@ -22,6 +22,7 @@ trade PnL.
 - [Architectural Philosophy](#architectural-philosophy)
 - [Repository Map](#repository-map)
 - [High-Level Operating Model](#high-level-operating-model)
+- [What Actually Happens Each Cycle](#what-actually-happens-each-cycle)
 - [Operational Workflow](#operational-workflow)
 - [Timeframe Hierarchy](#timeframe-hierarchy)
 - [Configuration Model](#configuration-model)
@@ -141,38 +142,62 @@ This event-driven style reduces late entries and repeated signals.
 
 ## High-Level Operating Model
 
-The following diagram summarizes the full pipeline from raw market data to
-trade results.
+The following diagram summarizes the active research architecture from raw data
+to routed capital. It is intentionally layered: data preparation, context,
+candidate generation, capital routing, then trade management.
 
 ```mermaid
-flowchart TD
-    A[Binance 1m OHLCV] --> B[MarketDataDownloader]
-    B --> C[TimeframeBuilder]
-    C --> D[15m Execution Frame]
-    C --> E[1h Direction Frame]
-    C --> F[5h Trend Frame]
-    C --> G[12h Macro Frame]
-    D --> H[FeaturePipeline]
-    E --> I[FeaturePipeline]
-    F --> J[FeaturePipeline]
-    G --> K[FeaturePipeline]
-    I --> L[BiasDetector]
-    J --> M[RegimeDetector]
-    K --> M
-    H --> N[ScoreEngine]
-    H --> O[EntryEngine]
-    O --> P[PositionSizer]
-    P --> Q[Simulator]
-    L --> Q
-    M --> Q
-    N --> Q
-    Q --> R[PyramidingEngine]
-    Q --> S[TrendSniffer]
-    Q --> T[ExitEngine]
-    Q --> U[Trade]
-    Q --> V[Account]
-    U --> W[Trade CSV]
-    V --> X[Equity CSV]
+flowchart LR
+    subgraph A[Data Intake]
+        A1[Local 1m history] --> A3[Validated 1m state]
+        A2[Fresh Binance 1m] --> A3
+        A3 --> A4[Aligned resampling]
+    end
+
+    subgraph B[Strategy Frames]
+        A4 --> B1[15m execution]
+        A4 --> B2[1h direction]
+        A4 --> B3[5h trend]
+        A4 --> B4[12h macro]
+        A4 --> B5[1D and 1W HTF context]
+    end
+
+    subgraph C[Context and Features]
+        B1 --> C1[Feature pipeline]
+        B2 --> C2[Bias snapshot]
+        B3 --> C3[Trend regime snapshot]
+        B4 --> C3
+        B5 --> C4[HTF context]
+    end
+
+    subgraph D[Candidate Sleeves]
+        C1 --> D1[15m core]
+        C1 --> D2[Swing moonshot]
+        C4 --> D3[12H structural HTF]
+        C4 --> D4[12H rotation leaders]
+    end
+
+    subgraph E[Capital Routing]
+        D1 --> E1[Recent health gates]
+        D2 --> E1
+        D3 --> E1
+        D4 --> E1
+        C2 --> E1
+        C3 --> E1
+        E1 --> E2[Allocator v2]
+        E2 --> E3[Sleeve budgets and rank routing]
+        E3 --> E4[Open or skip]
+    end
+
+    subgraph F[Trade Lifecycle]
+        E4 --> F1[Probe entry]
+        F1 --> F2[Convex promotion]
+        F2 --> F3[One earned add]
+        F3 --> F4[Trailing, decay, hard stop]
+        F4 --> F5[Account update]
+    end
+
+    F5 --> G[Trades, equity, opportunities, validation reports]
 ```
 
 The simulator operates on one execution candle at a time. In backtesting, that
@@ -180,6 +205,52 @@ means iterating through historical `15m` candles. In live simulation, that
 means polling recent `1m` data until a new closed `15m` candle appears. In both
 modes, the internal strategy logic is identical once the current execution row
 and higher-timeframe slices are available.
+
+The important conceptual shift is this:
+
+- this is no longer just a "signal fires -> open trade" system
+- it is now a **capital-routing engine**
+- many candidates can exist at once
+- only a few deserve capital
+- the allocator decides which sleeve, symbol, and opportunity gets exposure
+- cash is allowed to stay idle if the current market does not justify deployment
+
+## What Actually Happens Each Cycle
+
+In the active portfolio path, each closed `15m` step runs the same decision
+sequence in both historical replay and live paper trading.
+
+1. The engine builds a clean in-memory market state from local `1m` history plus
+   any fresh Binance `1m` candles.
+2. It resamples that state into the execution and context frames the strategy
+   needs: `15m`, `1h`, `5h`, `12h`, and selected HTF context frames.
+3. It computes features and higher-timeframe context snapshots only from candles
+   that would already have been closed at that timestamp.
+4. It generates candidate sleeves rather than one monolithic signal:
+   - `core` for dense `15m` flow
+   - `swing_moonshot` for slower convex participation
+   - `htf_12h_moonshot` for structural higher-timeframe breakouts
+   - `htf_12h_rotation` for cross-sectional leader reinforcement
+5. It runs recent bucket and strategy health gates, duplicate-exposure checks,
+   side restrictions, and minimum-quality floors.
+6. It hands the surviving candidates to allocator-v2, which:
+   - applies sleeve budgets
+   - ranks candidates inside each sleeve
+   - shapes concentration toward the strongest leaders
+   - allows HTF/rotation agreement to raise conviction
+   - leaves capital unused if no candidate is strong enough
+7. If a candidate is selected, the engine opens a **probe** instead of blindly
+   deploying maximum size immediately.
+8. Existing trades are then managed through convexity and risk logic:
+   - promote only after proof
+   - allow one earned add only while the trade is working
+   - trail, decay-exit, or hard-stop based on structure
+9. Every decision is logged into artifacts that can be audited later:
+   trades, equity, opportunities, sleeve summaries, daily summaries, and
+   validation reports.
+
+That is the real operating model: **observe broadly, rank aggressively, route
+capital selectively, and let only proven trades earn more exposure.**
 
 ## Operational Workflow
 
@@ -190,13 +261,14 @@ than assuming everything starts from `main_backtest.py`.
 | --- | --- | --- |
 | `1` | `python main_download.py` | Download and checkpoint local `1m` history from Binance |
 | `2` | `python -m backtest.fill_expanded_universe_history` | Fill missing local `1m` history for liquid expanded-universe symbols, checkpoint-safe |
-| `3` | `python main_resample.py` | Optional: materialize `15m`, `1h`, `5h`, and `12h` CSVs for inspection |
-| `4` | `python main_backtest.py` | Run the historical replay path: by default a multi-asset portfolio backtest aligned with the live paper portfolio |
-| `5` | `python main_edge_lab.py --symbols BTCUSDT ETHUSDT SOLUSDT` | Isolate hidden edge families and build a small deployable edge table |
-| `6` | `python main_calibrate.py` | Build opportunity-to-trade calibration reports from the latest backtest outputs |
-| `7` | `python main_walkforward.py --scheme multifold --branch-spec ...` | Run controlled multi-fold validation across candidate branches |
-| `8` | `python main_monte_carlo.py ...` | Stress-test completed trades with bootstrap and concentration analysis |
-| `9` | `python main_live.py` | Run the live path: by default a multi-asset paper portfolio scanner with local warmup history plus fresh Binance `1m` candles |
+| `3` | `python -m backtest.check_expanded_universe_fill_status` | Check whether the fill is still running, which symbols were recovered, and whether the expanded-universe validator is ready to rerun |
+| `4` | `python main_resample.py` | Optional: materialize `15m`, `1h`, `5h`, and `12h` CSVs for inspection |
+| `5` | `python main_backtest.py` | Run the historical replay path: by default a multi-asset portfolio backtest aligned with the live paper portfolio |
+| `6` | `python main_edge_lab.py --symbols BTCUSDT ETHUSDT SOLUSDT` | Isolate hidden edge families and build a small deployable edge table |
+| `7` | `python main_calibrate.py` | Build opportunity-to-trade calibration reports from the latest backtest outputs |
+| `8` | `python main_walkforward.py --scheme multifold --branch-spec ...` | Run controlled multi-fold validation across candidate branches |
+| `9` | `python main_monte_carlo.py ...` | Stress-test completed trades with bootstrap and concentration analysis |
+| `10` | `python main_live.py` | Run the live path: by default a multi-asset paper portfolio scanner with local warmup history plus fresh Binance `1m` candles |
 
 Two practical clarifications matter:
 
@@ -210,6 +282,9 @@ Two practical clarifications matter:
 - The default live mode is now `portfolio_paper`, not the old single-symbol
   loop. Set `live_sim.mode` back to `single_symbol` if you want the legacy
   behavior.
+- During the expanded-universe build phase, do **not** rerun the expanded
+  allocator validator until `python -m backtest.check_expanded_universe_fill_status`
+  reports `"ready_for_rerun": true`.
 - `main_backtest.py` and `main_live.py` serve different jobs: the backtest path
   is the historical research layer, while the live path is a near-live paper
   execution layer and does not replay the full dataset trade-by-trade.
@@ -768,18 +843,22 @@ This is the current staged plan extracted from the allocator results and the
    resampling, and strict missing-bar / `NaN` controls.
 5. Validate the expanded-universe branch on the recent regime first.
    Judge it against the current 9-symbol calibrated allocator-v2 baseline.
-6. Only if HTF sleeves remain too economically weak after broader opportunity
+6. Use the fill-readiness checker before rerunning the expanded-universe
+   validator.
+   The correct trigger is `ready_for_rerun = true`, not just "the downloader has
+   been running for a while."
+7. Only if HTF sleeves remain too economically weak after broader opportunity
    flow, run a `6H` candidate forward-return study.
-7. Only if the `6H` study proves unique positive edge, implement a true
+8. Only if the `6H` study proves unique positive edge, implement a true
    `6H` live sleeve.
    The current scaffold exists, but it is intentionally dormant.
-8. Run a `1H` candidate study after `6H`, not before.
+9. Run a `1H` candidate study after `6H`, not before.
    `1H` is more likely to overlap with `15m`, so it should be justified by
    evidence rather than architecture excitement.
    The current scaffold exists, but it is intentionally dormant.
-9. Only after sleeve mix and routing are stable, add promotion logic and later
+10. Only after sleeve mix and routing are stable, add promotion logic and later
    conservative HTF pyramiding.
-10. Only after monthly distribution improves and drawdown remains controlled,
+11. Only after monthly distribution improves and drawdown remains controlled,
    add cycle-based compounding.
 
 ### Why this order is deliberate
@@ -1530,36 +1609,40 @@ The simulator is the orchestrator that turns all module outputs into one trade
 lifecycle. It currently supports both the legacy gated path and the weighted
 candidate path, but it still runs through a single open-position lane.
 
-### Decision sequence inside `Simulator.step()`
+### Decision sequence inside the active portfolio step
 
 ```mermaid
-flowchart TD
-    A[Current 15m row] --> B[BiasDetector on 1h slice]
-    A --> C[RegimeDetector on 5h and 12h slices]
-    A --> F[ScoreEngine or ExplorationEngine]
-    B --> G[Continuous context snapshots]
-    C --> G
-    G --> D{Open trade'}
-    F --> D
-    D -- No --> H[Build legacy or weighted candidates]
-    H --> I[Directional competition on selection value]
-    I --> J{Candidate survives sizing and risk floors'}
-    J -- No --> Z[Log equity and finish]
-    J -- Yes --> K[Add first trade entry]
-    K --> Z
-    D -- Yes --> L[TrendSniffer state update]
-    L --> M[ExitEngine]
-    M --> N{Hard exit'}
-    N -- Yes --> O[Close trade]
-    N -- No --> P{Soft exit / decay exit'}
-    P -- Yes --> O
-    P -- No --> Q[PyramidingEngine]
-    Q --> R{Add triggered'}
-    R -- Yes --> S[Cap by risk and add entry]
-    R -- No --> Z
-    O --> T[Account update and trade logging]
-    T --> Z
+flowchart LR
+    A[Closed 15m step] --> B[Refresh context slices]
+    B --> C[Build sleeve candidates]
+    C --> D[Health gates and duplicate checks]
+    D --> E[Allocator v2 routing]
+    E --> F{Any candidate selected?}
+    F -- Yes --> G[Open probe entry]
+    F -- No --> H[No new position opened]
+
+    A --> I{Existing position on this lane?}
+    I -- Yes --> J[Update trailing and decay state]
+    J --> K{Hard stop touched?}
+    K -- Yes --> L[Close trade]
+    K -- No --> M{Soft decay exit?}
+    M -- Yes --> L
+    M -- No --> N[Convex promotion and earned add]
+    I -- No --> H
+
+    G --> O[Account and trade state update]
+    L --> O
+    N --> O
+    H --> O
+    O --> P[Equity, trade, opportunity, and sleeve logs]
 ```
+
+The important ordering is deliberate:
+
+- route capital before opening anything new
+- evaluate hard risk before soft management
+- let convexity happen only after survival and proof
+- log every result whether a trade was opened or not
 
 ### Entry path
 
