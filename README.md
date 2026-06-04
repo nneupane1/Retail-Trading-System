@@ -48,6 +48,7 @@ was filtered, suppressed, or left idle.
 - [Current Research Baseline](#current-research-baseline)
 - [Allocator-V2 Status](#allocator-v2-status)
 - [Expanded-Universe Readiness](#expanded-universe-readiness)
+- [Expanded-Universe Decision Tree](#expanded-universe-decision-tree)
 - [Failure Modes / What Not to Misread](#failure-modes--what-not-to-misread)
 - [Sequential Implementation Plan](#sequential-implementation-plan)
 - [Console Experience](#console-experience)
@@ -963,6 +964,62 @@ The expanded-universe stage should be treated as complete only when:
 7. the final verdict explains whether HTF/rotation PnL increased, whether core
    dominance reduced, whether median daily PnL improved, and whether drawdown
    remained acceptable.
+
+## Expanded-Universe Decision Tree
+
+The current phase is intentionally procedural. The point is not to "do more
+research because we can"; it is to avoid invalid conclusions while the expanded
+universe is only partially built.
+
+The decision tree below is the operational story for this stage:
+
+```mermaid
+flowchart TD
+    A[Fill missing 1m history] --> B{ready_for_rerun?}
+    B -- No --> A
+    B -- Yes --> C[Run expanded-universe quality validator]
+    C --> D{New symbols accepted?}
+    D -- No --> E[Fix data coverage and quality admission]
+    D -- Yes --> F[Run expanded-universe allocator replay]
+    F --> G{HTF and rotation improve?}
+    G -- Yes --> H[Proceed to full-history validation]
+    G -- No --> I[Run 6H candidate study]
+    H --> J[Walk-forward and stress tests]
+    J --> K[Only then consider pyramiding and compounding]
+```
+
+### How to read it
+
+This tree exists to stop the project from skipping steps and misreading partial
+results.
+
+1. **Fill missing `1m` history first.**
+   The allocator cannot be judged on a broader universe if most of that
+   universe is still missing local history.
+2. **Gate everything on `ready_for_rerun`.**
+   If the readiness check says `false`, the correct action is not "try the
+   validator anyway." The correct action is to continue the history fill until
+   the universe is actually admissible.
+3. **Run the quality validator before the allocator replay.**
+   This answers whether the new symbols are not just downloaded, but actually
+   acceptable after history coverage, missing-bar, and quality checks.
+4. **Ask whether new symbols were truly admitted.**
+   If broader data coverage still does not produce a larger accepted symbol set,
+   the correct next move is to fix coverage or admission quality, not to jump
+   ahead and interpret a fake "expanded" replay.
+5. **Only then run the expanded-universe allocator replay.**
+   This is the real economic test: does broader opportunity flow help HTF and
+   rotation become more meaningful contributors, while keeping distribution and
+   drawdown acceptable?
+6. **Use the replay result to decide the next branch.**
+   - If HTF and rotation improve, move deeper into validation with full-history,
+     walk-forward, and stress testing.
+   - If they do not improve, that is evidence that the missing layer is not
+     more breadth alone, and the next justified step becomes the `6H`
+     candidate study rather than premature pyramiding or compounding.
+7. **Pyramiding and compounding stay at the end.**
+   Those are scale amplifiers, not discovery tools. They only make sense after
+   broader opportunity flow and allocator behavior have already been proven.
 
 ## Failure Modes / What Not to Misread
 
