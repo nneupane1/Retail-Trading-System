@@ -2,6 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import pandas as pd
 
@@ -65,6 +66,33 @@ class FillExpandedUniverseHistoryTests(unittest.TestCase):
 
             self.assertEqual(["ADAUSDT", "DOGEUSDT"], [row["symbol"] for row in rows])
             self.assertTrue(all(row["target_reason"] == "missing_local_history" for row in rows))
+
+    def test_build_target_rows_can_use_binance_discovery(self):
+        config = _ConfigStub(
+            {
+                "current_9": ["BTCUSDT", "ETHUSDT"],
+                "expanded_liquid_28": ["BTCUSDT", "ETHUSDT", "ADAUSDT"],
+            }
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir, patch(
+            "backtest.fill_expanded_universe_history.discover_binance_candidate_universe",
+            return_value={"candidate_symbols": ["BTCUSDT", "DOTUSDT", "ADAUSDT"]},
+        ), patch(
+            "backtest.fill_expanded_universe_history.write_discovery_reports",
+            return_value={"ok": True},
+        ):
+            rows = _build_target_rows(
+                base_config=config,
+                validation_root=None,
+                universe_name="expanded_liquid_28",
+                symbol_override=[],
+                report_root=Path(tmpdir),
+                use_binance_discovery=True,
+            )
+
+        self.assertEqual(["DOTUSDT", "ADAUSDT"], [row["symbol"] for row in rows])
+        self.assertTrue(all(row["source"] == "binance_discovery" for row in rows))
 
     def test_write_status_reports_summarizes_progress(self):
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -10,6 +10,8 @@ from backtest.validate_expanded_universe_allocator import (
     _classify_curated_symbol,
     _daily_quote_volume_stats,
     _load_quality_progress,
+    _resolve_candidate_symbols,
+    _seed_scenario_progress,
     _scenario_artifacts_require_symbol_reset,
     _scenario_requires_symbol_reset,
     _should_skip_expanded_scenario,
@@ -18,6 +20,25 @@ from backtest.validate_expanded_universe_allocator import (
 
 
 class ValidateExpandedUniverseAllocatorTests(unittest.TestCase):
+    def test_resolve_candidate_symbols_uses_binance_discovery_when_enabled(self):
+        class _ConfigStub:
+            def get(self, *keys, default=None):
+                if keys == ("universe", "discovery", "enabled"):
+                    return True
+                return default
+
+        with tempfile.TemporaryDirectory() as tmpdir, patch(
+            "backtest.validate_expanded_universe_allocator.discover_binance_candidate_universe",
+            return_value={"candidate_symbols": ["BTCUSDT", "DOTUSDT"], "summary": {"candidate_symbol_count": 2}},
+        ), patch(
+            "backtest.validate_expanded_universe_allocator.write_discovery_reports",
+            return_value={"artifacts": {}},
+        ):
+            symbols, source = _resolve_candidate_symbols(_ConfigStub(), Path(tmpdir))
+
+        self.assertEqual(["BTCUSDT", "DOTUSDT"], symbols)
+        self.assertEqual("binance_discovery", source["source"])
+
     def test_classify_curated_symbol_marks_keep_when_symbol_is_consistently_positive(self):
         status = _classify_curated_symbol(
             {
@@ -248,6 +269,21 @@ class ValidateExpandedUniverseAllocatorTests(unittest.TestCase):
                 ["SOLUSDT", "ETHUSDT", "BTCUSDT"],
             )
         )
+
+    def test_seed_scenario_progress_initializes_registry_entry(self):
+        progress = {}
+        entry = _seed_scenario_progress(
+            progress,
+            "scenario_expanded_universe_calibrated_allocator",
+            ["btcusdt", "EthUsdt"],
+            status="in_progress",
+            reset_output=True,
+        )
+
+        self.assertEqual(["BTCUSDT", "ETHUSDT"], entry["symbols_used"])
+        self.assertEqual("in_progress", entry["status"])
+        self.assertTrue(entry["reset_output_requested"])
+        self.assertFalse(entry["completed"])
 
     def test_artifact_symbol_reset_triggers_on_unexpected_symbol(self):
         with tempfile.TemporaryDirectory() as tmpdir:

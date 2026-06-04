@@ -70,27 +70,39 @@ was filtered, suppressed, or left idle.
 
 ## Current Mission
 
-The immediate mission is no longer raw data collection. That stage is complete.
-The current mission is to prove whether **selective breadth** helps the system
-without tightening it into a low-frequency, over-engineered machine.
+The immediate mission is no longer raw data collection, and it is no longer the
+first static selective-breadth holdout either. Those stages already taught the
+project something important:
+
+- blind breadth is bad
+- selective breadth can help
+- stale human-picked universes are not a robust long-term research input
+
+The current mission is to replace manual candidate selection with a
+**Binance-discovered research universe**, then let the existing quality gate,
+allocator replay, and selective-breadth logic decide what actually deserves to
+stay.
 
 In practical terms:
 
 - the signal stack stays frozen
 - the calibrated allocator-v2 agreement branch stays frozen
 - the broad 26-symbol expansion has already been tested and rejected
-- the next question is whether a **curated** subset of added symbols improves
-  the live-like `2026` holdout without killing opportunity flow
+- the first selective-breadth holdout is already complete, and `DOTUSDT` was
+  the only clean survivor
+- the next question is whether a **live Binance-discovered** universe can
+  surface better additive candidates without killing opportunity flow
 
 | Area | Current status | Action |
 | --- | --- | --- |
 | Signal stack | Frozen | Do not add new signals |
 | Allocator-v2 | Calibrated agreement branch is the active research baseline | Keep active |
 | `1H` / `6H` layers | Dormant scaffolds only | Do not activate yet |
-| Expanded universe data coverage | Complete for the current research snapshot | Do not reopen this unless a new universe is proposed |
+| Static expanded universe data coverage | Complete for the first research snapshot | Keep as local research base |
 | Broad 26-symbol expansion | Completed and rejected | Do not treat raw breadth as automatically good |
-| Current blocker | Proving selective breadth out of sample | Use holdout validation, not tighter live rules |
-| Next validation | Lean curated holdout replay | Let `validate_curated_holdout` finish, then judge additions |
+| Selective-breadth holdout | Completed | Treat `DOTUSDT` as the first validated add candidate |
+| Current blocker | Honest candidate discovery and admission | Use Binance discovery + quality validation, not intuition |
+| Next validation | Discovery-based expanded-universe validator | Let `validate_expanded_universe_allocator` finish, then decide fill or curation |
 
 ## Current State / Do Not Touch
 
@@ -102,7 +114,9 @@ Current active research branch:
 - `htf_12h_moonshot`
 - `htf_12h_rotation`
 - convexity probe/promote/add behavior
-- expanded-universe curated holdout workflow
+- selective-breadth holdout result with `DOTUSDT` as the first surviving add
+- Binance-discovered universe workflow
+- checkpoint-safe quality and scenario progress registry
 
 Do **not** currently implement:
 
@@ -122,22 +136,24 @@ engine yet.
 ## Current Bottleneck
 
 The current limitation is no longer missing history or missing allocator
-infrastructure. The current limitation is **selection quality**.
+infrastructure. The current limitation is **live candidate discovery plus
+selection quality**.
 
-The repo has now proved three things:
+The repo has now proved four things:
 
 - the current 9-symbol allocator-v2 branch is a valid baseline
 - naive 26-symbol breadth degrades the portfolio
-- a smaller curated subset can improve the same recent window, but that
-  improvement still needs holdout proof
+- `DOTUSDT` can survive a lean holdout while the broader curated basket does not
+- a dynamic Binance-discovered pool still needs honest quality admission and
+  replay before it can replace the manual research universe
 
 So the current blocker is:
 
 - not more signals
 - not more timeframes
 - not more capital aggression
-- but proving which added symbols generalize out of sample without reducing the
-  system to a brittle, low-frequency filter
+- but proving which Binance-discovered symbols generalize after quality
+  admission without reducing the system to a brittle, low-frequency filter
 
 ## Strategy Layer Map
 
@@ -159,7 +175,8 @@ So the current blocker is:
 | 9-symbol recent regime | Does allocator-v2 improve the current stack? | Completed |
 | Expanded-universe data fill | Do extra liquid symbols have usable local `1m` history? | Completed |
 | Expanded-universe recent validation | Does broader opportunity flow help? | Completed |
-| Curated selective-breadth holdout | Do the added symbols survive out of sample? | In progress |
+| Curated selective-breadth holdout | Do the added symbols survive out of sample? | Completed |
+| Binance-discovered universe validation | Do live exchange candidates beat stale manual breadth? | In progress |
 | Full-history expanded validation | Does it survive older regimes too? | Pending |
 | Walk-forward validation | Does it generalize out of sample? | Pending |
 | Monte Carlo / stress | Is the path survivable? | Pending |
@@ -273,7 +290,7 @@ become asymmetric.
 | Path | Responsibility |
 | --- | --- |
 | `config/` | JSON-backed configuration loader and environment handling |
-| `common/` | Shared runtime helpers such as debug-output control |
+| `common/` | Shared runtime helpers such as debug-output control and Binance universe discovery |
 | `data/` | Binance client, historical download logic, CSV loading, resampling |
 | `features/` | Indicator helpers, candle metrics, and the feature pipeline |
 | `bias/` | Directional market bias detection |
@@ -290,6 +307,7 @@ become asymmetric.
 | `main_download.py` | CLI entry point for resumable historical `1m` downloads |
 | `main_resample.py` | CLI entry point for rebuilding and saving higher timeframes |
 | `main_backtest.py` | CLI entry point for full historical runs |
+| `backtest/discover_binance_universe.py` | CLI entry point for Binance-driven research universe discovery |
 | `main_live.py` | CLI entry point for near-live single-symbol execution or multi-asset paper scanning |
 | `main_walkforward.py` | CLI entry point for walk-forward validation and controlled branch testing |
 | `main_monte_carlo.py` | CLI entry point for Monte Carlo and trade-concentration robustness analysis |
@@ -406,15 +424,16 @@ than assuming everything starts from `main_backtest.py`.
 | Step | Command | Purpose |
 | --- | --- | --- |
 | `1` | `python main_download.py` | Download and checkpoint local `1m` history from Binance |
-| `2` | `python -m backtest.fill_expanded_universe_history` | Fill missing local `1m` history for liquid expanded-universe symbols, checkpoint-safe |
-| `3` | `python -m backtest.check_expanded_universe_fill_status` | Check whether the fill is still running, which symbols were recovered, and whether the expanded-universe validator is ready to rerun |
-| `4` | `python main_resample.py` | Optional: materialize `15m`, `1h`, `5h`, and `12h` CSVs for inspection |
-| `5` | `python main_backtest.py` | Run the historical replay path: by default a multi-asset portfolio backtest aligned with the live paper portfolio |
-| `6` | `python main_edge_lab.py --symbols BTCUSDT ETHUSDT SOLUSDT` | Isolate hidden edge families and build a small deployable edge table |
-| `7` | `python main_calibrate.py` | Build opportunity-to-trade calibration reports from the latest backtest outputs |
-| `8` | `python main_walkforward.py --scheme multifold --branch-spec ...` | Run controlled multi-fold validation across candidate branches |
-| `9` | `python main_monte_carlo.py ...` | Stress-test completed trades with bootstrap and concentration analysis |
-| `10` | `python main_live.py` | Run the live path: by default a multi-asset paper portfolio scanner with local warmup history plus fresh Binance `1m` candles |
+| `2` | `python -m backtest.discover_binance_universe --top-n 40` | Ask Binance for the current liquid spot `USDT` research candidate pool |
+| `3` | `python -m backtest.fill_expanded_universe_history --use-binance-discovery` | Backfill only the newly discovered symbols that still lack local `1m` history |
+| `4` | `python -m backtest.validate_expanded_universe_allocator` | Run the discovery-aware quality gate plus allocator replay, checkpoint-safe |
+| `5` | `python main_resample.py` | Optional: materialize `15m`, `1h`, `5h`, and `12h` CSVs for inspection |
+| `6` | `python main_backtest.py` | Run the historical replay path: by default a multi-asset portfolio backtest aligned with the live paper portfolio |
+| `7` | `python main_edge_lab.py --symbols BTCUSDT ETHUSDT SOLUSDT` | Isolate hidden edge families and build a small deployable edge table |
+| `8` | `python main_calibrate.py` | Build opportunity-to-trade calibration reports from the latest backtest outputs |
+| `9` | `python main_walkforward.py --scheme multifold --branch-spec ...` | Run controlled multi-fold validation across candidate branches |
+| `10` | `python main_monte_carlo.py ...` | Stress-test completed trades with bootstrap and concentration analysis |
+| `11` | `python main_live.py` | Run the live path: by default a multi-asset paper portfolio scanner with local warmup history plus fresh Binance `1m` candles |
 
 Two practical clarifications matter:
 
@@ -428,9 +447,9 @@ Two practical clarifications matter:
 - The default live mode is now `portfolio_paper`, not the old single-symbol
   loop. Set `live_sim.mode` back to `single_symbol` if you want the legacy
   behavior.
-- During the expanded-universe build phase, do **not** rerun the expanded
-  allocator validator until `python -m backtest.check_expanded_universe_fill_status`
-  reports `"ready_for_rerun": true`.
+- During discovery-driven universe work, prefer the sequence:
+  discover -> quality validate -> fill missing discovered history only if needed
+  -> rerun validator, rather than reopening the old static 26-symbol fill loop.
 - `main_backtest.py` and `main_live.py` serve different jobs: the backtest path
   is the historical research layer, while the live path is a near-live paper
   execution layer and does not replay the full dataset trade-by-trade.
@@ -438,27 +457,17 @@ Two practical clarifications matter:
 ## Next Commands
 
 ```bash
-# Rebuild the broad expanded-universe validation
+# Discover the current Binance research universe
+python -m backtest.discover_binance_universe --top-n 40
+
+# Run the discovery-aware expanded-universe validator / replay
 python -m backtest.validate_expanded_universe_allocator
 
-# Run the lean curated holdout validator
+# If discovered names fail only because of missing local history, fill them
+python -m backtest.fill_expanded_universe_history --use-binance-discovery
+
+# Re-run the lean curated holdout validator if a new curated subset emerges
 python -m backtest.validate_curated_holdout
-
-# Run full test suite
-python -m unittest discover -s tests -v
-```
-
-## Next Commands
-
-```bash
-# Check expanded-universe fill status
-python -m backtest.check_expanded_universe_fill_status
-
-# Resume missing history fill
-python -m backtest.fill_expanded_universe_history
-
-# Rerun expanded-universe allocator validation only after ready_for_rerun=true
-python -m backtest.validate_expanded_universe_allocator
 
 # Run the full test suite
 python -m unittest discover -s tests -v
@@ -981,27 +990,29 @@ What this means:
 - broad raw breadth is **not** a free win
 - drawdown improved under the broad 26-symbol run, but economics got worse
 - the first pass of selective breadth looked promising
-- but the `DOT + FIL` branch was still selected on the same window and must be
+- but the `DOT + FIL` branch was still selected on the same window and had to be
   treated as a candidate branch, not a production truth
 
 ### Lean holdout curation status
 
-To avoid over-engineering the system into a frequency-killing filter, the next
-validation step is intentionally lean:
+To avoid over-engineering the system into a frequency-killing filter, the
+holdout step was intentionally lean and is now complete:
 
 - reuse the existing expanded-universe replay to derive training-period
   curation
 - run only the shorter `2026-01-01` to `2026-05-22` holdout scenarios
 - do **not** change live signal logic while doing so
 
-Early training-slice curation from the lean holdout path currently prefers:
+The training slice preferred:
 
 - `DOTUSDT`
 - `APTUSDT`
 - `ADAUSDT`
 - `SUIUSDT`
 
-and it currently **drops** `FILUSDT`.
+but the final holdout only validated `DOTUSDT`. `FILUSDT` failed, and the
+broader `APT / ADA / SUI` training-keeps basket did not survive as a combined
+production add.
 
 That is already useful because it shows the system is separating:
 
@@ -1011,6 +1022,23 @@ That is already useful because it shows the system is separating:
 The economic goal of this stage is not to make the portfolio “tighter.” It is
 to improve selective breadth while preserving enough opportunity flow for the
 system to remain economically alive.
+
+### Binance-discovered universe status
+
+The next refactor-driven step is now active: the repo can ask Binance directly
+for the current liquid spot `USDT` candidate pool, filter obvious non-research
+noise, and feed that discovered pool into the existing quality gate and
+allocator replay.
+
+Important consequences:
+
+- the project no longer has to trust a stale manually remembered symbol list
+- newly discovered names can still be rejected for missing local history,
+  terminal coverage, or quality failures
+- the discovery validator is checkpoint-safe at both the quality stage and the
+  scenario stage
+- the broad static 26-symbol experiment remains valuable as research history,
+  but it is no longer the only source of universe proposals
 
 ## Expanded-Universe Readiness
 
@@ -1048,30 +1076,32 @@ The expanded-universe stage should be treated as complete only when:
    dominance reduced, whether median daily PnL improved, and whether drawdown
    remained acceptable.
 
-That checklist has now been satisfied. The project has therefore moved from
-data-readiness into **curated holdout validation**.
+That checklist has now been satisfied for the original static expanded-universe
+research base. The project has therefore moved from static data-readiness into
+dynamic Binance-driven universe discovery and validation.
 
 ## Expanded-Universe Decision Tree
 
 The current phase is intentionally procedural. The point is not to "do more
 research because we can"; it is to avoid invalid conclusions while moving from
-broad expansion toward selective breadth.
+stale manual breadth toward selective, exchange-driven breadth.
 
 The decision tree below is the operational story for this stage:
 
 ```mermaid
 flowchart TD
-    A[Fill missing 1m history] --> B{ready_for_rerun?}
-    B -- No --> A
-    B -- Yes --> C[Run expanded-universe quality validator]
-    C --> D{New symbols accepted?}
-    D -- No --> E[Fix data coverage and quality admission]
-    D -- Yes --> F[Run expanded-universe allocator replay]
-    F --> G{HTF and rotation improve?}
-    G -- Yes --> H[Proceed to full-history validation]
-    G -- No --> I[Run 6H candidate study]
-    H --> J[Walk-forward and stress tests]
-    J --> K[Only then consider pyramiding and compounding]
+    A[Discover Binance spot USDT research universe] --> B[Run quality validator]
+    B --> C{Missing local history?}
+    C -- Yes --> D[Fill only discovered missing 1m history]
+    D --> B
+    C -- No --> E{New symbols accepted?}
+    E -- No --> F[Keep current selective baseline and refine discovery filters]
+    E -- Yes --> G[Run discovery-based allocator replay]
+    G --> H{Selective additions improve?}
+    H -- Yes --> I[Proceed to full-history and walk-forward validation]
+    H -- No --> J[Curate discovered symbols and rerun lean holdout]
+    I --> K[Only then study 6H execution]
+    K --> L[Only then consider pyramiding and compounding]
 ```
 
 ### How to read it
@@ -1079,16 +1109,15 @@ flowchart TD
 This tree exists to stop the project from skipping steps and misreading partial
 results.
 
-1. **Fill missing `1m` history first.**
-   The allocator cannot be judged on a broader universe if most of that
-   universe is still missing local history.
-2. **Gate everything on `ready_for_rerun`.**
-   If the readiness check says `false`, the correct action is not "try the
-   validator anyway." The correct action is to continue the history fill until
-   the universe is actually admissible.
-3. **Run the quality validator before the allocator replay.**
+1. **Discover from Binance first.**
+   The project should ask the exchange what is live and liquid now before
+   trusting a remembered manual universe.
+2. **Run the quality validator before the allocator replay.**
    This answers whether the new symbols are not just downloaded, but actually
    acceptable after history coverage, missing-bar, and quality checks.
+3. **Fill local history only for symbols that discovery exposes as missing.**
+   That keeps the data layer focused and avoids reopening broad static
+   download jobs unnecessarily.
 4. **Ask whether new symbols were truly admitted.**
    If broader data coverage still does not produce a larger accepted symbol set,
    the correct next move is to fix coverage or admission quality, not to jump
@@ -1200,34 +1229,42 @@ This is the current staged plan extracted from the allocator results and the
    hypothesis.
    It improved drawdown but worsened PF, median daily PnL, and sleeve mix, so
    raw breadth is not the answer by itself.
-3. Validate selective breadth instead of broad breadth.
-   Use the lean holdout path to test whether a curated subset of added symbols
-   improves the `2026` holdout without touching live signal logic.
-4. Only if selective breadth survives holdout should the project move to
-   full-history expanded validation and deeper walk-forward work.
-5. Only if HTF sleeves remain too economically weak after selective breadth
+3. Treat the first selective-breadth holdout as completed evidence.
+   `DOTUSDT` survived; `FILUSDT` did not; the broader `APT / ADA / SUI` basket
+   did not yet earn promotion.
+4. Replace stale manual candidate selection with Binance-discovered candidate
+   discovery.
+   Use exchange-driven liquid spot `USDT` discovery as the next research input
+   layer, then let the existing quality validator and allocator replay decide
+   what survives.
+5. Only if discovery-based breadth produces real additive candidates should the
+   project move to curated discovery holdouts, then full-history expanded
+   validation and deeper walk-forward work.
+6. Only if HTF sleeves remain too economically weak after selective breadth
    flow, run a `6H` candidate forward-return study.
-6. Only if the `6H` study proves unique positive edge, implement a true
+7. Only if the `6H` study proves unique positive edge, implement a true
    `6H` live sleeve.
    The current scaffold exists, but it is intentionally dormant.
-7. Run a `1H` candidate study after `6H`, not before.
+8. Run a `1H` candidate study after `6H`, not before.
    `1H` is more likely to overlap with `15m`, so it should be justified by
    evidence rather than architecture excitement.
    The current scaffold exists, but it is intentionally dormant.
-8. Only after sleeve mix and routing are stable, add promotion logic and later
+9. Only after sleeve mix and routing are stable, add promotion logic and later
    conservative HTF pyramiding.
-9. Only after monthly distribution improves and drawdown remains controlled,
+10. Only after monthly distribution improves and drawdown remains controlled,
    add cycle-based compounding.
 
 ### Why this order is deliberate
 
-The current bottleneck is not that the system lacks signals. It is that
-selective breadth has not yet been proven out of sample.
+The current bottleneck is not that the system lacks signals. It is that the
+project still needs a better **research input universe** than a stale hand-made
+symbol list.
 
 So the immediate question is:
 
 > can the current calibrated allocator become more economically stable if it
-> adds only the right extra symbols, rather than just more symbols?
+> adds only the right Binance-discovered symbols, rather than just more
+> symbols or more rules?
 
 That is the next serious test. New timeframes come after that, not before.
 
@@ -1251,6 +1288,12 @@ Every long validation in this sequence should remain checkpoint-safe. The
 system already supports resume-aware replay and scenario progress files. That
 is now a hard requirement, not a nice-to-have, because the heavier universe and
 future matrix work must be interruptible and resumable.
+
+For the discovery-based universe path, the key checkpoint artifacts are:
+
+- `quality_progress.json` for symbol admission progress
+- `scenario_progress.json` for scenario-level orchestration state
+- `_checkpoints/*.checkpoint.json` for the underlying replay resume state
 
 ### Lean edge-selection layer
 
@@ -1517,7 +1560,9 @@ Binance REST request, timeout behavior, retry logic, throttle spacing, and
 response handling. It also supports `ssl_verify` and `ca_bundle_path`, which is
 useful in corporate environments with custom certificate chains. It is
 deliberately small, because its job is not strategy logic. Its job is to return
-raw klines reliably.
+raw exchange payloads reliably, including klines plus the public
+`exchangeInfo` and `ticker/24hr` endpoints used by the Binance-discovery
+research workflow.
 
 ### MarketDataDownloader
 

@@ -21,6 +21,11 @@ from backtest.validate_htf_12h import (
     _save_progress,
     _top5_contribution_percent,
 )
+from common.binance_universe import (
+    discover_binance_candidate_universe,
+    get_discovery_settings,
+    write_discovery_reports,
+)
 from common.universe import get_named_universe
 from config import AppConfig
 from entry.htf_moonshot import build_htf_12h_snapshots
@@ -88,6 +93,29 @@ def _quality_thresholds(config):
         "max_recent_terminal_gap_minutes": float(
             read("max_recent_terminal_gap_minutes", 1440.0) or 1440.0
         ),
+    }
+
+
+def _resolve_candidate_symbols(base_config: AppConfig, report_root: Path) -> tuple[list[str], dict]:
+    discovery_settings = get_discovery_settings(base_config)
+    if discovery_settings["enabled"]:
+        payload = discover_binance_candidate_universe(base_config)
+        discovery_report = write_discovery_reports(report_root, payload)
+        return list(payload["candidate_symbols"]), {
+            "source": "binance_discovery",
+            "summary": payload.get("summary", {}),
+            "report": discovery_report,
+        }
+
+    universe_name = "expanded_liquid_28"
+    symbols = list(get_named_universe(base_config, universe_name))
+    return symbols, {
+        "source": f"named:{universe_name}",
+        "summary": {
+            "candidate_symbol_count": len(symbols),
+            "candidate_symbols": list(symbols),
+        },
+        "report": None,
     }
 
 
@@ -853,10 +881,32 @@ def _scenario_artifacts_require_symbol_reset(
     return bool(observed_set - expected)
 
 
+def _seed_scenario_progress(
+    progress: dict,
+    scenario_key: str,
+    symbols_used: list[str],
+    *,
+    status: str,
+    reset_output: bool = False,
+) -> dict:
+    entry = progress.setdefault(scenario_key, {})
+    entry["symbols_used"] = [str(symbol).upper() for symbol in symbols_used]
+    entry["status"] = str(status)
+    entry["reset_output_requested"] = bool(reset_output)
+    entry.setdefault("completed", False)
+    return entry
+
+
 def main():
     base = AppConfig.load()
     base_output = Path(base.require("backtest", "output_dir"))
-    report_root = base_output / "expanded_universe_allocator_validation_20260604"
+    discovery_settings = get_discovery_settings(base)
+    report_root_name = (
+        discovery_settings["validation_report_root_name"]
+        if discovery_settings["enabled"]
+        else "expanded_universe_allocator_validation_20260604"
+    )
+    report_root = base_output / report_root_name
     report_root.mkdir(parents=True, exist_ok=True)
 
     recent_start = "2025-01-01"
@@ -865,9 +915,9 @@ def main():
     current_symbols = get_named_universe(base, "current_9") or [
         str(symbol).upper() for symbol in base.require("backtest", "portfolio_replay", "symbols")
     ]
-    candidate_symbols = get_named_universe(base, "expanded_liquid_28")
+    candidate_symbols, candidate_source = _resolve_candidate_symbols(base, report_root)
     if not candidate_symbols:
-        raise ValueError("No expanded_liquid_28 universe configured.")
+        raise ValueError("No candidate universe resolved from discovery or static config.")
 
     quality = _build_or_resume_quality_report(
         base_config=base,
@@ -888,6 +938,11 @@ def main():
     quality["summary"]["current_symbol_count"] = len(current_symbol_set)
     quality["summary"]["net_new_accepted_symbol_count"] = len(net_new_symbols)
     quality["summary"]["net_new_accepted_symbols"] = [str(symbol).upper() for symbol in net_new_symbols]
+    quality["summary"]["candidate_source"] = candidate_source["source"]
+    quality["summary"]["candidate_symbol_count_before_quality"] = int(
+        candidate_source["summary"].get("candidate_symbol_count", len(candidate_symbols))
+    )
+    quality["summary"]["candidate_symbols_before_quality"] = list(candidate_symbols)
 
     progress = _load_progress(report_root)
     baseline_scenario_name = "scenario_current_9_symbol_calibrated_allocator"
@@ -905,23 +960,32 @@ def main():
         "history_start_date": recent_start,
         "history_end_date": recent_end,
     }
+    baseline_reset_output = (
+        _scenario_requires_symbol_reset(
+            progress,
+            baseline_scenario_name,
+            current_symbols,
+        )
+        or _scenario_artifacts_require_symbol_reset(
+            report_root,
+            baseline_scenario_name,
+            current_symbols,
+        )
+    )
+    _seed_scenario_progress(
+        progress,
+        baseline_scenario_name,
+        current_symbols,
+        status="in_progress",
+        reset_output=baseline_reset_output,
+    )
+    _save_progress(report_root, progress)
     baseline_result = _run_or_resume_scenario(
         baseline_scenario_name,
         _scenario_base_with_symbols(base, current_symbols),
         report_root,
         progress,
-        reset_output=(
-            _scenario_requires_symbol_reset(
-                progress,
-                baseline_scenario_name,
-                current_symbols,
-            )
-            or _scenario_artifacts_require_symbol_reset(
-                report_root,
-                baseline_scenario_name,
-                current_symbols,
-            )
-        ),
+        reset_output=baseline_reset_output,
         **baseline_flags,
     )
     baseline_snapshot = _scenario_snapshot(
@@ -931,7 +995,9 @@ def main():
         baseline_summary_key,
     )
     scenarios[baseline_summary_key] = baseline_snapshot
-    progress.setdefault(baseline_scenario_name, {})["symbols_used"] = baseline_snapshot["symbols_used"]
+    baseline_progress = progress.setdefault(baseline_scenario_name, {})
+    baseline_progress["symbols_used"] = baseline_snapshot["symbols_used"]
+    baseline_progress["status"] = "completed"
     _save_progress(report_root, progress)
 
     skip_expanded, skip_reason = _should_skip_expanded_scenario(
@@ -945,26 +1011,38 @@ def main():
             reason=skip_reason or "no_net_universe_expansion_after_quality_validation",
         )
         scenarios[expanded_summary_key] = expanded_snapshot
-        progress.setdefault(expanded_scenario_name, {})["symbols_used"] = expanded_snapshot["symbols_used"]
+        expanded_progress = progress.setdefault(expanded_scenario_name, {})
+        expanded_progress["symbols_used"] = expanded_snapshot["symbols_used"]
+        expanded_progress["status"] = "skipped"
+        expanded_progress["completed"] = True
         _save_progress(report_root, progress)
     else:
+        expanded_reset_output = (
+            _scenario_requires_symbol_reset(
+                progress,
+                expanded_scenario_name,
+                quality["accepted_symbols"],
+            )
+            or _scenario_artifacts_require_symbol_reset(
+                report_root,
+                expanded_scenario_name,
+                quality["accepted_symbols"],
+            )
+        )
+        _seed_scenario_progress(
+            progress,
+            expanded_scenario_name,
+            quality["accepted_symbols"],
+            status="in_progress",
+            reset_output=expanded_reset_output,
+        )
+        _save_progress(report_root, progress)
         expanded_result = _run_or_resume_scenario(
             expanded_scenario_name,
             _scenario_base_with_symbols(base, quality["accepted_symbols"]),
             report_root,
             progress,
-            reset_output=(
-                _scenario_requires_symbol_reset(
-                    progress,
-                    expanded_scenario_name,
-                    quality["accepted_symbols"],
-                )
-                or _scenario_artifacts_require_symbol_reset(
-                    report_root,
-                    expanded_scenario_name,
-                    quality["accepted_symbols"],
-                )
-            ),
+            reset_output=expanded_reset_output,
             **baseline_flags,
         )
         expanded_snapshot = _scenario_snapshot(
@@ -974,6 +1052,10 @@ def main():
             expanded_summary_key,
         )
         scenarios[expanded_summary_key] = expanded_snapshot
+        expanded_progress = progress.setdefault(expanded_scenario_name, {})
+        expanded_progress["symbols_used"] = expanded_snapshot["symbols_used"]
+        expanded_progress["status"] = "completed"
+        _save_progress(report_root, progress)
 
     comparison = _build_comparison(
         scenarios[baseline_summary_key],
@@ -1006,23 +1088,32 @@ def main():
     curated_verdict = None
     curated_symbols = curation["curated_symbols"]
     if set(_effective_symbol_set(curated_symbols)) != set(_effective_symbol_set(current_symbols)):
+        curated_reset_output = (
+            _scenario_requires_symbol_reset(
+                progress,
+                curated_scenario_name,
+                curated_symbols,
+            )
+            or _scenario_artifacts_require_symbol_reset(
+                report_root,
+                curated_scenario_name,
+                curated_symbols,
+            )
+        )
+        _seed_scenario_progress(
+            progress,
+            curated_scenario_name,
+            curated_symbols,
+            status="in_progress",
+            reset_output=curated_reset_output,
+        )
+        _save_progress(report_root, progress)
         curated_result = _run_or_resume_scenario(
             curated_scenario_name,
             _scenario_base_with_symbols(base, curated_symbols),
             report_root,
             progress,
-            reset_output=(
-                _scenario_requires_symbol_reset(
-                    progress,
-                    curated_scenario_name,
-                    curated_symbols,
-                )
-                or _scenario_artifacts_require_symbol_reset(
-                    report_root,
-                    curated_scenario_name,
-                    curated_symbols,
-                )
-            ),
+            reset_output=curated_reset_output,
             **baseline_flags,
         )
         curated_snapshot = _scenario_snapshot(
@@ -1032,7 +1123,9 @@ def main():
             curated_summary_key,
         )
         scenarios[curated_summary_key] = curated_snapshot
-        progress.setdefault(curated_scenario_name, {})["symbols_used"] = curated_snapshot["symbols_used"]
+        curated_progress = progress.setdefault(curated_scenario_name, {})
+        curated_progress["symbols_used"] = curated_snapshot["symbols_used"]
+        curated_progress["status"] = "completed"
         _save_progress(report_root, progress)
         curated_comparison = _build_comparison(
             scenarios[baseline_summary_key],
@@ -1055,6 +1148,11 @@ def main():
             curated_symbols,
             reason="no_curated_net_new_symbols_after_post_validation_report",
         )
+        curated_progress = progress.setdefault(curated_scenario_name, {})
+        curated_progress["symbols_used"] = [str(symbol).upper() for symbol in curated_symbols]
+        curated_progress["status"] = "skipped"
+        curated_progress["completed"] = True
+        _save_progress(report_root, progress)
 
     summary = {
         "report_root": str(report_root),
@@ -1062,6 +1160,7 @@ def main():
             "start_date": recent_start,
             "end_date": recent_end,
         },
+        "candidate_source": candidate_source,
         "quality": quality["summary"],
         "scenarios": scenarios,
         "comparison": comparison,

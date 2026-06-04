@@ -32,8 +32,21 @@ class BinanceClient:
 
         base_url = self.config.require("binance", "base_url")
         klines_path = self.config.require("binance", "klines_path")
+        exchange_info_path = self.config.get(
+            "binance",
+            "exchange_info_path",
+            default="/api/v3/exchangeInfo",
+        )
+        ticker_24hr_path = self.config.get(
+            "binance",
+            "ticker_24hr_path",
+            default="/api/v3/ticker/24hr",
+        )
 
-        self.klines_url = urljoin(base_url.rstrip("/") + "/", klines_path.lstrip("/"))
+        self.base_url = base_url.rstrip("/") + "/"
+        self.klines_url = urljoin(self.base_url, klines_path.lstrip("/"))
+        self.exchange_info_url = urljoin(self.base_url, str(exchange_info_path).lstrip("/"))
+        self.ticker_24hr_url = urljoin(self.base_url, str(ticker_24hr_path).lstrip("/"))
         self.timeout = self.config.require("binance", "request_timeout_seconds")
         self.retry_attempts = self.config.require("binance", "retry_attempts")
         self.retry_backoff = self.config.require("binance", "retry_backoff_seconds")
@@ -119,6 +132,58 @@ class BinanceClient:
         )
         print(f"Retrying in {delay:.2f}s...")
 
+    def _request_json(self, url, *, params=None, headers=None, verbose=False, request_name="request"):
+        start_clock = time.time()
+        verify_setting = self._verify_setting()
+        self._configure_tls_warning_behavior(verify_setting)
+        request_headers = dict(headers or {})
+
+        if verbose:
+            if isinstance(verify_setting, str):
+                print(f"\nFetching Binance {request_name} | TLS verify: custom CA bundle -> {verify_setting}")
+            elif verify_setting:
+                print(f"\nFetching Binance {request_name} | TLS verify: enabled")
+            else:
+                print(f"\nFetching Binance {request_name} | TLS verify: DISABLED")
+
+        last_error = None
+
+        for attempt in range(1, self.retry_attempts + 1):
+            try:
+                response = requests.get(
+                    url,
+                    params=params or {},
+                    headers=request_headers,
+                    timeout=self.timeout,
+                    verify=verify_setting,
+                )
+
+                if response.status_code == 200:
+                    payload = response.json()
+                    if verbose:
+                        elapsed = time.time() - start_clock
+                        print(f"Fetched Binance {request_name} in {elapsed:.2f}s")
+                    return payload
+
+                last_error = Exception(
+                    f"Binance API error: {response.status_code} | {response.text}"
+                )
+
+                if response.status_code not in self.retry_status_codes:
+                    raise last_error
+
+            except requests.RequestException as exc:
+                last_error = exc
+
+            if attempt < self.retry_attempts:
+                delay = self._retry_delay(attempt)
+                self._log_retry(attempt, delay, last_error)
+                time.sleep(delay)
+
+        raise Exception(
+            f"Binance request failed after {self.retry_attempts} attempts: {last_error}"
+        )
+
     def get_klines(
         self,
         symbol=None,
@@ -147,67 +212,55 @@ class BinanceClient:
         if self.api_key:
             headers["X-MBX-APIKEY"] = self.api_key
 
-        start_clock = time.time()
-        verify_setting = self._verify_setting()
-        self._configure_tls_warning_behavior(verify_setting)
-
         if verbose:
             print(f"\nFetching {symbol} | {interval}")
             if startTime is not None:
                 print(f"  From: {_format_time(startTime)}")
             if endTime is not None:
                 print(f"  To:   {_format_time(endTime)}")
-            if isinstance(verify_setting, str):
-                print(f"  TLS verify: custom CA bundle -> {verify_setting}")
-            elif verify_setting:
-                print("  TLS verify: enabled")
-            else:
-                print("  TLS verify: DISABLED")
+        data = self._request_json(
+            self.klines_url,
+            params=params,
+            headers=headers,
+            verbose=verbose,
+            request_name=f"klines {symbol} {interval}",
+        )
 
-        last_error = None
+        if verbose:
+            print(f"Received {len(data)} candles")
+            if data:
+                first = _format_time(data[0][0])
+                last = _format_time(data[-1][0])
+                print(f"  Range: {first} -> {last}")
 
-        for attempt in range(1, self.retry_attempts + 1):
-            try:
-                response = requests.get(
-                    self.klines_url,
-                    params=params,
-                    headers=headers,
-                    timeout=self.timeout,
-                    verify=verify_setting
-                )
+        return data
 
-                if response.status_code == 200:
-                    data = response.json()
-                    elapsed = time.time() - start_clock
+    def public_get(self, path, *, params=None, verbose=False, request_name=None):
+        url = urljoin(self.base_url, str(path).lstrip("/"))
+        return self._request_json(
+            url,
+            params=params,
+            headers={},
+            verbose=verbose,
+            request_name=request_name or str(path),
+        )
 
-                    if verbose:
-                        print(f"Received {len(data)} candles")
-                        print(f"Elapsed: {elapsed:.2f} sec")
+    def get_exchange_info(self, *, verbose=False):
+        return self._request_json(
+            self.exchange_info_url,
+            params={},
+            headers={},
+            verbose=verbose,
+            request_name="exchangeInfo",
+        )
 
-                        if data:
-                            first = _format_time(data[0][0])
-                            last = _format_time(data[-1][0])
-                            print(f"  Range: {first} -> {last}")
-
-                    return data
-
-                last_error = Exception(
-                    f"Binance API error: {response.status_code} | {response.text}"
-                )
-
-                if response.status_code not in self.retry_status_codes:
-                    raise last_error
-
-            except requests.RequestException as exc:
-                last_error = exc
-
-            if attempt < self.retry_attempts:
-                delay = self._retry_delay(attempt)
-                self._log_retry(attempt, delay, last_error)
-                time.sleep(delay)
-
-        raise Exception(
-            f"Binance request failed after {self.retry_attempts} attempts: {last_error}"
+    def get_ticker_24hr(self, *, verbose=False):
+        return self._request_json(
+            self.ticker_24hr_url,
+            params={},
+            headers={},
+            verbose=verbose,
+            request_name="ticker/24hr",
         )
 
 

@@ -10,6 +10,11 @@ from pathlib import Path
 
 import pandas as pd
 
+from common.binance_universe import (
+    discover_binance_candidate_universe,
+    get_discovery_settings,
+    write_discovery_reports,
+)
 from common.universe import get_named_universe
 from config import AppConfig
 from data.downloader import MarketDataDownloader
@@ -68,6 +73,11 @@ def _build_parser():
         "--limit",
         type=int,
         help="Optional cap on the number of target symbols for a smoke run.",
+    )
+    parser.add_argument(
+        "--use-binance-discovery",
+        action="store_true",
+        help="Source candidate symbols from live Binance discovery instead of a static named universe.",
     )
     return parser
 
@@ -167,6 +177,8 @@ def _build_target_rows(
     validation_root: Path | None,
     universe_name: str,
     symbol_override: list[str],
+    report_root: Path | None = None,
+    use_binance_discovery: bool = False,
 ) -> list[dict]:
     current_symbols = {
         str(symbol).upper()
@@ -183,13 +195,6 @@ def _build_target_rows(
             }
             for symbol in symbol_override
         ]
-
-    candidate_symbols = [
-        str(symbol).upper()
-        for symbol in get_named_universe(base_config, universe_name)
-    ]
-    if not candidate_symbols:
-        raise ValueError(f"No symbols resolved for universe: {universe_name}")
 
     if validation_root is not None:
         rejected = _load_rejected_symbols(validation_root)
@@ -208,10 +213,31 @@ def _build_target_rows(
                 for symbol in missing_history
             ]
 
+    discovery_settings = get_discovery_settings(base_config)
+    should_use_discovery = bool(use_binance_discovery or discovery_settings["enabled"])
+    if should_use_discovery:
+        payload = discover_binance_candidate_universe(base_config)
+        if report_root is not None:
+            write_discovery_reports(report_root, payload)
+        candidate_symbols = [
+            str(symbol).upper()
+            for symbol in payload.get("candidate_symbols", [])
+        ]
+        source_label = "binance_discovery"
+    else:
+        candidate_symbols = [
+            str(symbol).upper()
+            for symbol in get_named_universe(base_config, universe_name)
+        ]
+        source_label = f"universe:{universe_name}"
+
+    if not candidate_symbols:
+        raise ValueError("No candidate symbols resolved for history fill.")
+
     return [
         {
             "symbol": symbol,
-            "source": f"universe:{universe_name}",
+            "source": source_label,
             "target_reason": "candidate_universe_fill",
             "in_current_9": symbol in current_symbols,
         }
@@ -305,6 +331,8 @@ def main():
         validation_root=validation_root,
         universe_name=args.universe_name,
         symbol_override=symbol_override,
+        report_root=report_root,
+        use_binance_discovery=bool(args.use_binance_discovery),
     )
     if args.limit and args.limit > 0:
         target_rows = target_rows[: args.limit]

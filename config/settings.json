@@ -41,6 +41,8 @@
   "binance": {
     "base_url": "https://api.binance.com",
     "klines_path": "/api/v3/klines",
+    "exchange_info_path": "/api/v3/exchangeInfo",
+    "ticker_24hr_path": "/api/v3/ticker/24hr",
     "default_interval": "1m",
     "historical_limit": 1000,
     "recent_limit": 1000,
@@ -133,6 +135,51 @@
   },
   "universe": {
     "active_set": "current_9",
+    "discovery": {
+      "enabled": true,
+      "quote_asset": "USDT",
+      "required_status": "TRADING",
+      "require_spot_permission": true,
+      "top_n": 40,
+      "min_quote_volume_24h": 5000000.0,
+      "min_trade_count_24h": 5000,
+      "exclude_stable_like_pairs": true,
+      "stable_like_price_min": 0.95,
+      "stable_like_price_max": 1.05,
+      "stable_like_abs_change_pct_max": 0.25,
+      "excluded_symbols": [],
+      "excluded_base_assets": [
+        "BUSD",
+        "FDUSD",
+        "USDC",
+        "TUSD",
+        "USDP",
+        "DAI",
+        "EUR",
+        "TRY",
+        "BRL",
+        "RUB",
+        "UAH",
+        "BIDR",
+        "AUD",
+        "GBP",
+        "JPY"
+      ],
+      "excluded_symbol_suffixes": [
+        "UPUSDT",
+        "DOWNUSDT",
+        "BULLUSDT",
+        "BEARUSDT"
+      ],
+      "excluded_base_asset_suffixes": [
+        "UP",
+        "DOWN",
+        "BULL",
+        "BEAR"
+      ],
+      "output_prefix": "binance_discovered_universe",
+      "validation_report_root_name": "expanded_universe_allocator_validation_discovered_current"
+    },
     "symbol_sets": {
       "current_9": [
         "AAVEUSDT",
