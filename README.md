@@ -1,20 +1,33 @@
 # Retail Trading System
 
 Retail Trading System is a modular Python trading framework for Binance OHLCV
-market data. It is built around one central idea: a trend-following strategy
-should make every decision from closed candles, risk a controlled fraction of
-capital, hold winners as long as structure remains healthy, and scale only when
-the market proves the trade right.
+market data. It is built around one central strategic idea: do not try to make
+one signal solve every market problem. Instead, separate the job into layers.
+Use a fast execution layer to keep opportunity flow alive, use slower
+higher-timeframe layers to identify the moves that can actually carry large
+profits, and then route capital toward the strongest sleeve, symbol, and regime
+that exist right now.
 
-This repository is not a generic indicator collection. It is a complete trading
-pipeline with configuration, data ingestion, resampling, feature generation,
-context detection, entry logic, risk-based sizing, pyramiding, exit handling,
-accounting, and CSV audit trails for both backtesting and near-live simulation.
+That is why the system deliberately combines a `15m` core with higher-timeframe
+participation rather than choosing only one style. The `15m` core exists to
+observe, rank, and participate in frequent tactical opportunities. The
+higher-timeframe sleeves exist for a different economic reason: they are where
+convexity, persistence, and multi-day leadership can appear. The allocator sits
+above both because the real problem is not merely "did a signal trigger?" but
+"which opportunity deserves capital right now, and which ones should be left
+alone?"
+
+This repository is therefore not a generic indicator collection. It is a full
+research-to-execution pipeline with configuration, data ingestion, resampling,
+feature generation, context detection, candidate generation, cross-sectional
+ranking, risk-based sizing, convex promotion, exit handling, accounting, and
+CSV audit trails for both historical replay and near-live paper trading.
 
 The codebase is deliberately modular. Each folder owns one stage of the system,
-and the simulator orchestrates those stages one candle at a time. The result is
-a strategy path that is traceable from raw Binance candles all the way to final
-trade PnL.
+and the portfolio engine orchestrates those stages one candle at a time. The
+result is a strategy path that is traceable from raw Binance candles all the
+way to final trade PnL, including why one sleeve received capital while another
+was filtered, suppressed, or left idle.
 
 ## Table of Contents
 
@@ -50,12 +63,28 @@ trade PnL.
 
 At the broadest level, the system ingests one-minute Binance candles, rebuilds
 the strategy's higher timeframes, computes all derived features, waits for a
-closed 15-minute execution candle, and then lets the simulator evaluate which
-directional opportunities exist, how strong they are, how much capital they
-deserve, whether an open trade can be added to, and when that trade should be
-exited.
+closed `15m` execution candle, and then asks a sequence of increasingly
+important questions:
 
-The repository now carries two architecture layers on purpose:
+1. what is the current directional and regime context?
+2. which sleeves have legitimate candidates?
+3. which symbols are actually leading?
+4. which of those leaders deserve real capital right now?
+5. once capital is deployed, has the trade earned the right to stay small,
+   promote, add, or exit?
+
+This is the core reason the system is multi-layered. A single short-horizon
+entry model is good at finding activity, but it is not good enough on its own
+to decide when capital should be concentrated. A pure higher-timeframe system
+can find large moves, but it is too sparse to carry the whole business alone.
+The repo therefore combines:
+
+- a `15m` core for tactical flow and day-to-day market participation
+- higher-timeframe sleeves for structural leaders and convex multi-day moves
+- an allocator layer that decides how much the current market deserves from
+  each sleeve
+
+The repository now carries two architecture tracks on purpose:
 
 - a locked, long-only, gated baseline that remains preserved for historical
   comparison and validation
@@ -71,7 +100,10 @@ path remains available for comparison.
 The same simulator core is reused in both historical backtesting and near-live
 simulation. That is an important architectural choice: the system does not keep
 separate strategy logic for "research mode" and "live mode." It keeps one
-decision engine and changes only the data source and execution loop.
+decision engine and changes only the data source and execution loop. That is
+how the repo stays auditable: if a live paper trade behaves differently from
+historical replay, the cause should be data timing or market conditions, not a
+second hidden strategy implementation.
 
 ### At a Glance
 
@@ -93,24 +125,42 @@ decision engine and changes only the data source and execution loop.
 
 ## Architectural Philosophy
 
-The system follows a strict separation of concerns. Raw market data is prepared
-before any decision logic sees it. Context modules determine whether conditions
-are directionally supportive. Entry modules decide whether a specific execution
-candle justifies a trade. Risk modules decide how much capital may be exposed.
-Management modules decide whether to hold, scale, or exit. Logging modules
-persist every outcome for later forensic review.
+The system follows a strict separation of concerns because each layer is trying
+to solve a different strategic problem.
 
-This separation matters because trading systems tend to become unreliable when
-signal generation, state management, and accounting are mixed together. In this
-repository, the simulator is intentionally thin. It asks other modules for one
-decision each, then applies those decisions to the current trade and account.
-That makes the strategy path inspectable and testable.
+- data preparation asks: what is the cleanest usable market state?
+- context asks: is the broader environment supportive or hostile?
+- candidate generation asks: what opportunities exist inside each sleeve?
+- allocation asks: which opportunities deserve capital now?
+- trade management asks: should exposure stay unchanged, grow, shrink, or exit?
+
+This separation matters because trading systems become fragile when those jobs
+are mixed together. If one module both creates signals and decides capital, it
+becomes hard to know whether performance came from edge or from accidental
+overexposure. In this repository, the engine stays deliberately inspectable:
+features are built before context, context is built before candidates,
+candidates are built before capital routing, and routing happens before convex
+promotion or exit logic.
+
+The multi-layer architecture is also a strategic choice, not just a coding
+choice:
+
+- `15m core` exists to provide tactical opportunity flow and keep the system
+  economically engaged even when higher-timeframe events are sparse
+- `swing_moonshot` and `htf_12h_moonshot` exist to capture persistence and
+  non-linear upside that a pure intraday core would tend to exit too early
+- `htf_12h_rotation` exists to recognize where capital is already
+  concentrating across the Binance universe, so the system can reinforce real
+  leadership instead of spreading risk evenly
+- allocator-v2 exists because not all valid signals are economically equal
 
 The project also favors event-based decisions over static state checks wherever
 timing quality matters. Breakouts are detected when price crosses a level, not
-merely because price remains above it. Pyramiding is triggered when price crosses
-the next `+R` level, not merely because price already lives above that level.
-This event-driven style reduces late entries and repeated signals.
+merely because price remains above it. Convex promotion happens after proof,
+not at entry. Adds happen on earned continuation, not on hope. This keeps the
+system from mistaking persistence for prediction and helps preserve the core
+design principle: downside should stay controlled while upside is allowed to
+become asymmetric.
 
 ## Repository Map
 
@@ -147,57 +197,47 @@ to routed capital. It is intentionally layered: data preparation, context,
 candidate generation, capital routing, then trade management.
 
 ```mermaid
-flowchart LR
-    subgraph A[Data Intake]
-        A1[Local 1m history] --> A3[Validated 1m state]
-        A2[Fresh Binance 1m] --> A3
-        A3 --> A4[Aligned resampling]
-    end
+flowchart TD
+    A1[Local 1m history]
+    A2[Fresh Binance 1m]
+    A1 --> A3[Validated 1m state]
+    A2 --> A3
+    A3 --> A4[Aligned resampling]
 
-    subgraph B[Strategy Frames]
-        A4 --> B1[15m execution]
-        A4 --> B2[1h direction]
-        A4 --> B3[5h trend]
-        A4 --> B4[12h macro]
-        A4 --> B5[1D and 1W HTF context]
-    end
+    A4 --> B1[15m execution frame]
+    A4 --> B2[1h direction frame]
+    A4 --> B3[5h trend frame]
+    A4 --> B4[12h macro frame]
+    A4 --> B5[1D and 1W HTF context]
 
-    subgraph C[Context and Features]
-        B1 --> C1[Feature pipeline]
-        B2 --> C2[Bias snapshot]
-        B3 --> C3[Trend regime snapshot]
-        B4 --> C3
-        B5 --> C4[HTF context]
-    end
+    B1 --> C1[Feature pipeline]
+    B2 --> C2[Bias snapshot]
+    B3 --> C3[Trend regime snapshot]
+    B4 --> C3
+    B5 --> C4[HTF context]
 
-    subgraph D[Candidate Sleeves]
-        C1 --> D1[15m core]
-        C1 --> D2[Swing moonshot]
-        C4 --> D3[12H structural HTF]
-        C4 --> D4[12H rotation leaders]
-    end
+    C1 --> D1[15m core candidates]
+    C1 --> D2[Swing moonshot candidates]
+    C4 --> D3[12H structural HTF candidates]
+    C4 --> D4[12H rotation leader candidates]
 
-    subgraph E[Capital Routing]
-        D1 --> E1[Recent health gates]
-        D2 --> E1
-        D3 --> E1
-        D4 --> E1
-        C2 --> E1
-        C3 --> E1
-        E1 --> E2[Allocator v2]
-        E2 --> E3[Sleeve budgets and rank routing]
-        E3 --> E4[Open or skip]
-    end
+    D1 --> E1[Recent health gates]
+    D2 --> E1
+    D3 --> E1
+    D4 --> E1
+    C2 --> E1
+    C3 --> E1
 
-    subgraph F[Trade Lifecycle]
-        E4 --> F1[Probe entry]
-        F1 --> F2[Convex promotion]
-        F2 --> F3[One earned add]
-        F3 --> F4[Trailing, decay, hard stop]
-        F4 --> F5[Account update]
-    end
+    E1 --> E2[Allocator v2]
+    E2 --> E3[Sleeve budgets and rank-normalized routing]
+    E3 --> E4[Open best candidates or stay idle]
 
-    F5 --> G[Trades, equity, opportunities, validation reports]
+    E4 --> F1[Probe entry]
+    F1 --> F2[Convex promotion after proof]
+    F2 --> F3[One earned add]
+    F3 --> F4[Trailing, decay, hard stop]
+    F4 --> F5[Account update]
+    F5 --> G[Trades, equity, opportunities, and validation artifacts]
 ```
 
 The simulator operates on one execution candle at a time. In backtesting, that
@@ -1612,7 +1652,7 @@ candidate path, but it still runs through a single open-position lane.
 ### Decision sequence inside the active portfolio step
 
 ```mermaid
-flowchart LR
+flowchart TD
     A[Closed 15m step] --> B[Refresh context slices]
     B --> C[Build sleeve candidates]
     C --> D[Health gates and duplicate checks]
