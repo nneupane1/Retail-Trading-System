@@ -728,13 +728,19 @@ class LivePaperPortfolio:
 
     @staticmethod
     def _is_htf_strategy_type(strategy_type):
-        return str(strategy_type or "").startswith("htf_12h_")
+        normalized = str(strategy_type or "")
+        return normalized.startswith("htf_12h_") or normalized.startswith("h6_")
 
     def _manage_htf_trade(self, trade, row, htf_context):
         active_stop = float(getattr(trade, "active_stop", trade.stop))
         if self.exit_engine.should_exit(row, active_stop, side=trade.side):
             exit_reason = "htf trailing stop" if active_stop != trade.stop else "htf hard exit"
             self.close_trade(trade, row, reason=exit_reason, exit_price=active_stop)
+            return True
+
+        max_hold_candles = getattr(trade, "max_hold_candles", None)
+        if max_hold_candles is not None and int(getattr(trade, "bars_held", 0) or 0) >= int(max_hold_candles):
+            self.close_trade(trade, row, reason="htf time exit")
             return True
 
         if not htf_context:
@@ -769,11 +775,6 @@ class LivePaperPortfolio:
             trade.active_stop = min(float(trade.active_stop), trailing_stop)
         else:
             trade.active_stop = max(float(trade.active_stop), trailing_stop)
-
-        max_hold_candles = getattr(trade, "max_hold_candles", None)
-        if max_hold_candles is not None and int(getattr(trade, "bars_held", 0) or 0) >= int(max_hold_candles):
-            self.close_trade(trade, row, reason="htf time exit")
-            return True
 
         if decay_active:
             decay_count = int(getattr(trade, "conditions", {}).get("htf_decay_count", 0) or 0) + 1

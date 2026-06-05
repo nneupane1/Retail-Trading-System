@@ -92,8 +92,10 @@ In practical terms:
   the only clean survivor
 - the discovery infrastructure is useful as a research input, but discovery by
   itself did not beat the selective manual baseline
-- `6H` is now the next serious bridge-layer hypothesis, and it has moved past
-  the "dormant scaffold" stage into validated research
+- `6H` has already completed standalone, holdout, and portfolio-overlay
+  research, and it did not earn promotion into the routed stack
+- `1H` has already completed standalone, holdout, overlay, and filtered-overlay
+  research, and it is now the strongest non-routed sleeve candidate
 
 The immediate mission is therefore:
 
@@ -101,20 +103,20 @@ The immediate mission is therefore:
 - keep the current selective breadth and `12H` overlays unchanged
 - treat Binance-discovered breadth as a research feeder, not a production
   universe
-- decide whether `h6_standard` deserves promotion into portfolio integration
-  research without choking trade flow
+- refine the `1H` sleeve without killing the trade flow that made it additive
+- test side bias before tightening symbol coverage further
 
 | Area | Current status | Action |
 | --- | --- | --- |
 | Signal stack | Frozen | Do not add new signals |
 | Allocator-v2 | Calibrated agreement branch is the active research baseline | Keep active |
-| `1H` layer | Dormant scaffold only | Do not activate yet |
-| `6H` layer | Research-validated, not live-routed | Test portfolio integration next |
+| `1H` layer | Research-validated, holdout-surviving, portfolio-additive candidate | Test side-policy overlay next |
+| `6H` layer | Research-validated, not portfolio-additive | Keep research-only |
 | Static expanded universe data coverage | Complete for the first research snapshot | Keep as local research base |
 | Broad 26-symbol expansion | Completed and rejected | Do not treat raw breadth as automatically good |
 | Selective-breadth holdout | Completed | Treat `DOTUSDT` as the first validated add candidate |
 | Current blocker | Honest candidate discovery and admission | Use Binance discovery + quality validation, not intuition |
-| Next validation | Discovery-based expanded-universe validator | Let `validate_expanded_universe_allocator` finish, then decide fill or curation |
+| Next validation | `1H` side-policy overlay | Compare all-symbol `long+short` vs short-biased vs short-only |
 
 ## Current State / Do Not Touch
 
@@ -126,6 +128,7 @@ Current active research branch:
 - `htf_12h_standard`
 - `htf_12h_moonshot`
 - `htf_12h_rotation`
+- reversible `1H` research policy
 - reversible `6H` research policy for `h6_standard` and `h6_moonshot`
 - convexity probe/promote/add behavior
 - selective-breadth holdout result with `DOTUSDT` as the first surviving add
@@ -143,21 +146,29 @@ Do **not** currently implement:
 - aggressive allocator tightening that suppresses trade flow just to make the
   backtest look cleaner
 
-`1H` remains a dormant scaffold in code and config.
+`1H` is no longer a dormant scaffold:
+
+- it has passed standalone validation
+- it has passed holdout
+- it improved the holdout portfolio as an all-symbol overlay
+- its first symbol-pruned keep-only overlay was too tight and damaged daily
+  distribution
+- it still remains research-only and is not live-routed
 
 `6H` is now different:
 
 - both `h6_moonshot` and `h6_standard` exist as research sleeves
 - both have passed standalone validation
 - both have passed a lean holdout on the curated keep set
-- neither is routed into the live or portfolio backtest engine yet
+- `h6_standard` did not earn promotion in portfolio overlay research
+- neither is routed into the live or production portfolio path
 
 ## Current Bottleneck
 
 The current limitation is no longer missing history or missing allocator
 infrastructure. The current limitation is **portfolio integration quality**:
 deciding which additions actually improve the stack without starving trade
-flow.
+flow or over-tightening the system into a cleaner but worse business.
 
 The repo has now proved four things:
 
@@ -166,17 +177,19 @@ The repo has now proved four things:
 - `DOTUSDT` can survive a lean holdout while the broader curated basket does not
 - a dynamic Binance-discovered pool is useful as research input, but it still
   did not beat the current selective baseline
-- `6H` now looks promising enough to deserve overlay research, but not blind
-  live activation
+- `6H` has real standalone edge, but it is not additive enough in portfolio
+  overlay to earn promotion
+- `1H` is additive as an all-symbol overlay, but hard symbol pruning already
+  showed the main failure mode: flow can be damaged even while equity and PF
+  improve
 
 So the current blocker is:
 
 - not more signals
 - not more timeframes
 - not more capital aggression
-- but proving whether `h6_standard` can add portfolio value with a small sleeve
-  budget and reversible symbol policy, without turning the system into a
-  brittle, low-frequency machine
+- but proving whether `1H` can be refined by side policy without turning the
+  additive sleeve into a brittle, lower-frequency machine
 
 ## Strategy Layer Map
 
@@ -187,9 +200,9 @@ So the current blocker is:
 | HTF standard | `12H` | Normal higher-timeframe continuation and pullback participation | Active | Reserved sleeve |
 | HTF moonshot | `12H` | Structural trend birth | Active | Reserved sleeve |
 | HTF rotation | `12H` cross-sectional | Leader reinforcement | Active | Reserved sleeve |
-| `1H` execution | `1H` | Premium intraday trend layer | Dormant scaffold | Not routed |
-| `6H` standard | `6H` | Bridge-layer normal execution sleeve | Research-validated | Not routed yet |
-| `6H` moonshot | `6H` | Early swing expansion bridge | Research-validated | Not routed yet |
+| `1H` execution | `1H` | Premium intraday trend layer | Research-validated additive candidate | Research-only, not live-routed |
+| `6H` standard | `6H` | Bridge-layer normal execution sleeve | Research-validated, portfolio-nonadditive | Research-only |
+| `6H` moonshot | `6H` | Early swing expansion bridge | Research-validated, portfolio-nonadditive | Research-only |
 | Compounding | Portfolio level | Scale after proven stability | Deferred | Not active |
 
 ## Validation Ladder
@@ -204,7 +217,12 @@ So the current blocker is:
 | Binance-discovered universe validation | Do live exchange candidates beat stale manual breadth? | Completed, failed as production universe |
 | `6H` standalone validation | Does `6H` show real bridge-layer edge? | Completed |
 | `6H` holdout and symbol curation | Does `6H` survive out of sample without killing frequency? | Completed |
-| `6H` portfolio integration research | Does `h6_standard` improve the current portfolio stack? | Next |
+| `6H` portfolio integration research | Does `h6_standard` improve the current portfolio stack? | Completed, failed promotion |
+| `1H` standalone validation | Does `1H` show real executable edge beyond `15m` flow? | Completed |
+| `1H` holdout and symbol behavior | Does `1H` survive out of sample across the current-9 universe? | Completed |
+| `1H` portfolio integration research | Does `h1_execution` add value under shared capital? | Completed, additive |
+| `1H` filtered overlay | Does symbol pruning improve `1H` without killing flow? | Completed, too tight |
+| `1H` side-policy overlay | Does side bias improve `1H` without over-tightening? | Next |
 | Full-history expanded validation | Does it survive older regimes too? | Pending |
 | Walk-forward validation | Does it generalize out of sample? | Pending |
 | Monte Carlo / stress | Is the path survivable? | Pending |
@@ -661,10 +679,54 @@ engine with:
 - normal `12H` higher-timeframe participation through `htf_12h_standard`
 - structural `12H` moonshot participation
 - a separate `12H` cross-sectional rotation sleeve for leader reinforcement
-- dormant `1H` scaffolding that exists in code/config but is not wired into
-  live or backtest routing
+- a research-only `1H` execution sleeve that has survived standalone, holdout,
+  and portfolio-overlay validation, but is still not live-routed
 - research-only `6H` sleeves (`h6_standard`, `h6_moonshot`) plus a reversible
-  symbol policy, but still no live or portfolio backtest routing yet
+  symbol policy, but still no live routing and no promoted portfolio sleeve yet
+
+### Current `1H` research snapshot
+
+`1H` is now the strongest non-routed sleeve candidate in the repo.
+
+Validated `1H` research conclusions:
+
+- standalone `1H` edge is real and not weak enough to dismiss as `15m`
+  duplication
+- the `1H` holdout survived across the full current-9 universe
+- the all-symbol `1H` overlay is additive at the portfolio level
+- hard symbol pruning improved equity and PF but damaged median daily PnL too
+  much, which means symbol tightening is currently the wrong refinement axis
+- shorts are stronger than longs in standalone `1H`, but the additive overlay
+  result was achieved with both sides enabled
+
+Current `1H` keep symbols:
+
+- `BNBUSDT`
+- `BTCUSDT`
+- `SOLUSDT`
+- `TRXUSDT`
+
+Current `1H` review symbols:
+
+- `AAVEUSDT`
+- `AVAXUSDT`
+- `ETHUSDT`
+- `LINKUSDT`
+- `XRPUSDT`
+
+Current `1H` overlay summary:
+
+| Branch | Equity | PF | Median Daily PnL | Max DD | Verdict |
+| --- | ---: | ---: | ---: | ---: | --- |
+| Baseline `current_9` | `EUR 19,843.86` | `0.9593` | `-EUR 1.28` | `-5.13%` | Anchor |
+| `current_9 + h1_execution` | `EUR 20,187.05` | `1.0548` | `-EUR 0.89` | `-2.77%` | Additive |
+| `current_9 + h1 keep-only` | `EUR 20,374.11` | `1.1149` | `-EUR 2.05` | `-3.02%` | Too tight |
+
+The current `1H` read is therefore:
+
+- keep the sleeve research-active
+- do not route it live yet
+- test side bias before pruning symbols harder
 
 ### Current `6H` research snapshot
 
@@ -703,6 +765,13 @@ Current holdout summary on the full current-9 `h6_standard` research branch:
 | `h6_standard` all symbols | `19` | `1.67` | `0.204` | `88.9h` | Promising but diluted |
 | `h6_standard` curated keeps | `14` | `2.12` | `0.299` | `91.4h` | Best current `6H` bridge candidate |
 | `h6_moonshot` curated keeps | `14` | `1.59` | `0.265` | `138.0h` | Stronger convex trainer, weaker holdout efficiency |
+
+Current `6H` overlay verdict:
+
+- `h6_standard` did not earn promotion into the routed portfolio
+- it improved drawdown and daily distribution, but reduced equity and PF
+- it is now firmly research-only until a later redesign changes the marginal
+  capital-competition result
 
 ### Validated portfolio replay status
 
@@ -1203,11 +1272,15 @@ flowchart TD
     G --> H{Selective additions improve?}
     H -- Yes --> I[Proceed to full-history and walk-forward validation]
     H -- No --> J[Keep discovery as research input only]
-    J --> K[Run 6H standalone validation and holdout]
-    K --> L{Does 6H survive holdout?}
-    L -- Yes --> M[Run 6H portfolio integration research]
-    L -- No --> N[Defer 6H and move to later 1H study]
-    I --> O[Only then consider broader timeframe expansion]
+    J --> K[Run 6H standalone, holdout, and overlay research]
+    K --> L{Does 6H earn promotion?}
+    L -- Yes --> M[Consider routed 6H sleeve]
+    L -- No --> N[Keep 6H research-only and move to 1H study]
+    N --> O[Run 1H standalone, holdout, and portfolio overlay]
+    O --> P{Is 1H additive?}
+    P -- Yes --> Q[Test 1H side policy before live promotion]
+    P -- No --> R[Keep 1H research-only]
+    I --> S[Only then consider broader timeframe expansion]
 ```
 
 ### How to read it
@@ -1237,12 +1310,16 @@ results.
      walk-forward, and stress testing.
    - If broad expansion fails, keep discovery as a research feeder rather than
      forcing it into production.
-   - After that, use the next sleeve study to decide whether a bridge layer
-     such as `6H` can add value without bloating overlap.
-7. **`6H` now sits between breadth research and any later `1H` work.**
-   The repo has already completed the standalone `6H` validation and holdout
-   path. The next question is portfolio integration, not raw `6H` existence.
-8. **Pyramiding and compounding stay at the end.**
+   - After that, use the next sleeve study to decide whether new timeframe
+     sleeves can add value without bloating overlap.
+7. **`6H` is now completed research, not the current queue.**
+   The repo has already completed `6H` standalone, holdout, symbol-policy, and
+   overlay work. The verdict is research-only.
+8. **`1H` is now the current timeframe decision layer.**
+   The repo has already completed `1H` standalone, holdout, overlay, and
+   filtered-overlay work. The next question is side policy, not raw `1H`
+   existence.
+9. **Pyramiding and compounding stay at the end.**
    Those are scale amplifiers, not discovery tools. They only make sense after
    broader opportunity flow, timeframe routing, and allocator behavior have
    already been proven.
@@ -1310,11 +1387,19 @@ research sleeves:
 - `strategy.h6_standard`
 
 `strategy.h1_execution` is intentionally disabled in config and is not routed
-by the current portfolio engine.
+by the live portfolio engine, but it is no longer just a scaffold. It has now
+completed:
+
+- standalone validation
+- holdout validation
+- portfolio overlay validation
+- reversible symbol-policy generation
+- filtered overlay validation
 
 `strategy.h6_moonshot` and `strategy.h6_standard` are still not routed by the
 current portfolio engine either, but they have moved beyond scaffolding into
-measured research sleeves with holdout-backed symbol curation.
+measured research sleeves with holdout-backed symbol curation and a completed
+portfolio integration rejection.
 
 ### What is intentionally deferred
 
@@ -1326,8 +1411,8 @@ The following are explicitly **not** the next coding move:
 - aggressive HTF pyramiding
 - cycle-based compounding
 - threshold loosening simply to force more trades
-- switching on the dormant `1H` or `6H` layers before candidate studies justify
-  them
+- switching on the research-only `1H` or `6H` layers before overlay and policy
+  work justify them
 - over-tightening the allocator or signal gates in a way that "improves" the
   backtest only by starving the system of trade frequency
 
@@ -1351,21 +1436,20 @@ This is the current staged plan extracted from the allocator results and the
    Discovery now replaces stale memory-based symbol picking, but discovered
    breadth still has to beat the current selective baseline before it deserves
    capital.
-5. Treat the current `6H` research branch as the next serious decision layer.
-   `h6_moonshot`, `h6_standard`, holdout curation, and reversible symbol policy
-   are now built and validated.
-6. Run `6H` portfolio integration research next.
-   Start with `current_9` baseline vs `current_9 + h6_standard` on the curated
-   keep set with a small sleeve budget. The question is no longer "does `6H`
-   have edge?" but "does `6H` add portfolio value without killing flow?"
-7. Only if `h6_standard` improves portfolio behavior should the project move to
-   a true routed `6H` live sleeve.
+5. Treat the `6H` research branch as completed negative portfolio evidence.
+   `h6_moonshot`, `h6_standard`, holdout curation, symbol policy, and portfolio
+   overlay are now built and validated, and the sleeve stays research-only.
+6. Treat the `1H` research branch as the next serious decision layer.
+   `1H` has now passed standalone validation, holdout, and portfolio overlay,
+   which makes it the current best non-routed sleeve candidate.
+7. Refine `1H` by side policy before tightening symbols further.
+   The keep-only filter improved equity and PF but damaged median daily PnL,
+   which means the immediate next step is side bias testing, not harder symbol
+   pruning.
+8. Only if side-policy overlay improves the additive `1H` result should the
+   project consider a true routed `1H` live sleeve.
    The runtime sleeve exists, but it is still intentionally not wired into the
-   active portfolio path.
-8. Run a `1H` candidate study after `6H`, not before.
-   `1H` is more likely to overlap with `15m`, so it should be justified by
-   evidence rather than architecture excitement.
-   The current scaffold exists, but it is intentionally dormant.
+   active live path.
 9. Only after sleeve mix and routing are stable, add promotion logic and later
    conservative HTF pyramiding.
 10. Only after monthly distribution improves and drawdown remains controlled,
@@ -1380,10 +1464,12 @@ damaging the capital-routing engine's trade flow and daily distribution.
 So the immediate question is:
 
 > can the current calibrated allocator become more economically stable if it
-> adds only the right `6H` sleeve participation, on the right symbols, with the
-> right sleeve budget, rather than just more symbols or more rules?
+> keeps the additive `1H` sleeve broad enough to preserve flow while shaping it
+> by side preference rather than over-pruning symbols?
 
-That is the next serious test. `1H` comes after that, not before.
+That is the next serious test. The goal is not to make the backtest cleaner by
+force. The goal is to see whether `1H` can keep its portfolio contribution
+while becoming slightly more capital-efficient.
 
 ### Pass criteria for the next stage
 

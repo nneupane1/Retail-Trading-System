@@ -403,6 +403,18 @@
           "positive_cap": 1.10,
           "emergency_disable_min_trades": 24,
           "emergency_disable_avg_r": -0.30
+        },
+        "h6_standard": {
+          "recency_lookback_days": 180,
+          "recency_max_trades": 40,
+          "recency_min_trades": 8,
+          "neutral_below_min_trades": true,
+          "disable_when_negative": false,
+          "negative_risk_multiplier": 0.80,
+          "positive_floor_multiplier": 0.90,
+          "positive_cap": 1.10,
+          "emergency_disable_min_trades": 16,
+          "emergency_disable_avg_r": -0.25
         }
       },
       "strategy_bucket_health_profiles": {
@@ -465,17 +477,31 @@
           "positive_floor_multiplier": 0.90,
           "positive_cap": 1.10,
           "apply_to_threshold_derivation": false
+        },
+        "h6_standard": {
+          "enabled": true,
+          "recency_lookback_days": 180,
+          "recency_max_trades": 40,
+          "recency_min_trades": 8,
+          "neutral_below_min_trades": true,
+          "disable_when_negative": false,
+          "negative_risk_multiplier": 0.80,
+          "positive_floor_multiplier": 0.90,
+          "positive_cap": 1.10,
+          "apply_to_threshold_derivation": false
         }
       },
       "strategy_threshold_offsets": {
         "htf_12h_standard": -0.18,
         "htf_12h_moonshot": -0.05,
-        "htf_12h_rotation": -0.04
+        "htf_12h_rotation": -0.04,
+        "h6_standard": -0.10
       },
       "strategy_allowed_sides": {
         "htf_12h_standard": ["long"],
         "htf_12h_moonshot": ["long"],
-        "htf_12h_rotation": ["long"]
+        "htf_12h_rotation": ["long"],
+        "h6_standard": ["long"]
       },
       "strategy_sleeves": {
         "htf_12h_standard": {
@@ -502,6 +528,13 @@
         "swing_moonshot": {
           "enabled": true,
           "reserved_risk_fraction": 0.003,
+          "max_new_positions_per_step": 1,
+          "block_if_symbol_has_other_strategy_position": false,
+          "ignore_global_step_cap": false
+        },
+        "h6_standard": {
+          "enabled": true,
+          "reserved_risk_fraction": 0.0025,
           "max_new_positions_per_step": 1,
           "block_if_symbol_has_other_strategy_position": false,
           "ignore_global_step_cap": false
@@ -572,6 +605,13 @@
             "max_candidates": 2,
             "max_risk_fraction_multiplier": 1.40,
             "absolute_max_risk_fraction": 0.0040
+          },
+          "h6_standard": {
+            "priority_multiplier": 0.92,
+            "rank_weights": [1.0, 0.45],
+            "max_candidates": 2,
+            "max_risk_fraction_multiplier": 1.10,
+            "absolute_max_risk_fraction": 0.0025
           }
         }
       },

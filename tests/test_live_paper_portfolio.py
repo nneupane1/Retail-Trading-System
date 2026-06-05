@@ -79,6 +79,19 @@ class DummyConfig:
                 "htf_12h_rotation": {
                     "enabled": True,
                 },
+                "h6_standard": {
+                    "enabled": True,
+                    "base_risk_fraction": 0.0018,
+                    "max_total_risk_fraction": 0.0055,
+                    "max_open_positions": 2,
+                    "min_score": 0.68,
+                    "max_hold_6h_candles": 18,
+                    "selection_bonus": 0.02,
+                    "top_mover_bonus": 0.02,
+                    "selection_threshold_offset": -0.10,
+                    "selection_min_threshold": 0.62,
+                    "selection_max_threshold": 0.88,
+                },
                 "sniffing": {
                     "body_strength_min": 0.8,
                     "close_position_min": 0.4,
@@ -178,17 +191,31 @@ class DummyConfig:
                             "positive_cap": 1.10,
                             "emergency_disable_min_trades": 20,
                             "emergency_disable_avg_r": -0.30,
+                        },
+                        "h6_standard": {
+                            "recency_lookback_days": 180,
+                            "recency_max_trades": 40,
+                            "recency_min_trades": 8,
+                            "neutral_below_min_trades": True,
+                            "disable_when_negative": False,
+                            "negative_risk_multiplier": 0.80,
+                            "positive_floor_multiplier": 0.90,
+                            "positive_cap": 1.10,
+                            "emergency_disable_min_trades": 16,
+                            "emergency_disable_avg_r": -0.25,
                         }
                     },
                     "strategy_threshold_offsets": {
                         "htf_12h_standard": -0.18,
                         "htf_12h_moonshot": -0.05,
                         "htf_12h_rotation": -0.04,
+                        "h6_standard": -0.10,
                     },
                     "strategy_allowed_sides": {
                         "htf_12h_standard": ["long"],
                         "htf_12h_moonshot": ["long"],
                         "htf_12h_rotation": ["long"],
+                        "h6_standard": ["long"],
                     },
                     "strategy_sleeves": {
                         "htf_12h_standard": {
@@ -215,6 +242,13 @@ class DummyConfig:
                         "swing_moonshot": {
                             "enabled": True,
                             "reserved_risk_fraction": 0.003,
+                            "max_new_positions_per_step": 1,
+                            "block_if_symbol_has_other_strategy_position": False,
+                            "ignore_global_step_cap": False,
+                        },
+                        "h6_standard": {
+                            "enabled": True,
+                            "reserved_risk_fraction": 0.0025,
                             "max_new_positions_per_step": 1,
                             "block_if_symbol_has_other_strategy_position": False,
                             "ignore_global_step_cap": False,
@@ -285,6 +319,13 @@ class DummyConfig:
                                 "max_candidates": 2,
                                 "max_risk_fraction_multiplier": 1.40,
                                 "absolute_max_risk_fraction": 0.0040,
+                            },
+                            "h6_standard": {
+                                "priority_multiplier": 0.92,
+                                "rank_weights": [1.0, 0.45],
+                                "max_candidates": 2,
+                                "max_risk_fraction_multiplier": 1.10,
+                                "absolute_max_risk_fraction": 0.0025,
                             },
                         },
                     },
@@ -1323,6 +1364,92 @@ class LivePaperPortfolioTests(unittest.TestCase):
             trade = portfolio.open_positions[0]
             self.assertEqual(trade.strategy_type, "htf_12h_rotation")
             self.assertEqual(trade.htf_trailing_state, "confirmation")
+
+    def test_h6_standard_trade_uses_htf_time_exit_without_context_noise(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            portfolio = LivePaperPortfolio(config=DummyConfig(output_dir=temp_dir))
+            timestamp = pd.Timestamp("2026-01-01 12:00:00")
+            row = pd.Series(
+                {
+                    "close": 112.0,
+                    "low": 111.0,
+                    "high": 113.0,
+                    "ll2": 108.0,
+                    "ema2": 110.0,
+                    "ema3": 109.0,
+                    "atr": 2.0,
+                },
+                name=timestamp,
+            )
+
+            portfolio.reset_daily_state_if_needed(timestamp)
+            portfolio.select_and_open(
+                [
+                    {
+                        "symbol": "BNBUSDT",
+                        "timestamp": timestamp,
+                        "side": "long",
+                        "row": row,
+                        "bias": "bullish",
+                        "edge_type": "h6_standard",
+                        "body_bucket": "strong",
+                        "vwap_bucket": "near",
+                        "bucket_key_text": "h6_standard|bullish|strong|near",
+                        "bucket_valid": True,
+                        "bucket_expected_return": None,
+                        "bucket_risk_mult": 1.0,
+                        "risk_mult": 1.0,
+                        "momentum_rank": 0.90,
+                        "is_top_mover": True,
+                        "score": 0.84,
+                        "selection_score": 0.84,
+                        "score_bucket": "0.8-0.9",
+                        "strategy_type": "h6_standard",
+                        "signal_family": "h6_bridge_breakout",
+                        "risk_group": "h6_standard",
+                        "group_risk_cap": 0.0055,
+                        "max_open_positions_for_strategy": 2,
+                        "block_same_symbol_same_side": True,
+                        "apply_score_bucket_filters": False,
+                        "risk_fraction_override": 0.0020,
+                        "moonshot_score": 0.84,
+                        "range_expansion_factor": 1.4,
+                        "stop_price_override": 108.0,
+                        "execution_profile": {
+                            "disable_pyramiding": True,
+                            "disable_trailing": True,
+                            "max_hold_candles": 1,
+                        },
+                        "feature_values": {
+                            "body_strength": 1.5,
+                            "close_position": 0.82,
+                            "vwap_score": 0.2,
+                            "momentum": 0.90,
+                        },
+                    }
+                ],
+                timestamp,
+            )
+            self.assertEqual(len(portfolio.open_positions), 1)
+
+            noisy_row = pd.Series(
+                {
+                    "close": 112.1,
+                    "low": 111.9,
+                    "high": 112.2,
+                    "ll2": 109.0,
+                    "ema2": 112.0,
+                    "ema3": 112.1,
+                    "session_vwap": 112.2,
+                    "atr": 1.8,
+                },
+                name=pd.Timestamp("2026-01-01 12:15:00"),
+            )
+            portfolio.manage_open_positions({"BNBUSDT": noisy_row}, htf_context_by_symbol={})
+
+            self.assertEqual(len(portfolio.open_positions), 0)
+            self.assertEqual(portfolio.account.trade_count, 1)
+            self.assertEqual(portfolio.daily_closed_trades, 1)
 
     def test_rotation_sleeve_has_reserved_risk_when_shared_pool_is_full(self):
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -19,11 +19,13 @@ from data.downloader import load_from_csv
 from data.resampler import TimeframeBuilder
 from entry.edge_buckets import build_signal_bucket
 from entry.edge_selector import EdgeSelector
+from entry.h1_execution import H1ExecutionEngine, build_h1_execution_snapshots
 from entry.htf_moonshot import (
     HTFMoonshotEngine,
     HTFStandardEngine,
     build_htf_12h_snapshots,
 )
+from entry.h6_moonshot import H6StandardEngine, build_h6_moonshot_snapshots
 from entry.htf_rotation import (
     HTFRotationEngine,
     build_htf_rotation_snapshots_by_symbol,
@@ -453,16 +455,18 @@ def _build_strategy_timeframes(df_1m, config):
 
     df_15m = builder.resample(df_1m, execution_rule)
     df_1h = builder.resample(df_1m, direction_rule)
+    df_6h = builder.resample(df_1m, "6h")
     df_12h = builder.resample(df_1m, macro_rule)
     df_1d = builder.resample(df_1m, "1D")
     df_1w = builder.resample(df_1m, "1W")
 
     df_15m = compute_features(df_15m, config=config)
     df_1h = compute_features(df_1h, config=config)
+    df_6h = compute_features(df_6h, config=config)
     df_12h = compute_features(df_12h, config=config)
     df_1d = compute_features(df_1d, config=config)
     df_1w = compute_features(df_1w, config=config)
-    return df_15m, df_1h, df_12h, df_1d, df_1w
+    return df_15m, df_1h, df_6h, df_12h, df_1d, df_1w
 
 
 def _aligned_bias_snapshots(df_15m, df_1h, detector):
@@ -512,6 +516,10 @@ def _build_candidate(
     moonshot_overlay,
     portfolio,
     swing_snapshot=None,
+    h1_snapshot=None,
+    h1_engine=None,
+    h6_snapshot=None,
+    h6_standard_engine=None,
     htf_snapshot=None,
     htf_standard_engine=None,
     htf_engine=None,
@@ -588,6 +596,28 @@ def _build_candidate(
         )
         if htf_standard_candidate is not None:
             candidates.append(htf_standard_candidate)
+    if h1_engine is not None:
+        h1_candidate = h1_engine.build_candidate(
+            symbol=symbol,
+            timestamp=row.name,
+            execution_row=row,
+            snapshot=h1_snapshot or {},
+            momentum_rank=momentum_rank,
+            top_symbols=top_symbols,
+        )
+        if h1_candidate is not None:
+            candidates.append(h1_candidate)
+    if h6_standard_engine is not None:
+        h6_standard_candidate = h6_standard_engine.build_candidate(
+            symbol=symbol,
+            timestamp=row.name,
+            execution_row=row,
+            snapshot=h6_snapshot or {},
+            momentum_rank=momentum_rank,
+            top_symbols=top_symbols,
+        )
+        if h6_standard_candidate is not None:
+            candidates.append(h6_standard_candidate)
     if htf_engine is not None:
         htf_candidate = htf_engine.build_candidate(
             symbol=symbol,
@@ -662,6 +692,8 @@ def run_portfolio_backtest(config=None):
     execution_frames = {}
     bias_frames = {}
     swing_frames = {}
+    h1_frames = {}
+    h6_frames = {}
     htf_frames = {}
     htf_macro_frames = {}
     htf_daily_frames = {}
@@ -672,13 +704,27 @@ def run_portfolio_backtest(config=None):
     for symbol in symbols:
         print(f"\nLoading full history for {symbol}...")
         df_1m, source_path = _load_full_history(symbol, interval, config)
-        df_15m, df_1h, df_12h, df_1d, df_1w = _build_strategy_timeframes(df_1m, config=config)
+        df_15m, df_1h, df_6h, df_12h, df_1d, df_1w = _build_strategy_timeframes(df_1m, config=config)
         execution_frames[symbol] = df_15m
         bias_frames[symbol] = _aligned_bias_snapshots(df_15m, df_1h, bias_detector)
         swing_frames[symbol] = build_swing_snapshots(
             df_15m.index,
             df_1d,
             df_1w,
+            config=config,
+        )
+        h1_frames[symbol] = build_h1_execution_snapshots(
+            df_15m.index,
+            df_1h,
+            df_6h,
+            df_12h,
+            config=config,
+        )
+        h6_frames[symbol] = build_h6_moonshot_snapshots(
+            df_15m.index,
+            df_6h,
+            df_12h,
+            df_1d,
             config=config,
         )
         htf_macro_frames[symbol] = df_12h
@@ -770,6 +816,8 @@ def run_portfolio_backtest(config=None):
         )
     edge_selector = EdgeSelector(config=config)
     moonshot_overlay = MoonshotOverlay(config=config)
+    h1_engine = H1ExecutionEngine(config=config)
+    h6_standard_engine = H6StandardEngine(config=config)
     htf_standard_engine = HTFStandardEngine(config=config)
     htf_engine = HTFMoonshotEngine(config=config)
     htf_rotation_engine = HTFRotationEngine(config=config)
@@ -846,6 +894,18 @@ def run_portfolio_backtest(config=None):
                     moonshot_overlay=moonshot_overlay,
                     portfolio=portfolio,
                     swing_snapshot=swing_snapshot,
+                    h1_snapshot=(
+                        h1_frames[symbol].loc[timestamp].to_dict()
+                        if timestamp in h1_frames[symbol].index
+                        else {}
+                    ),
+                    h1_engine=h1_engine,
+                    h6_snapshot=(
+                        h6_frames[symbol].loc[timestamp].to_dict()
+                        if timestamp in h6_frames[symbol].index
+                        else {}
+                    ),
+                    h6_standard_engine=h6_standard_engine,
                     htf_snapshot=latest_htf_context_by_symbol.get(symbol),
                     htf_standard_engine=htf_standard_engine,
                     htf_engine=htf_engine,

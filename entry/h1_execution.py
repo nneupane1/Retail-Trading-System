@@ -29,6 +29,28 @@ def _bool_value(value):
     return bool(value)
 
 
+def _symbol_filter_set(values):
+    return {str(value).upper() for value in (values or []) if str(value).strip()}
+
+
+def _symbol_is_allowed(symbol: str, raw: dict) -> bool:
+    symbol_key = str(symbol).upper()
+    blocked = _symbol_filter_set(raw.get("blocked_symbols"))
+    if symbol_key in blocked:
+        return False
+    allowed = _symbol_filter_set(raw.get("allowed_symbols"))
+    if allowed and symbol_key not in allowed:
+        return False
+    return True
+
+
+def _side_is_allowed(side: str, raw: dict) -> bool:
+    allowed = {str(value).lower() for value in (raw.get("allowed_sides") or []) if str(value).strip()}
+    if not allowed:
+        return True
+    return str(side).lower() in allowed
+
+
 def _empty_h1_frame(execution_index):
     frame = pd.DataFrame(index=pd.Index(execution_index))
     frame["h1_new_candle"] = False
@@ -210,6 +232,10 @@ def build_h1_execution_snapshots(
             "signal_event_short": signal_event_short.astype(bool),
             "signal_family_long": np.where(structure_long, "h1_structure_continuation", ""),
             "signal_family_short": np.where(structure_short, "h1_structure_continuation", ""),
+            "h1_pass_structure_long": structure_long.astype(bool),
+            "h1_pass_structure_short": structure_short.astype(bool),
+            "h1_pass_shape_long": pass_shape_long.astype(bool),
+            "h1_pass_shape_short": pass_shape_short.astype(bool),
             "h1_score_long": raw_score_long.astype(float),
             "h1_score_short": raw_score_short.astype(float),
             "h1_stop_long": stop_long.astype(float),
@@ -261,6 +287,8 @@ class H1ExecutionEngine:
         del top_symbols
         if not self.enabled or not snapshot or not _bool_value(snapshot.get("h1_new_candle")):
             return None
+        if not _symbol_is_allowed(symbol, self.raw):
+            return None
 
         side = None
         if _bool_value(snapshot.get("signal_event_long")):
@@ -268,6 +296,8 @@ class H1ExecutionEngine:
         elif _bool_value(snapshot.get("signal_event_short")):
             side = "short"
         else:
+            return None
+        if not _side_is_allowed(side, self.raw):
             return None
 
         score_value = _safe_float(snapshot.get(f"h1_score_{side}"), default=0.0)
