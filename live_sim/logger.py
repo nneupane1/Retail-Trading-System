@@ -225,6 +225,69 @@ class LivePortfolioStateLogger:
             for row in rows:
                 writer.writerow({field: row.get(field) for field in fieldnames})
 
+    def write_selection_reason_summary(self, rows):
+        target = self.output_dir / "selection_reason_summary.csv"
+        fieldnames = [
+            "selection_reason",
+            "count",
+            "share_of_decisions",
+            "is_cap_pressure",
+        ]
+        with target.open("w", newline="", encoding="utf-8") as file_handle:
+            writer = csv.DictWriter(file_handle, fieldnames=fieldnames)
+            writer.writeheader()
+            for row in rows:
+                writer.writerow({field: row.get(field) for field in fieldnames})
+
+    def write_recent_selection_reason_summary(self, rows):
+        target = self.output_dir / "recent_selection_reason_summary.csv"
+        fieldnames = [
+            "selection_reason",
+            "count",
+            "share_of_decisions",
+            "is_cap_pressure",
+        ]
+        with target.open("w", newline="", encoding="utf-8") as file_handle:
+            writer = csv.DictWriter(file_handle, fieldnames=fieldnames)
+            writer.writeheader()
+            for row in rows:
+                writer.writerow({field: row.get(field) for field in fieldnames})
+
+    def write_selection_reason_by_strategy_summary(self, rows):
+        target = self.output_dir / "selection_reason_by_strategy_summary.csv"
+        fieldnames = [
+            "strategy_type",
+            "selection_reason",
+            "count",
+            "share_of_strategy_decisions",
+            "is_cap_pressure",
+        ]
+        with target.open("w", newline="", encoding="utf-8") as file_handle:
+            writer = csv.DictWriter(file_handle, fieldnames=fieldnames)
+            writer.writeheader()
+            for row in rows:
+                writer.writerow({field: row.get(field) for field in fieldnames})
+
+    def write_runtime_policy_summary(self, rows):
+        target = self.output_dir / "runtime_policy_summary.csv"
+        fieldnames = [
+            "strategy_type",
+            "enabled",
+            "label",
+            "fallback_to_short_only",
+            "count",
+            "avg_R",
+            "profit_factor",
+            "min_trades",
+            "min_avg_R",
+            "min_profit_factor",
+        ]
+        with target.open("w", newline="", encoding="utf-8") as file_handle:
+            writer = csv.DictWriter(file_handle, fieldnames=fieldnames)
+            writer.writeheader()
+            for row in rows:
+                writer.writerow({field: row.get(field) for field in fieldnames})
+
     def write_recent_strategy_bucket_summary(self, rows):
         target = self.output_dir / "recent_strategy_bucket_summary.csv"
         fieldnames = [

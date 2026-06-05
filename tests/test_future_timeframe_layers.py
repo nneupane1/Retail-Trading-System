@@ -141,6 +141,270 @@ class FutureTimeframeLayerTests(unittest.TestCase):
         self.assertEqual("h1_execution", candidate["strategy_type"])
         self.assertTrue(candidate["deferred_layer"])
 
+    def test_h1_engine_uses_side_specific_threshold_and_risk_controls(self):
+        config = DummyConfig()
+        config.data["strategy"]["h1_execution"]["long_selection_threshold_offset"] = 0.01
+        config.data["strategy"]["h1_execution"]["short_selection_threshold_offset"] = -0.04
+        config.data["strategy"]["h1_execution"]["long_risk_multiplier"] = 0.85
+        config.data["strategy"]["h1_execution"]["short_risk_multiplier"] = 1.10
+        engine = H1ExecutionEngine(config=config)
+        execution_row = pd.Series({"close": 105.5}, name=pd.Timestamp("2026-01-01 03:00:00"))
+
+        long_candidate = engine.build_candidate(
+            symbol="BTCUSDT",
+            timestamp=execution_row.name,
+            execution_row=execution_row,
+            snapshot={
+                "h1_new_candle": True,
+                "signal_event_long": True,
+                "signal_event_short": False,
+                "h1_score_long": 0.84,
+                "h1_stop_long": 102.0,
+                "h1_body_strength": 1.8,
+                "h1_range_expansion": 1.2,
+                "h1_context_6h": "bullish",
+                "signal_family_long": "h1_structure_continuation",
+            },
+            momentum_rank=0.8,
+            top_symbols=[],
+        )
+        short_candidate = engine.build_candidate(
+            symbol="BTCUSDT",
+            timestamp=execution_row.name,
+            execution_row=pd.Series({"close": 101.0}, name=execution_row.name),
+            snapshot={
+                "h1_new_candle": True,
+                "signal_event_long": False,
+                "signal_event_short": True,
+                "h1_score_short": 0.84,
+                "h1_stop_short": 103.0,
+                "h1_body_strength": 1.8,
+                "h1_range_expansion": 1.2,
+                "h1_context_6h": "bearish",
+                "signal_family_short": "h1_structure_continuation",
+            },
+            momentum_rank=0.8,
+            top_symbols=[],
+        )
+
+        self.assertEqual(0.01, long_candidate["selection_threshold_offset"])
+        self.assertAlmostEqual(0.002 * 0.85, long_candidate["risk_fraction_override"])
+        self.assertEqual(-0.04, short_candidate["selection_threshold_offset"])
+        self.assertAlmostEqual(0.002 * 1.10, short_candidate["risk_fraction_override"])
+
+    def test_h1_engine_applies_context_aware_side_policy(self):
+        config = DummyConfig()
+        config.data["strategy"]["h1_execution"]["context_side_policy"] = {
+            "bearish": {
+                "allowed_sides": ["short"],
+                "short_selection_threshold_offset": -0.05,
+                "short_risk_multiplier": 1.15,
+            },
+            "bullish": {
+                "allowed_sides": ["long", "short"],
+                "long_selection_threshold_offset": -0.03,
+                "short_selection_threshold_offset": 0.02,
+                "long_risk_multiplier": 1.05,
+                "short_risk_multiplier": 0.90,
+            },
+        }
+        engine = H1ExecutionEngine(config=config)
+        execution_row = pd.Series({"close": 105.5}, name=pd.Timestamp("2026-01-01 03:00:00"))
+
+        bearish_long = engine.build_candidate(
+            symbol="BTCUSDT",
+            timestamp=execution_row.name,
+            execution_row=execution_row,
+            snapshot={
+                "h1_new_candle": True,
+                "signal_event_long": True,
+                "signal_event_short": False,
+                "h1_score_long": 0.84,
+                "h1_stop_long": 102.0,
+                "h1_body_strength": 1.8,
+                "h1_range_expansion": 1.2,
+                "h1_context_12h": "bearish",
+                "signal_family_long": "h1_structure_continuation",
+            },
+            momentum_rank=0.8,
+            top_symbols=[],
+        )
+        bearish_short = engine.build_candidate(
+            symbol="BTCUSDT",
+            timestamp=execution_row.name,
+            execution_row=pd.Series({"close": 101.0}, name=execution_row.name),
+            snapshot={
+                "h1_new_candle": True,
+                "signal_event_long": False,
+                "signal_event_short": True,
+                "h1_score_short": 0.84,
+                "h1_stop_short": 103.0,
+                "h1_body_strength": 1.8,
+                "h1_range_expansion": 1.2,
+                "h1_context_12h": "bearish",
+                "signal_family_short": "h1_structure_continuation",
+            },
+            momentum_rank=0.8,
+            top_symbols=[],
+        )
+        bullish_long = engine.build_candidate(
+            symbol="BTCUSDT",
+            timestamp=execution_row.name,
+            execution_row=execution_row,
+            snapshot={
+                "h1_new_candle": True,
+                "signal_event_long": True,
+                "signal_event_short": False,
+                "h1_score_long": 0.84,
+                "h1_stop_long": 102.0,
+                "h1_body_strength": 1.8,
+                "h1_range_expansion": 1.2,
+                "h1_context_12h": "bullish",
+                "signal_family_long": "h1_structure_continuation",
+            },
+            momentum_rank=0.8,
+            top_symbols=[],
+        )
+
+        self.assertIsNone(bearish_long)
+        self.assertIsNotNone(bearish_short)
+        self.assertEqual(-0.05, bearish_short["selection_threshold_offset"])
+        self.assertAlmostEqual(0.002 * 1.15, bearish_short["risk_fraction_override"])
+        self.assertIsNotNone(bullish_long)
+        self.assertEqual(-0.03, bullish_long["selection_threshold_offset"])
+        self.assertAlmostEqual(0.002 * 1.05, bullish_long["risk_fraction_override"])
+
+    def test_h1_engine_can_allow_elite_long_exception_under_short_only_policy(self):
+        config = DummyConfig()
+        config.data["strategy"]["h1_execution"]["allowed_sides"] = ["short"]
+        config.data["strategy"]["h1_execution"]["elite_long_exception"] = {
+            "enabled": True,
+            "min_score": 0.90,
+            "min_range_expansion": 1.15,
+            "min_body_strength": 1.8,
+            "min_close_position": 0.82,
+            "require_6h_context": True,
+            "require_12h_context": True,
+            "require_bullish_6h_label": True,
+            "require_bullish_12h_label": True,
+            "selection_threshold_offset": -0.01,
+            "risk_multiplier": 0.80,
+        }
+        engine = H1ExecutionEngine(config=config)
+        execution_row = pd.Series({"close": 105.5}, name=pd.Timestamp("2026-01-01 03:00:00"))
+
+        elite_candidate = engine.build_candidate(
+            symbol="BTCUSDT",
+            timestamp=execution_row.name,
+            execution_row=execution_row,
+            snapshot={
+                "h1_new_candle": True,
+                "signal_event_long": True,
+                "signal_event_short": False,
+                "h1_score_long": 0.93,
+                "h1_stop_long": 102.0,
+                "h1_body_strength": 1.9,
+                "h1_close_position": 0.88,
+                "h1_range_expansion": 1.2,
+                "h1_pass_6h_context_long": True,
+                "h1_pass_12h_context_long": True,
+                "h1_context_6h": "bullish",
+                "h1_context_12h": "bullish",
+                "signal_family_long": "h1_structure_continuation",
+            },
+            momentum_rank=0.9,
+            top_symbols=[],
+        )
+        weak_candidate = engine.build_candidate(
+            symbol="BTCUSDT",
+            timestamp=execution_row.name,
+            execution_row=execution_row,
+            snapshot={
+                "h1_new_candle": True,
+                "signal_event_long": True,
+                "signal_event_short": False,
+                "h1_score_long": 0.86,
+                "h1_stop_long": 102.0,
+                "h1_body_strength": 1.6,
+                "h1_close_position": 0.78,
+                "h1_range_expansion": 1.05,
+                "h1_pass_6h_context_long": True,
+                "h1_pass_12h_context_long": True,
+                "h1_context_6h": "bullish",
+                "h1_context_12h": "bullish",
+                "signal_family_long": "h1_structure_continuation",
+            },
+            momentum_rank=0.9,
+            top_symbols=[],
+        )
+
+        self.assertIsNotNone(elite_candidate)
+        self.assertTrue(elite_candidate["elite_long_exception_applied"])
+        self.assertEqual(-0.01, elite_candidate["selection_threshold_offset"])
+        self.assertAlmostEqual(0.002 * 0.80, elite_candidate["risk_fraction_override"])
+        self.assertIsNone(weak_candidate)
+
+    def test_h1_engine_can_fallback_from_bearish_boost_to_short_only_policy(self):
+        config = DummyConfig()
+        config.data["strategy"]["h1_execution"]["allowed_sides"] = ["short"]
+        config.data["strategy"]["h1_execution"]["short_selection_threshold_offset"] = -0.02
+        config.data["strategy"]["h1_execution"]["short_risk_multiplier"] = 1.0
+        config.data["strategy"]["h1_execution"]["context_side_policy"] = {
+            "bearish": {
+                "allowed_sides": ["short"],
+                "short_selection_threshold_offset": -0.05,
+                "short_risk_multiplier": 1.15,
+            }
+        }
+        engine = H1ExecutionEngine(config=config)
+        execution_row = pd.Series({"close": 101.0}, name=pd.Timestamp("2026-01-01 03:00:00"))
+
+        boosted = engine.build_candidate(
+            symbol="BTCUSDT",
+            timestamp=execution_row.name,
+            execution_row=execution_row,
+            snapshot={
+                "h1_new_candle": True,
+                "signal_event_long": False,
+                "signal_event_short": True,
+                "h1_score_short": 0.84,
+                "h1_stop_short": 103.0,
+                "h1_body_strength": 1.8,
+                "h1_range_expansion": 1.2,
+                "h1_context_12h": "bearish",
+                "signal_family_short": "h1_structure_continuation",
+            },
+            momentum_rank=0.8,
+            top_symbols=[],
+            runtime_policy_state={"fallback_to_short_only": False, "label": "boost_active"},
+        )
+        fallback = engine.build_candidate(
+            symbol="BTCUSDT",
+            timestamp=execution_row.name,
+            execution_row=execution_row,
+            snapshot={
+                "h1_new_candle": True,
+                "signal_event_long": False,
+                "signal_event_short": True,
+                "h1_score_short": 0.84,
+                "h1_stop_short": 103.0,
+                "h1_body_strength": 1.8,
+                "h1_range_expansion": 1.2,
+                "h1_context_12h": "bearish",
+                "signal_family_short": "h1_structure_continuation",
+            },
+            momentum_rank=0.8,
+            top_symbols=[],
+            runtime_policy_state={"fallback_to_short_only": True, "label": "fallback_short_only"},
+        )
+
+        self.assertEqual(-0.05, boosted["selection_threshold_offset"])
+        self.assertAlmostEqual(0.002 * 1.15, boosted["risk_fraction_override"])
+        self.assertFalse(boosted["context_policy_fallback_active"])
+        self.assertEqual(-0.02, fallback["selection_threshold_offset"])
+        self.assertAlmostEqual(0.002 * 1.0, fallback["risk_fraction_override"])
+        self.assertTrue(fallback["context_policy_fallback_active"])
+
     def test_h6_scaffold_builds_event_on_new_6h_candle(self):
         config = DummyConfig()
         index_6h = pd.to_datetime(

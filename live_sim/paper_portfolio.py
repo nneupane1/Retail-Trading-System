@@ -302,6 +302,28 @@ class LivePaperPortfolio:
                     ),
                 }
             )
+        cross_sleeve_coordination = dict(
+            allocator_v2.get("cross_sleeve_coordination", {}) or {}
+        )
+        self.allocator_v2_cross_sleeve_enabled = bool(
+            cross_sleeve_coordination.get("enabled", False)
+        )
+        self.allocator_v2_cross_sleeve_rules = {}
+        for rule_name, values in dict(
+            cross_sleeve_coordination.get("rules", {}) or {}
+        ).items():
+            entry = dict(values or {})
+            self.allocator_v2_cross_sleeve_rules[str(rule_name)] = {
+                "priority_multiplier": float(
+                    entry.get("priority_multiplier", 1.0) or 1.0
+                ),
+                "base_risk_multiplier": float(
+                    entry.get("base_risk_multiplier", 1.0) or 1.0
+                ),
+                "sleeve_cap_multiplier": float(
+                    entry.get("sleeve_cap_multiplier", 1.0) or 1.0
+                ),
+            }
         self.allocator_v2_sleeves = {}
         for sleeve_name, values in dict(allocator_v2.get("sleeves", {}) or {}).items():
             sleeve = dict(values or {})
@@ -354,15 +376,173 @@ class LivePaperPortfolio:
             lambda: {"sum_pos": 0.0, "sum_neg": 0.0}
         )
         self.performance_history = []
+        self.selection_monitor_recent_limit = max(
+            50,
+            int(raw.get("selection_monitor_recent_limit", 500) or 500),
+        )
+        self.selection_reason_counts = defaultdict(int)
+        self.selection_reason_counts_by_strategy = defaultdict(
+            lambda: defaultdict(int)
+        )
+        self.selection_reason_history = []
         self.recent_score_stats = {}
         self.recent_score_trade_stats = {}
         self.recent_strategy_stats = {}
         self.recent_strategy_trade_stats = {}
         self.recent_strategy_bucket_stats = {}
         self.recent_strategy_bucket_trade_stats = {}
+        self.runtime_policy_guards = {}
+        if callable(getter):
+            strategy_types = set(self.strategy_sleeves.keys())
+            strategy_types.update(
+                str(name)
+                for name in dict(getter("strategy", default={}) or {}).keys()
+            )
+            for strategy_type in sorted(strategy_types):
+                guard = dict(
+                    getter(
+                        "strategy",
+                        strategy_type,
+                        "runtime_policy_guard",
+                        default={},
+                    )
+                    or {}
+                )
+                if guard:
+                    self.runtime_policy_guards[str(strategy_type)] = guard
         self.current_threshold_floor = self.base_threshold
         self.current_threshold_source = "base"
         self.last_top_symbols = []
+
+    @staticmethod
+    def _selection_reason_cap_pressure_reasons():
+        return {
+            "allocator_zero_risk",
+            "risk_cap",
+            "shared_risk_cap",
+            "strategy_sleeve_cap",
+            "strategy_risk_cap",
+        }
+
+    def _trim_selection_reason_history(self):
+        if self.selection_monitor_recent_limit <= 0:
+            return
+        if len(self.selection_reason_history) <= self.selection_monitor_recent_limit:
+            return
+        self.selection_reason_history = self.selection_reason_history[
+            -self.selection_monitor_recent_limit :
+        ]
+
+    def _record_selection_decisions(self, states, final_reason_by_id, timestamp):
+        timestamp_value = self._normalize_time_value(timestamp)
+        for state in states:
+            reason = str(final_reason_by_id.get(state["id"]) or "unknown")
+            strategy_type = str(state.get("strategy_type") or "core")
+            self.selection_reason_counts[reason] += 1
+            self.selection_reason_counts_by_strategy[strategy_type][reason] += 1
+            self.selection_reason_history.append(
+                {
+                    "timestamp": timestamp_value,
+                    "strategy_type": strategy_type,
+                    "selection_reason": reason,
+                }
+            )
+        self._trim_selection_reason_history()
+
+    def _selection_reason_summary_rows(self, counts):
+        total = sum(int(value or 0) for value in counts.values())
+        cap_reasons = self._selection_reason_cap_pressure_reasons()
+        rows = []
+        for reason, count in counts.items():
+            rows.append(
+                {
+                    "selection_reason": str(reason),
+                    "count": int(count or 0),
+                    "share_of_decisions": (
+                        float(count or 0) / float(total) if total > 0 else 0.0
+                    ),
+                    "is_cap_pressure": str(reason) in cap_reasons,
+                }
+            )
+        rows.sort(
+            key=lambda item: (-int(item["count"]), str(item["selection_reason"])),
+        )
+        return rows
+
+    def _selection_reason_counts_for_recent_window(self):
+        counts = defaultdict(int)
+        counts_by_strategy = defaultdict(lambda: defaultdict(int))
+        for record in self.selection_reason_history:
+            reason = str(record.get("selection_reason") or "unknown")
+            strategy_type = str(record.get("strategy_type") or "core")
+            counts[reason] += 1
+            counts_by_strategy[strategy_type][reason] += 1
+        return counts, counts_by_strategy
+
+    def _selection_reason_by_strategy_rows(self, counts_by_strategy):
+        cap_reasons = self._selection_reason_cap_pressure_reasons()
+        rows = []
+        for strategy_type, reason_counts in counts_by_strategy.items():
+            strategy_total = sum(int(value or 0) for value in reason_counts.values())
+            for reason, count in reason_counts.items():
+                rows.append(
+                    {
+                        "strategy_type": str(strategy_type),
+                        "selection_reason": str(reason),
+                        "count": int(count or 0),
+                        "share_of_strategy_decisions": (
+                            float(count or 0) / float(strategy_total)
+                            if strategy_total > 0
+                            else 0.0
+                        ),
+                        "is_cap_pressure": str(reason) in cap_reasons,
+                    }
+                )
+        rows.sort(
+            key=lambda item: (
+                str(item["strategy_type"]),
+                -int(item["count"]),
+                str(item["selection_reason"]),
+            )
+        )
+        return rows
+
+    def _cap_pressure_summary_from_counts(self, counts):
+        total = sum(int(value or 0) for value in counts.values())
+        cap_reasons = self._selection_reason_cap_pressure_reasons()
+        cap_counts = {
+            reason: int(counts.get(reason, 0) or 0)
+            for reason in sorted(cap_reasons)
+        }
+        opened_count = int(counts.get("opened", 0) or 0)
+        cap_blocked_count = sum(cap_counts.values())
+        rejected_count = max(0, total - opened_count)
+        return {
+            "total_decisions": total,
+            "opened_count": opened_count,
+            "rejected_count": rejected_count,
+            "cap_blocked_count": cap_blocked_count,
+            "cap_block_rate": (
+                float(cap_blocked_count) / float(total) if total > 0 else 0.0
+            ),
+            "opened_share": (
+                float(opened_count) / float(total) if total > 0 else 0.0
+            ),
+            "shared_risk_cap_count": cap_counts.get("shared_risk_cap", 0),
+            "strategy_sleeve_cap_count": cap_counts.get("strategy_sleeve_cap", 0),
+            "risk_cap_count": cap_counts.get("risk_cap", 0),
+            "strategy_risk_cap_count": cap_counts.get("strategy_risk_cap", 0),
+            "allocator_zero_risk_count": cap_counts.get("allocator_zero_risk", 0),
+        }
+
+    def _runtime_policy_states_snapshot(self):
+        states = {}
+        for strategy_type, guard in sorted(self.runtime_policy_guards.items()):
+            states[str(strategy_type)] = self.strategy_runtime_policy_state(
+                strategy_type,
+                guard,
+            )
+        return states
 
     def _record_completed_day(self):
         if self.current_trading_day is None:
@@ -824,11 +1004,24 @@ class LivePaperPortfolio:
         wins = sum(1 for record in records if float(record.get("pnl", 0.0) or 0.0) > 0.0)
         total_r = sum(float(record.get("pnl_R_initial", 0.0) or 0.0) for record in records)
         total_pnl = sum(float(record.get("pnl", 0.0) or 0.0) for record in records)
+        gross_profit = sum(
+            float(record.get("pnl", 0.0) or 0.0)
+            for record in records
+            if float(record.get("pnl", 0.0) or 0.0) > 0.0
+        )
+        gross_loss = -sum(
+            float(record.get("pnl", 0.0) or 0.0)
+            for record in records
+            if float(record.get("pnl", 0.0) or 0.0) < 0.0
+        )
         return {
             "count": count,
             "wins": wins,
             "total_R": total_r,
             "total_pnl": total_pnl,
+            "gross_profit": gross_profit,
+            "gross_loss": gross_loss,
+            "profit_factor": (gross_profit / gross_loss) if gross_loss > 0.0 else (float("inf") if gross_profit > 0.0 else 0.0),
             "avg_R": (total_r / count) if count else 0.0,
             "win_rate": (wins / count) if count else 0.0,
         }
@@ -1079,6 +1272,55 @@ class LivePaperPortfolio:
         if max_trades > 0 and len(records) > int(max_trades):
             records = records[-int(max_trades):]
         return self._stats_from_records(records)
+
+    def strategy_runtime_policy_state(self, strategy_type, guard_config=None):
+        strategy_type = str(strategy_type or "core")
+        guard = dict(guard_config or {})
+        if not bool(guard.get("enabled", False)):
+            return {
+                "enabled": False,
+                "label": "guard_disabled",
+                "fallback_to_short_only": False,
+                "count": 0,
+                "avg_R": 0.0,
+                "profit_factor": 0.0,
+            }
+        stats = self._strategy_stats_for_window(
+            strategy_type,
+            lookback_days=int(guard.get("lookback_days", 0) or 0),
+            max_trades=int(guard.get("max_trades", 0) or 0),
+        ) or {}
+        count = int(stats.get("count", 0) or 0)
+        min_trades = int(guard.get("min_trades", 0) or 0)
+        avg_r = float(stats.get("avg_R", 0.0) or 0.0)
+        profit_factor = float(stats.get("profit_factor", 0.0) or 0.0)
+        min_avg_r = float(guard.get("min_avg_R", 0.0) or 0.0)
+        min_profit_factor = float(guard.get("min_profit_factor", 0.0) or 0.0)
+        has_sufficient_history = count >= min_trades
+        fallback_to_short_only = bool(
+            has_sufficient_history
+            and (
+                avg_r < min_avg_r
+                or profit_factor < min_profit_factor
+            )
+        )
+        if not has_sufficient_history:
+            label = "insufficient_history"
+        elif fallback_to_short_only:
+            label = "fallback_short_only"
+        else:
+            label = "boost_active"
+        return {
+            "enabled": True,
+            "label": label,
+            "fallback_to_short_only": fallback_to_short_only,
+            "count": count,
+            "avg_R": avg_r,
+            "profit_factor": profit_factor,
+            "min_trades": min_trades,
+            "min_avg_R": min_avg_r,
+            "min_profit_factor": min_profit_factor,
+        }
 
     def _strategy_bucket_stats_for_window(self, strategy_type, score_bucket, *, lookback_days, max_trades):
         strategy_type = str(strategy_type or "core")
@@ -1372,6 +1614,54 @@ class LivePaperPortfolio:
             "leader_dominance_boost": candidate.get("leader_dominance_boost"),
             "allocation_brake_active": candidate.get("allocation_brake_active"),
             "allocation_brake_severity": candidate.get("allocation_brake_severity"),
+            "coordination_active": candidate.get("coordination_active"),
+            "coordination_rule": candidate.get("coordination_rule"),
+            "coordination_context_1d": candidate.get("coordination_context_1d"),
+            "coordination_priority_multiplier": candidate.get(
+                "coordination_priority_multiplier"
+            ),
+            "coordination_base_risk_multiplier": candidate.get(
+                "coordination_base_risk_multiplier"
+            ),
+            "coordination_sleeve_cap_multiplier": candidate.get(
+                "coordination_sleeve_cap_multiplier"
+            ),
+        }
+
+    def _allocator_cross_sleeve_adjustment(self, candidate, strategy_type):
+        context_1d = str(candidate.get("htf_context_1d", "neutral") or "neutral").lower()
+        side = str(candidate.get("side", "long") or "long").lower()
+        identity = {
+            "active": False,
+            "rule": None,
+            "context_1d": context_1d,
+            "priority_multiplier": 1.0,
+            "base_risk_multiplier": 1.0,
+            "sleeve_cap_multiplier": 1.0,
+        }
+        if not self.allocator_v2_cross_sleeve_enabled:
+            return identity
+
+        rule_name = None
+        if strategy_type == "h1_execution" and side == "short" and context_1d == "bearish":
+            rule_name = "h1_bearish_short"
+        elif strategy_type == "core" and side == "long" and context_1d == "bearish":
+            rule_name = "core_bearish_countertrend_long"
+        if not rule_name:
+            return identity
+
+        rule = dict(self.allocator_v2_cross_sleeve_rules.get(rule_name, {}) or {})
+        if not rule:
+            return identity
+        return {
+            "active": True,
+            "rule": rule_name,
+            "context_1d": context_1d,
+            "priority_multiplier": float(rule.get("priority_multiplier", 1.0) or 1.0),
+            "base_risk_multiplier": float(rule.get("base_risk_multiplier", 1.0) or 1.0),
+            "sleeve_cap_multiplier": float(
+                rule.get("sleeve_cap_multiplier", 1.0) or 1.0
+            ),
         }
 
     def _build_candidate_selection_state(self, candidate, timestamp, candidate_id):
@@ -1500,7 +1790,24 @@ class LivePaperPortfolio:
                     * float(strategy_health_mult)
                 ),
             )
+        coordination = self._allocator_cross_sleeve_adjustment(candidate, strategy_type)
+        base_risk_fraction *= float(coordination["base_risk_multiplier"])
+        if strategy_sleeve_cap > 0.0:
+            strategy_sleeve_cap *= float(coordination["sleeve_cap_multiplier"])
         convexity_enabled = self._convexity_enabled_for_candidate(candidate)
+        candidate["strategy_sleeve_cap"] = strategy_sleeve_cap
+        candidate["coordination_active"] = bool(coordination["active"])
+        candidate["coordination_rule"] = coordination["rule"]
+        candidate["coordination_context_1d"] = coordination["context_1d"]
+        candidate["coordination_priority_multiplier"] = float(
+            coordination["priority_multiplier"]
+        )
+        candidate["coordination_base_risk_multiplier"] = float(
+            coordination["base_risk_multiplier"]
+        )
+        candidate["coordination_sleeve_cap_multiplier"] = float(
+            coordination["sleeve_cap_multiplier"]
+        )
 
         return {
             "id": candidate_id,
@@ -1516,6 +1823,9 @@ class LivePaperPortfolio:
             "strategy_step_cap": strategy_step_cap,
             "ignore_global_step_cap": ignore_global_step_cap,
             "base_risk_fraction": float(base_risk_fraction or 0.0),
+            "coordination_priority_multiplier": float(
+                coordination["priority_multiplier"]
+            ),
             "convexity_enabled": convexity_enabled,
             "probe_risk_fraction": (
                 float(base_risk_fraction or 0.0) * self.convexity_probe_fraction
@@ -1623,9 +1933,13 @@ class LivePaperPortfolio:
             sleeve_name = str(state["strategy_type"] or "core")
             sleeve_cfg = self._allocator_v2_sleeve_config(sleeve_name)
             agreement_bonus = float(agreement_bonuses.get(state["id"], 0.0) or 0.0)
+            coordination_priority_multiplier = float(
+                state.get("coordination_priority_multiplier", 1.0) or 1.0
+            )
             allocation_priority = (
                 float(state["selection_score"])
                 * float(sleeve_cfg.get("priority_multiplier", 1.0) or 1.0)
+                * coordination_priority_multiplier
                 + agreement_bonus
             )
             state["allocation_sleeve"] = sleeve_name
@@ -1810,6 +2124,24 @@ class LivePaperPortfolio:
         if self.state_logger is None:
             return
 
+        recent_selection_reason_counts, recent_selection_reason_counts_by_strategy = (
+            self._selection_reason_counts_for_recent_window()
+        )
+        selection_reason_rows = self._selection_reason_summary_rows(
+            self.selection_reason_counts
+        )
+        recent_selection_reason_rows = self._selection_reason_summary_rows(
+            recent_selection_reason_counts
+        )
+        selection_reason_by_strategy_rows = self._selection_reason_by_strategy_rows(
+            self.selection_reason_counts_by_strategy
+        )
+        runtime_policy_states = self._runtime_policy_states_snapshot()
+        runtime_policy_rows = [
+            {"strategy_type": str(strategy_type), **dict(state)}
+            for strategy_type, state in runtime_policy_states.items()
+        ]
+
         summary_rows = []
         for bucket, stats in self.score_stats.items():
             count = int(stats["count"])
@@ -1916,6 +2248,36 @@ class LivePaperPortfolio:
         write_daily_summary = getattr(self.state_logger, "write_daily_summary", None)
         if callable(write_daily_summary):
             write_daily_summary(list(self.daily_history))
+        write_selection_reason_summary = getattr(
+            self.state_logger,
+            "write_selection_reason_summary",
+            None,
+        )
+        if callable(write_selection_reason_summary):
+            write_selection_reason_summary(selection_reason_rows)
+        write_recent_selection_reason_summary = getattr(
+            self.state_logger,
+            "write_recent_selection_reason_summary",
+            None,
+        )
+        if callable(write_recent_selection_reason_summary):
+            write_recent_selection_reason_summary(recent_selection_reason_rows)
+        write_selection_reason_by_strategy_summary = getattr(
+            self.state_logger,
+            "write_selection_reason_by_strategy_summary",
+            None,
+        )
+        if callable(write_selection_reason_by_strategy_summary):
+            write_selection_reason_by_strategy_summary(
+                selection_reason_by_strategy_rows
+            )
+        write_runtime_policy_summary = getattr(
+            self.state_logger,
+            "write_runtime_policy_summary",
+            None,
+        )
+        if callable(write_runtime_policy_summary):
+            write_runtime_policy_summary(runtime_policy_rows)
         self.state_logger.write_json(
             "portfolio_status.json",
             {
@@ -1940,6 +2302,37 @@ class LivePaperPortfolio:
                 "recent_strategy_trade_stats": dict(self.recent_strategy_trade_stats),
                 "recent_strategy_bucket_stats": dict(self.recent_strategy_bucket_stats),
                 "recent_strategy_bucket_trade_stats": dict(self.recent_strategy_bucket_trade_stats),
+                "selection_reason_counts": {
+                    str(reason): int(count or 0)
+                    for reason, count in self.selection_reason_counts.items()
+                },
+                "recent_selection_reason_counts": {
+                    str(reason): int(count or 0)
+                    for reason, count in recent_selection_reason_counts.items()
+                },
+                "selection_reason_counts_by_strategy": {
+                    str(strategy_type): {
+                        str(reason): int(count or 0)
+                        for reason, count in dict(reason_counts).items()
+                    }
+                    for strategy_type, reason_counts in self.selection_reason_counts_by_strategy.items()
+                },
+                "recent_selection_reason_counts_by_strategy": {
+                    str(strategy_type): {
+                        str(reason): int(count or 0)
+                        for reason, count in dict(reason_counts).items()
+                    }
+                    for strategy_type, reason_counts in recent_selection_reason_counts_by_strategy.items()
+                },
+                "cap_pressure_summary": {
+                    "cumulative": self._cap_pressure_summary_from_counts(
+                        self.selection_reason_counts
+                    ),
+                    "recent": self._cap_pressure_summary_from_counts(
+                        recent_selection_reason_counts
+                    ),
+                },
+                "runtime_policy_states": runtime_policy_states,
                 "top_symbols": list(self.last_top_symbols),
             },
         )
@@ -2030,6 +2423,28 @@ class LivePaperPortfolio:
             "recent_strategy_trade_stats": dict(self.recent_strategy_trade_stats),
             "recent_strategy_bucket_stats": dict(self.recent_strategy_bucket_stats),
             "recent_strategy_bucket_trade_stats": dict(self.recent_strategy_bucket_trade_stats),
+            "selection_reason_counts": {
+                str(reason): int(count or 0)
+                for reason, count in self.selection_reason_counts.items()
+            },
+            "selection_reason_counts_by_strategy": {
+                str(strategy_type): {
+                    str(reason): int(count or 0)
+                    for reason, count in dict(reason_counts).items()
+                }
+                for strategy_type, reason_counts in self.selection_reason_counts_by_strategy.items()
+            },
+            "selection_reason_history": [
+                {
+                    **dict(record),
+                    "timestamp": (
+                        None
+                        if record.get("timestamp") is None
+                        else record.get("timestamp").isoformat()
+                    ),
+                }
+                for record in self.selection_reason_history
+            ],
             "last_top_symbols": list(self.last_top_symbols),
             "open_positions": [
                 trade.snapshot()
@@ -2185,6 +2600,27 @@ class LivePaperPortfolio:
                 }
                 for key, values in recent_strategy_bucket_trade_stats.items()
             }
+        self.selection_reason_counts = defaultdict(int)
+        for reason, count in (snapshot.get("selection_reason_counts") or {}).items():
+            self.selection_reason_counts[str(reason)] = int(count or 0)
+        self.selection_reason_counts_by_strategy = defaultdict(
+            lambda: defaultdict(int)
+        )
+        for strategy_type, reason_counts in (
+            snapshot.get("selection_reason_counts_by_strategy") or {}
+        ).items():
+            nested = defaultdict(int)
+            for reason, count in dict(reason_counts or {}).items():
+                nested[str(reason)] = int(count or 0)
+            self.selection_reason_counts_by_strategy[str(strategy_type)] = nested
+        self.selection_reason_history = [
+            {
+                **dict(record),
+                "timestamp": self._normalize_time_value(record.get("timestamp")),
+            }
+            for record in (snapshot.get("selection_reason_history") or [])
+        ]
+        self._trim_selection_reason_history()
         self.last_top_symbols = list(snapshot.get("last_top_symbols") or [])
         self.open_positions = [
             Trade.from_snapshot(trade_snapshot, config=self.config)
@@ -2514,6 +2950,22 @@ class LivePaperPortfolio:
             trade.conditions["allocation_priority"] = candidate.get(
                 "allocation_priority"
             )
+            trade.conditions["coordination_active"] = bool(
+                candidate.get("coordination_active")
+            )
+            trade.conditions["coordination_rule"] = candidate.get("coordination_rule")
+            trade.conditions["coordination_context_1d"] = candidate.get(
+                "coordination_context_1d"
+            )
+            trade.conditions["coordination_priority_multiplier"] = candidate.get(
+                "coordination_priority_multiplier"
+            )
+            trade.conditions["coordination_base_risk_multiplier"] = candidate.get(
+                "coordination_base_risk_multiplier"
+            )
+            trade.conditions["coordination_sleeve_cap_multiplier"] = candidate.get(
+                "coordination_sleeve_cap_multiplier"
+            )
             if (
                 strategy_sleeve_cap <= 0.0
                 and self.total_reserved_sleeve_risk_fraction > 0.0
@@ -2552,6 +3004,7 @@ class LivePaperPortfolio:
                     reason = "allocator_not_selected"
                 else:
                     reason = "allocator_rank_filtered"
+            final_reason_by_id[state["id"]] = reason
             if self.signal_logger is not None:
                 self.signal_logger.log_signal(
                     self.build_signal_log_row(
@@ -2562,4 +3015,5 @@ class LivePaperPortfolio:
                     )
                 )
 
+        self._record_selection_decisions(states, final_reason_by_id, timestamp)
         self._write_state_artifacts()

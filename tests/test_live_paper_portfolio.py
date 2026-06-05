@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from datetime import datetime, timedelta
@@ -5,6 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from live_sim.logger import LivePortfolioStateLogger
 from entry.opportunity_ranking import OpportunityScorer
 from live_sim.paper_portfolio import LivePaperPortfolio
 
@@ -2011,6 +2013,274 @@ class LivePaperPortfolioTests(unittest.TestCase):
 
             self.assertAlmostEqual(multiplier, 0.75, places=7)
             self.assertEqual(source, "recent_window")
+
+    def test_strategy_runtime_policy_state_can_trigger_h1_fallback(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            portfolio = LivePaperPortfolio(config=DummyConfig(output_dir=temp_dir))
+            portfolio.performance_history = [
+                {
+                    "exit_time": datetime(2026, 1, 1, 9, 0, 0),
+                    "strategy_type": "h1_execution",
+                    "score_bucket": "0.9-1.0",
+                    "pnl_R_initial": -0.30,
+                    "pnl": -50.0,
+                },
+                {
+                    "exit_time": datetime(2026, 1, 2, 9, 0, 0),
+                    "strategy_type": "h1_execution",
+                    "score_bucket": "0.9-1.0",
+                    "pnl_R_initial": 0.10,
+                    "pnl": 20.0,
+                },
+                {
+                    "exit_time": datetime(2026, 1, 3, 9, 0, 0),
+                    "strategy_type": "h1_execution",
+                    "score_bucket": "0.9-1.0",
+                    "pnl_R_initial": -0.25,
+                    "pnl": -35.0,
+                },
+            ]
+
+            state = portfolio.strategy_runtime_policy_state(
+                "h1_execution",
+                {
+                    "enabled": True,
+                    "lookback_days": 120,
+                    "max_trades": 10,
+                    "min_trades": 3,
+                    "min_profit_factor": 1.05,
+                    "min_avg_R": 0.02,
+                },
+            )
+
+            self.assertTrue(state["fallback_to_short_only"])
+            self.assertEqual("fallback_short_only", state["label"])
+            self.assertEqual(3, state["count"])
+            self.assertLess(state["profit_factor"], 1.05)
+
+    def test_record_selection_decisions_tracks_cap_pressure_counts(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            portfolio = LivePaperPortfolio(config=DummyConfig(output_dir=temp_dir))
+
+            portfolio._record_selection_decisions(
+                [
+                    {"id": 1, "strategy_type": "core"},
+                    {"id": 2, "strategy_type": "h1_execution"},
+                    {"id": 3, "strategy_type": "h1_execution"},
+                ],
+                {
+                    1: "shared_risk_cap",
+                    2: "strategy_sleeve_cap",
+                    3: "opened",
+                },
+                pd.Timestamp("2026-01-03 12:00:00"),
+            )
+
+            self.assertEqual(1, portfolio.selection_reason_counts["shared_risk_cap"])
+            self.assertEqual(1, portfolio.selection_reason_counts["strategy_sleeve_cap"])
+            self.assertEqual(1, portfolio.selection_reason_counts["opened"])
+            self.assertEqual(
+                1,
+                portfolio.selection_reason_counts_by_strategy["h1_execution"][
+                    "strategy_sleeve_cap"
+                ],
+            )
+            self.assertEqual(3, len(portfolio.selection_reason_history))
+
+    def test_write_state_artifacts_includes_selection_and_runtime_policy_monitoring(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config = DummyConfig(output_dir=temp_dir)
+            config.data["strategy"]["h1_execution"] = {
+                "runtime_policy_guard": {
+                    "enabled": True,
+                    "lookback_days": 120,
+                    "max_trades": 10,
+                    "min_trades": 3,
+                    "min_profit_factor": 1.05,
+                    "min_avg_R": 0.02,
+                }
+            }
+            state_logger = LivePortfolioStateLogger(
+                output_dir=temp_dir,
+                config=config,
+            )
+            portfolio = LivePaperPortfolio(
+                config=config,
+                state_logger=state_logger,
+            )
+            portfolio.performance_history = [
+                {
+                    "exit_time": datetime(2026, 1, 1, 9, 0, 0),
+                    "strategy_type": "h1_execution",
+                    "score_bucket": "0.9-1.0",
+                    "pnl_R_initial": -0.30,
+                    "pnl": -50.0,
+                },
+                {
+                    "exit_time": datetime(2026, 1, 2, 9, 0, 0),
+                    "strategy_type": "h1_execution",
+                    "score_bucket": "0.9-1.0",
+                    "pnl_R_initial": 0.10,
+                    "pnl": 20.0,
+                },
+                {
+                    "exit_time": datetime(2026, 1, 3, 9, 0, 0),
+                    "strategy_type": "h1_execution",
+                    "score_bucket": "0.9-1.0",
+                    "pnl_R_initial": -0.25,
+                    "pnl": -35.0,
+                },
+            ]
+            portfolio._record_selection_decisions(
+                [
+                    {"id": 1, "strategy_type": "core"},
+                    {"id": 2, "strategy_type": "h1_execution"},
+                    {"id": 3, "strategy_type": "h1_execution"},
+                ],
+                {
+                    1: "opened",
+                    2: "shared_risk_cap",
+                    3: "strategy_sleeve_cap",
+                },
+                pd.Timestamp("2026-01-03 12:00:00"),
+            )
+
+            portfolio._write_state_artifacts()
+
+            status = json.loads(
+                Path(temp_dir, "portfolio_status.json").read_text(encoding="utf-8")
+            )
+            self.assertIn("selection_reason_counts", status)
+            self.assertIn("cap_pressure_summary", status)
+            self.assertIn("runtime_policy_states", status)
+            self.assertEqual(1, status["selection_reason_counts"]["shared_risk_cap"])
+            self.assertEqual(
+                1,
+                status["cap_pressure_summary"]["cumulative"]["strategy_sleeve_cap_count"],
+            )
+            self.assertEqual(
+                "fallback_short_only",
+                status["runtime_policy_states"]["h1_execution"]["label"],
+            )
+            self.assertTrue(Path(temp_dir, "selection_reason_summary.csv").exists())
+            self.assertTrue(Path(temp_dir, "runtime_policy_summary.csv").exists())
+
+    def test_allocator_cross_sleeve_coordination_boosts_bearish_h1_short(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config = DummyConfig(output_dir=temp_dir)
+            raw = config.data["live_sim"]["paper_portfolio"]
+            raw["strategy_allowed_sides"]["h1_execution"] = ["short"]
+            raw["strategy_sleeves"]["h1_execution"] = {
+                "enabled": True,
+                "reserved_risk_fraction": 0.0025,
+                "max_new_positions_per_step": 2,
+                "block_if_symbol_has_other_strategy_position": False,
+                "ignore_global_step_cap": False,
+            }
+            raw["allocator_v2"]["sleeves"]["h1_execution"] = {
+                "priority_multiplier": 0.94,
+                "rank_weights": [1.0, 0.70, 0.40],
+                "max_candidates": 3,
+                "max_risk_fraction_multiplier": 1.10,
+                "absolute_max_risk_fraction": 0.0025,
+            }
+            raw["allocator_v2"]["cross_sleeve_coordination"] = {
+                "enabled": True,
+                "rules": {
+                    "h1_bearish_short": {
+                        "priority_multiplier": 1.05,
+                        "base_risk_multiplier": 1.05,
+                        "sleeve_cap_multiplier": 1.05,
+                    }
+                },
+            }
+            portfolio = LivePaperPortfolio(config=config)
+            timestamp = pd.Timestamp("2026-01-01 12:00:00")
+            row = pd.Series({"close": 100.0, "low": 99.0, "high": 101.0}, name=timestamp)
+
+            state = portfolio._build_candidate_selection_state(
+                {
+                    "symbol": "BTCUSDT",
+                    "timestamp": timestamp,
+                    "side": "short",
+                    "row": row,
+                    "score": 0.92,
+                    "selection_score": 0.92,
+                    "score_bucket": "0.9-1.0",
+                    "risk_mult": 1.0,
+                    "strategy_type": "h1_execution",
+                    "risk_group": "h1_execution",
+                    "htf_context_1d": "bearish",
+                },
+                timestamp,
+                candidate_id=1,
+            )
+
+            self.assertEqual("h1_bearish_short", state["candidate"]["coordination_rule"])
+            self.assertTrue(state["candidate"]["coordination_active"])
+            self.assertGreater(state["coordination_priority_multiplier"], 1.0)
+            self.assertGreater(
+                state["candidate"]["coordination_base_risk_multiplier"],
+                1.0,
+            )
+
+    def test_allocator_cross_sleeve_coordination_brakes_bearish_core_long(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            baseline_config = DummyConfig(output_dir=temp_dir)
+            coordinated_config = DummyConfig(output_dir=temp_dir)
+            coordinated_config.data["live_sim"]["paper_portfolio"]["allocator_v2"][
+                "cross_sleeve_coordination"
+            ] = {
+                "enabled": True,
+                "rules": {
+                    "core_bearish_countertrend_long": {
+                        "priority_multiplier": 0.94,
+                        "base_risk_multiplier": 0.95,
+                        "sleeve_cap_multiplier": 1.0,
+                    }
+                },
+            }
+            baseline_portfolio = LivePaperPortfolio(config=baseline_config)
+            coordinated_portfolio = LivePaperPortfolio(config=coordinated_config)
+            timestamp = pd.Timestamp("2026-01-01 12:00:00")
+            row = pd.Series({"close": 100.0, "low": 99.0, "high": 101.0}, name=timestamp)
+            candidate = {
+                "symbol": "ETHUSDT",
+                "timestamp": timestamp,
+                "side": "long",
+                "row": row,
+                "score": 0.92,
+                "selection_score": 0.92,
+                "score_bucket": "0.9-1.0",
+                "risk_mult": 1.0,
+                "strategy_type": "core",
+                "risk_group": "core",
+                "htf_context_1d": "bearish",
+            }
+
+            baseline_state = baseline_portfolio._build_candidate_selection_state(
+                dict(candidate),
+                timestamp,
+                candidate_id=1,
+            )
+            coordinated_state = coordinated_portfolio._build_candidate_selection_state(
+                dict(candidate),
+                timestamp,
+                candidate_id=1,
+            )
+
+            self.assertEqual(
+                "core_bearish_countertrend_long",
+                coordinated_state["candidate"]["coordination_rule"],
+            )
+            self.assertLess(
+                coordinated_state["base_risk_fraction"],
+                baseline_state["base_risk_fraction"],
+            )
+            self.assertLess(
+                coordinated_state["coordination_priority_multiplier"],
+                1.0,
+            )
 
     def test_htf_candidate_threshold_uses_strategy_offset_and_bounds(self):
         with tempfile.TemporaryDirectory() as temp_dir:

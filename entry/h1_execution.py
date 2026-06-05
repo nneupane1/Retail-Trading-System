@@ -51,6 +51,13 @@ def _side_is_allowed(side: str, raw: dict) -> bool:
     return str(side).lower() in allowed
 
 
+def _normalize_context_label(value) -> str:
+    label = str(value or "neutral").strip().lower()
+    if label not in {"bullish", "bearish", "neutral"}:
+        return "neutral"
+    return label
+
+
 def _empty_h1_frame(execution_index):
     frame = pd.DataFrame(index=pd.Index(execution_index))
     frame["h1_new_candle"] = False
@@ -280,10 +287,125 @@ class H1ExecutionEngine:
         self.max_open_positions = int(self.raw.get("max_open_positions", 2))
         self.max_hold_1h_candles = int(self.raw.get("max_hold_1h_candles", 36))
         self.selection_threshold_offset = _safe_float(self.raw.get("selection_threshold_offset", -0.02), default=-0.02)
+        self.long_selection_threshold_offset = _safe_float(
+            self.raw.get("long_selection_threshold_offset", self.selection_threshold_offset),
+            default=self.selection_threshold_offset,
+        )
+        self.short_selection_threshold_offset = _safe_float(
+            self.raw.get("short_selection_threshold_offset", self.selection_threshold_offset),
+            default=self.selection_threshold_offset,
+        )
         self.selection_min_threshold = _safe_float(self.raw.get("selection_min_threshold", 0.74), default=0.74)
         self.selection_max_threshold = _safe_float(self.raw.get("selection_max_threshold", 0.92), default=0.92)
+        self.long_risk_multiplier = _safe_float(
+            self.raw.get("long_risk_multiplier", 1.0),
+            default=1.0,
+        )
+        self.short_risk_multiplier = _safe_float(
+            self.raw.get("short_risk_multiplier", 1.0),
+            default=1.0,
+        )
+        self.context_side_policy = dict(self.raw.get("context_side_policy", {}) or {})
+        self.elite_long_exception = dict(self.raw.get("elite_long_exception", {}) or {})
+        self.runtime_policy_guard = dict(self.raw.get("runtime_policy_guard", {}) or {})
 
-    def build_candidate(self, *, symbol, timestamp, execution_row, snapshot, momentum_rank, top_symbols):
+    def _resolve_context_side_policy(self, snapshot: dict, runtime_policy_state: dict | None = None) -> dict:
+        context_label = _normalize_context_label(
+            snapshot.get("h1_context_12h") or snapshot.get("h1_context_6h")
+        )
+        runtime_policy_state = dict(runtime_policy_state or {})
+        fallback_to_short_only = bool(runtime_policy_state.get("fallback_to_short_only", False))
+        raw_policy = (
+            {}
+            if fallback_to_short_only
+            else dict(self.context_side_policy.get(context_label, {}) or {})
+        )
+        allowed_sides = raw_policy.get("allowed_sides", self.raw.get("allowed_sides", []))
+        return {
+            "context_label": context_label,
+            "policy_source": "fallback_short_only" if fallback_to_short_only else "context_policy",
+            "fallback_to_short_only": fallback_to_short_only,
+            "boost_active": bool(not fallback_to_short_only and context_label == "bearish" and raw_policy),
+            "allowed_sides": [str(side).lower() for side in (allowed_sides or []) if str(side).strip()],
+            "long_selection_threshold_offset": _safe_float(
+                raw_policy.get(
+                    "long_selection_threshold_offset",
+                    self.long_selection_threshold_offset,
+                ),
+                default=self.long_selection_threshold_offset,
+            ),
+            "short_selection_threshold_offset": _safe_float(
+                raw_policy.get(
+                    "short_selection_threshold_offset",
+                    self.short_selection_threshold_offset,
+                ),
+                default=self.short_selection_threshold_offset,
+            ),
+            "long_risk_multiplier": _safe_float(
+                raw_policy.get("long_risk_multiplier", self.long_risk_multiplier),
+                default=self.long_risk_multiplier,
+            ),
+            "short_risk_multiplier": _safe_float(
+                raw_policy.get("short_risk_multiplier", self.short_risk_multiplier),
+                default=self.short_risk_multiplier,
+            ),
+        }
+
+    def _resolve_elite_long_exception(self, snapshot: dict) -> dict:
+        raw = self.elite_long_exception
+        context_6h = _normalize_context_label(snapshot.get("h1_context_6h"))
+        context_12h = _normalize_context_label(snapshot.get("h1_context_12h"))
+        pass_6h = _bool_value(snapshot.get("h1_pass_6h_context_long"))
+        pass_12h = _bool_value(snapshot.get("h1_pass_12h_context_long"))
+        score_value = _safe_float(snapshot.get("h1_score_long"), default=0.0)
+        body_strength = _safe_float(snapshot.get("h1_body_strength"), default=0.0)
+        close_position = _safe_float(snapshot.get("h1_close_position"), default=0.0)
+        range_expansion = _safe_float(snapshot.get("h1_range_expansion"), default=0.0)
+
+        enabled = bool(raw.get("enabled", False))
+        min_score = _safe_float(raw.get("min_score", 0.92), default=0.92)
+        min_body_strength = _safe_float(raw.get("min_body_strength", 1.8), default=1.8)
+        min_close_position = _safe_float(raw.get("min_close_position", 0.82), default=0.82)
+        min_range_expansion = _safe_float(raw.get("min_range_expansion", 1.15), default=1.15)
+        require_6h_context = bool(raw.get("require_6h_context", True))
+        require_12h_context = bool(raw.get("require_12h_context", True))
+        require_bullish_6h = bool(raw.get("require_bullish_6h_label", True))
+        require_bullish_12h = bool(raw.get("require_bullish_12h_label", True))
+        passed = bool(
+            enabled
+            and score_value >= min_score
+            and body_strength >= min_body_strength
+            and close_position >= min_close_position
+            and range_expansion >= min_range_expansion
+            and (not require_6h_context or pass_6h)
+            and (not require_12h_context or pass_12h)
+            and (not require_bullish_6h or context_6h == "bullish")
+            and (not require_bullish_12h or context_12h == "bullish")
+        )
+        return {
+            "enabled": enabled,
+            "passed": passed,
+            "selection_threshold_offset": _safe_float(
+                raw.get("selection_threshold_offset", -0.01),
+                default=-0.01,
+            ),
+            "risk_multiplier": _safe_float(
+                raw.get("risk_multiplier", 0.80),
+                default=0.80,
+            ),
+        }
+
+    def build_candidate(
+        self,
+        *,
+        symbol,
+        timestamp,
+        execution_row,
+        snapshot,
+        momentum_rank,
+        top_symbols,
+        runtime_policy_state=None,
+    ):
         del top_symbols
         if not self.enabled or not snapshot or not _bool_value(snapshot.get("h1_new_candle")):
             return None
@@ -297,8 +419,17 @@ class H1ExecutionEngine:
             side = "short"
         else:
             return None
-        if not _side_is_allowed(side, self.raw):
-            return None
+        context_policy = self._resolve_context_side_policy(
+            snapshot,
+            runtime_policy_state=runtime_policy_state,
+        )
+        elite_long_exception = self._resolve_elite_long_exception(snapshot)
+        exception_applied = False
+        if not _side_is_allowed(side, {"allowed_sides": context_policy["allowed_sides"]}):
+            if side == "long" and elite_long_exception["passed"]:
+                exception_applied = True
+            else:
+                return None
 
         score_value = _safe_float(snapshot.get(f"h1_score_{side}"), default=0.0)
         stop_price = _safe_float(snapshot.get(f"h1_stop_{side}"), default=np.nan)
@@ -312,12 +443,26 @@ class H1ExecutionEngine:
 
         raw_score = clamp(score_value)
         strategy_type = "h1_execution"
+        if exception_applied:
+            side_threshold_offset = elite_long_exception["selection_threshold_offset"]
+            side_risk_multiplier = elite_long_exception["risk_multiplier"]
+        else:
+            side_threshold_offset = (
+                context_policy["short_selection_threshold_offset"]
+                if side == "short"
+                else context_policy["long_selection_threshold_offset"]
+            )
+            side_risk_multiplier = (
+                context_policy["short_risk_multiplier"]
+                if side == "short"
+                else context_policy["long_risk_multiplier"]
+            )
         return {
             "symbol": symbol,
             "timestamp": timestamp,
             "side": side,
             "row": execution_row,
-            "bias": str(snapshot.get("h1_context_6h", "neutral") or "neutral"),
+            "bias": context_policy["context_label"],
             "edge_type": strategy_type,
             "body_bucket": "strong" if _safe_float(snapshot.get("h1_body_strength"), 0.0) >= 1.5 else "weak",
             "vwap_bucket": "moderate",
@@ -338,11 +483,32 @@ class H1ExecutionEngine:
             "max_open_positions_for_strategy": self.max_open_positions,
             "block_same_symbol_same_side": True,
             "apply_score_bucket_filters": False,
-            "selection_threshold_offset": self.selection_threshold_offset,
+            "selection_threshold_offset": side_threshold_offset,
             "selection_min_threshold": self.selection_min_threshold,
             "selection_max_threshold": self.selection_max_threshold,
-            "risk_fraction_override": self.base_risk_fraction,
+            "risk_fraction_override": self.base_risk_fraction * side_risk_multiplier,
             "moonshot_score": raw_score,
+            "context_side_policy_label": context_policy["context_label"],
+            "context_policy_source": context_policy["policy_source"],
+            "context_policy_fallback_active": context_policy["fallback_to_short_only"],
+            "context_policy_boost_active": context_policy["boost_active"],
+            "policy_monitor_label": runtime_policy_state.get("label") if runtime_policy_state else None,
+            "policy_monitor_count": int(runtime_policy_state.get("count", 0) or 0)
+            if runtime_policy_state
+            else 0,
+            "policy_monitor_profit_factor": _safe_float(
+                runtime_policy_state.get("profit_factor"),
+                default=np.nan,
+            )
+            if runtime_policy_state
+            else np.nan,
+            "policy_monitor_avg_r": _safe_float(
+                runtime_policy_state.get("avg_R"),
+                default=np.nan,
+            )
+            if runtime_policy_state
+            else np.nan,
+            "elite_long_exception_applied": exception_applied,
             "range_expansion_factor": _safe_float(snapshot.get("h1_range_expansion"), default=0.0),
             "execution_profile": {
                 "disable_pyramiding": True,

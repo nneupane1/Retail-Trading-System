@@ -78,15 +78,13 @@ project something important:
 - selective breadth can help
 - stale human-picked universes are not a robust long-term research input
 
-The current mission is to replace manual candidate selection with a
-**Binance-discovered research universe**, then let the existing quality gate,
-allocator replay, and selective-breadth logic decide what actually deserves to
-stay.
+The current mission is no longer to invent another sleeve. The current mission
+is to make the now-promoted routed `1H` branch observable and economically
+disciplined inside the multi-role portfolio.
 
 In practical terms:
 
 - the signal stack stays frozen
-- the calibrated allocator-v2 agreement branch stays frozen
 - the broad 26-symbol expansion has already been tested and rejected
 - the first selective-breadth holdout is already complete, and `DOTUSDT` was
   the only clean survivor
@@ -94,29 +92,39 @@ In practical terms:
   itself did not beat the selective manual baseline
 - `6H` has already completed standalone, holdout, and portfolio-overlay
   research, and it did not earn promotion into the routed stack
-- `1H` has already completed standalone, holdout, overlay, and filtered-overlay
-  research, and it is now the strongest non-routed sleeve candidate
+- `1H` has already completed standalone, holdout, overlay, side-policy,
+  context-policy, elite-long rejection, bearish-boost sweep, and allocator-lane
+  promotion work
+- the best `1H` branch is now routed:
+  - short-only by default
+  - mildly boosted only in bearish `12H` context
+  - protected by a reversible runtime fallback guard
+- micro allocator coordination across sleeves was tested and rejected as too
+  weak to matter
+- allocator lane pressure, not sleeve logic, was the real `1H` bottleneck
 
 The immediate mission is therefore:
 
-- keep the live stack frozen
+- keep the live stack role-specialized
 - keep the current selective breadth and `12H` overlays unchanged
 - treat Binance-discovered breadth as a research feeder, not a production
   universe
-- refine the `1H` sleeve without killing the trade flow that made it additive
-- test side bias before tightening symbol coverage further
+- keep `6H` research-only
+- monitor whether routed `1H` keeps earning its extra allocator lane
+- use cap-pressure and runtime-policy telemetry before doing any new allocator
+  or sleeve redesign
 
 | Area | Current status | Action |
 | --- | --- | --- |
 | Signal stack | Frozen | Do not add new signals |
-| Allocator-v2 | Calibrated agreement branch is the active research baseline | Keep active |
-| `1H` layer | Research-validated, holdout-surviving, portfolio-additive candidate | Test side-policy overlay next |
+| Allocator-v2 | Calibrated agreement branch with promoted `1H` lane is active | Keep active |
+| `1H` layer | Routed, policy-guarded short sleeve | Monitor cap pressure and runtime guard state |
 | `6H` layer | Research-validated, not portfolio-additive | Keep research-only |
 | Static expanded universe data coverage | Complete for the first research snapshot | Keep as local research base |
 | Broad 26-symbol expansion | Completed and rejected | Do not treat raw breadth as automatically good |
 | Selective-breadth holdout | Completed | Treat `DOTUSDT` as the first validated add candidate |
 | Current blocker | Honest candidate discovery and admission | Use Binance discovery + quality validation, not intuition |
-| Next validation | `1H` side-policy overlay | Compare all-symbol `long+short` vs short-biased vs short-only |
+| Next validation | Routed `1H` observability | Read cap pressure, guard health, and lane usage before further allocator work |
 
 ## Current State / Do Not Touch
 
@@ -128,16 +136,17 @@ Current active research branch:
 - `htf_12h_standard`
 - `htf_12h_moonshot`
 - `htf_12h_rotation`
-- reversible `1H` research policy
+- routed `1H` short sleeve with mild bearish `12H` boost
+- reversible `1H` runtime fallback guard
 - reversible `6H` research policy for `h6_standard` and `h6_moonshot`
 - convexity probe/promote/add behavior
 - selective-breadth holdout result with `DOTUSDT` as the first surviving add
 - Binance-discovered universe workflow
 - checkpoint-safe quality and scenario progress registry
+- allocator lane and cap-pressure monitoring artifacts
 
 Do **not** currently implement:
 
-- live `1H` execution
 - live `6H` execution
 - extra pyramiding
 - cycle-based compounding
@@ -146,14 +155,18 @@ Do **not** currently implement:
 - aggressive allocator tightening that suppresses trade flow just to make the
   backtest look cleaner
 
-`1H` is no longer a dormant scaffold:
+`1H` is no longer a dormant scaffold or a research-only placeholder:
 
 - it has passed standalone validation
 - it has passed holdout
 - it improved the holdout portfolio as an all-symbol overlay
 - its first symbol-pruned keep-only overlay was too tight and damaged daily
   distribution
-- it still remains research-only and is not live-routed
+- its best form is now:
+  - short-only by default
+  - mildly more aggressive only when `12H` is bearish
+  - guarded by a rolling fallback-to-baseline policy
+- it is now routed in the shared stack by default
 
 `6H` is now different:
 
@@ -166,9 +179,9 @@ Do **not** currently implement:
 ## Current Bottleneck
 
 The current limitation is no longer missing history or missing allocator
-infrastructure. The current limitation is **portfolio integration quality**:
-deciding which additions actually improve the stack without starving trade
-flow or over-tightening the system into a cleaner but worse business.
+infrastructure. The current limitation is **capital-use observability**:
+making sure the promoted routed `1H` sleeve keeps improving the portfolio
+without silently becoming cap-bound, overlap-bound, or runtime-guard-bound.
 
 The repo has now proved four things:
 
@@ -179,17 +192,18 @@ The repo has now proved four things:
   did not beat the current selective baseline
 - `6H` has real standalone edge, but it is not additive enough in portfolio
   overlay to earn promotion
-- `1H` is additive as an all-symbol overlay, but hard symbol pruning already
-  showed the main failure mode: flow can be damaged even while equity and PF
-  improve
+- `1H` is additive enough to be routed, but small allocator coordination nudges
+  were not meaningful
+- the real `1H` improvement came from allocator lane/budget changes, not from
+  making the sleeve more symmetric or more clever
 
 So the current blocker is:
 
 - not more signals
 - not more timeframes
 - not more capital aggression
-- but proving whether `1H` can be refined by side policy without turning the
-  additive sleeve into a brittle, lower-frequency machine
+- but proving whether the routed `1H` sleeve continues to justify its extra
+  lane under real cap pressure and fallback-guard monitoring
 
 ## Strategy Layer Map
 
@@ -200,7 +214,7 @@ So the current blocker is:
 | HTF standard | `12H` | Normal higher-timeframe continuation and pullback participation | Active | Reserved sleeve |
 | HTF moonshot | `12H` | Structural trend birth | Active | Reserved sleeve |
 | HTF rotation | `12H` cross-sectional | Leader reinforcement | Active | Reserved sleeve |
-| `1H` execution | `1H` | Premium intraday trend layer | Research-validated additive candidate | Research-only, not live-routed |
+| `1H` execution | `1H` | Specialized downside exploitation layer | Routed, policy-guarded active sleeve | Reserved lane with mild bearish `12H` boost |
 | `6H` standard | `6H` | Bridge-layer normal execution sleeve | Research-validated, portfolio-nonadditive | Research-only |
 | `6H` moonshot | `6H` | Early swing expansion bridge | Research-validated, portfolio-nonadditive | Research-only |
 | Compounding | Portfolio level | Scale after proven stability | Deferred | Not active |
@@ -222,7 +236,12 @@ So the current blocker is:
 | `1H` holdout and symbol behavior | Does `1H` survive out of sample across the current-9 universe? | Completed |
 | `1H` portfolio integration research | Does `h1_execution` add value under shared capital? | Completed, additive |
 | `1H` filtered overlay | Does symbol pruning improve `1H` without killing flow? | Completed, too tight |
-| `1H` side-policy overlay | Does side bias improve `1H` without over-tightening? | Next |
+| `1H` side-policy overlay | Does side bias improve `1H` without over-tightening? | Completed |
+| `1H` context-aware bias | Does HTF regime-gating outperform specialization? | Completed, inferior to short-only |
+| `1H` elite-long exceptions | Can rare high-quality longs add convexity? | Completed, failed |
+| `1H` bearish short-boost sweep | Can mild bearish alignment improve quality without killing flow? | Completed, promoted |
+| `1H` routed allocator lane sweep | Does `1H` need more capital room to realize its edge? | Completed, promoted |
+| Routed `1H` monitoring | Is promoted `1H` staying healthy under real cap pressure? | Current |
 | Full-history expanded validation | Does it survive older regimes too? | Pending |
 | Walk-forward validation | Does it generalize out of sample? | Pending |
 | Monte Carlo / stress | Is the path survivable? | Pending |
@@ -679,14 +698,17 @@ engine with:
 - normal `12H` higher-timeframe participation through `htf_12h_standard`
 - structural `12H` moonshot participation
 - a separate `12H` cross-sectional rotation sleeve for leader reinforcement
-- a research-only `1H` execution sleeve that has survived standalone, holdout,
-  and portfolio-overlay validation, but is still not live-routed
+- a routed `1H` execution sleeve that is intentionally specialized:
+  - short-only by default
+  - mildly boosted only in bearish `12H` context
+  - revertible to plain short-only through a runtime guard
 - research-only `6H` sleeves (`h6_standard`, `h6_moonshot`) plus a reversible
   symbol policy, but still no live routing and no promoted portfolio sleeve yet
 
 ### Current `1H` research snapshot
 
-`1H` is now the strongest non-routed sleeve candidate in the repo.
+`1H` is no longer a candidate only. It is now the strongest validated new
+routed sleeve in the repo.
 
 Validated `1H` research conclusions:
 
@@ -696,8 +718,13 @@ Validated `1H` research conclusions:
 - the all-symbol `1H` overlay is additive at the portfolio level
 - hard symbol pruning improved equity and PF but damaged median daily PnL too
   much, which means symbol tightening is currently the wrong refinement axis
-- shorts are stronger than longs in standalone `1H`, but the additive overlay
-  result was achieved with both sides enabled
+- short-only beats context-aware long reintroduction
+- elite long exceptions failed even after being given strong alignment filters
+- mild bearish `12H` short boosting improved the short-only branch without
+  meaningfully reducing flow
+- allocator lane pressure, not signal weakness, was the next real bottleneck
+- a stronger reserved `1H` lane improved the routed branch again without
+  harming daily distribution
 
 Current `1H` keep symbols:
 
@@ -721,12 +748,16 @@ Current `1H` overlay summary:
 | Baseline `current_9` | `EUR 19,843.86` | `0.9593` | `-EUR 1.28` | `-5.13%` | Anchor |
 | `current_9 + h1_execution` | `EUR 20,187.05` | `1.0548` | `-EUR 0.89` | `-2.77%` | Additive |
 | `current_9 + h1 keep-only` | `EUR 20,374.11` | `1.1149` | `-EUR 2.05` | `-3.02%` | Too tight |
+| `1H` short-only | `EUR 20,263.58` | `1.0913` | `-EUR 0.09` | `-3.27%` | Strong specialization |
+| `1H` mild bearish short-boost | `EUR 20,293.41` | `1.1027` | `-EUR 0.04` | `-3.13%` | Best sleeve logic branch |
+| Routed `1H` stronger lane | `EUR 20,345.52` | `1.1222` | `-EUR 0.09` | `-2.81%` | Current promoted routed branch |
 
 The current `1H` read is therefore:
 
-- keep the sleeve research-active
-- do not route it live yet
-- test side bias before pruning symbols harder
+- keep `1H` specialized, not symmetric
+- route it as a short sleeve, not a general execution layer
+- use mild bearish `12H` alignment, not long reintroduction
+- monitor cap pressure and guard state before doing more allocator redesign
 
 ### Current `6H` research snapshot
 
@@ -1382,19 +1413,22 @@ until the next validation step is complete:
 The following future layers now exist only as non-operational scaffolds or
 research sleeves:
 
-- `strategy.h1_execution`
 - `strategy.h6_moonshot`
 - `strategy.h6_standard`
 
-`strategy.h1_execution` is intentionally disabled in config and is not routed
-by the live portfolio engine, but it is no longer just a scaffold. It has now
-completed:
+`strategy.h1_execution` is no longer disabled and no longer just a scaffold. It
+has now completed:
 
 - standalone validation
 - holdout validation
 - portfolio overlay validation
 - reversible symbol-policy generation
 - filtered overlay validation
+- side-policy and context-policy validation
+- elite-long rejection
+- mild bearish short-boost promotion
+- allocator lane sweep and promotion
+- runtime guard and monitoring support
 
 `strategy.h6_moonshot` and `strategy.h6_standard` are still not routed by the
 current portfolio engine either, but they have moved beyond scaffolding into
@@ -1405,14 +1439,12 @@ portfolio integration rejection.
 
 The following are explicitly **not** the next coding move:
 
-- a live `1H` execution sleeve
 - a live `6H` execution sleeve
 - broader moonshot-family invention
 - aggressive HTF pyramiding
 - cycle-based compounding
 - threshold loosening simply to force more trades
-- switching on the research-only `1H` or `6H` layers before overlay and policy
-  work justify them
+- trying to make `1H` do everything that `15m` or `12H` already do better
 - over-tightening the allocator or signal gates in a way that "improves" the
   backtest only by starving the system of trade frequency
 
@@ -1439,37 +1471,37 @@ This is the current staged plan extracted from the allocator results and the
 5. Treat the `6H` research branch as completed negative portfolio evidence.
    `h6_moonshot`, `h6_standard`, holdout curation, symbol policy, and portfolio
    overlay are now built and validated, and the sleeve stays research-only.
-6. Treat the `1H` research branch as the next serious decision layer.
-   `1H` has now passed standalone validation, holdout, and portfolio overlay,
-   which makes it the current best non-routed sleeve candidate.
-7. Refine `1H` by side policy before tightening symbols further.
-   The keep-only filter improved equity and PF but damaged median daily PnL,
-   which means the immediate next step is side bias testing, not harder symbol
-   pruning.
-8. Only if side-policy overlay improves the additive `1H` result should the
-   project consider a true routed `1H` live sleeve.
-   The runtime sleeve exists, but it is still intentionally not wired into the
-   active live path.
-9. Only after sleeve mix and routing are stable, add promotion logic and later
-   conservative HTF pyramiding.
+6. Treat the `1H` branch as promoted, not exploratory.
+   `1H` has now passed standalone validation, holdout, overlay, side-policy,
+   bearish-boost, and allocator-lane tests, and is routed as a specialized
+   short sleeve.
+7. Do not try to generalize `1H`.
+   Long reintroduction, context-aware symmetry, and elite-long exceptions all
+   underperformed the specialized short role.
+8. Treat allocator observability as the next serious layer.
+   The current question is no longer "does `1H` work?" but "is routed `1H`
+   staying cap-efficient and guard-healthy under shared risk?"
+9. Only after routed sleeve interaction is clearly understood, add promotion
+   logic and later conservative HTF pyramiding.
 10. Only after monthly distribution improves and drawdown remains controlled,
    add cycle-based compounding.
 
 ### Why this order is deliberate
 
 The current bottleneck is not that the system lacks signals. It is that the
-project now needs to prove whether the next sleeve can be added without
-damaging the capital-routing engine's trade flow and daily distribution.
+project now needs to prove whether the promoted routed `1H` sleeve keeps
+earning its extra allocator lane without becoming cap-bound or fallback-bound.
 
 So the immediate question is:
 
-> can the current calibrated allocator become more economically stable if it
-> keeps the additive `1H` sleeve broad enough to preserve flow while shaping it
-> by side preference rather than over-pruning symbols?
+> can the current calibrated allocator stay economically stable while the
+> promoted routed `1H` sleeve consumes more reserved capital, and if not, where
+> does the pressure actually appear: shared cap, sleeve cap, or runtime guard?
 
 That is the next serious test. The goal is not to make the backtest cleaner by
-force. The goal is to see whether `1H` can keep its portfolio contribution
-while becoming slightly more capital-efficient.
+force. The goal is to see whether the current role-specialized stack remains
+coherent once the new routed `1H` sleeve is monitored as part of the live
+capital-routing engine.
 
 ### Pass criteria for the next stage
 

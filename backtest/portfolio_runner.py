@@ -556,6 +556,16 @@ def _build_candidate(
                 "row": row,
                 "bias": bias,
                 "bias_snapshot": dict(bias_snapshot),
+                "htf_context_1d": (
+                    str((htf_snapshot or {}).get("htf_context_1d", "neutral") or "neutral")
+                    if htf_snapshot is not None
+                    else "neutral"
+                ),
+                "htf_context_1w": (
+                    str((htf_snapshot or {}).get("htf_context_1w", "neutral") or "neutral")
+                    if htf_snapshot is not None
+                    else "neutral"
+                ),
                 "edge_type": bucket["edge_type"],
                 "body_bucket": bucket["body_bucket"],
                 "vwap_bucket": bucket["vwap_bucket"],
@@ -597,6 +607,13 @@ def _build_candidate(
         if htf_standard_candidate is not None:
             candidates.append(htf_standard_candidate)
     if h1_engine is not None:
+        h1_runtime_policy_state = None
+        runtime_policy_resolver = getattr(portfolio, "strategy_runtime_policy_state", None)
+        if callable(runtime_policy_resolver):
+            h1_runtime_policy_state = runtime_policy_resolver(
+                "h1_execution",
+                getattr(h1_engine, "runtime_policy_guard", None),
+            )
         h1_candidate = h1_engine.build_candidate(
             symbol=symbol,
             timestamp=row.name,
@@ -604,6 +621,7 @@ def _build_candidate(
             snapshot=h1_snapshot or {},
             momentum_rank=momentum_rank,
             top_symbols=top_symbols,
+            runtime_policy_state=h1_runtime_policy_state,
         )
         if h1_candidate is not None:
             candidates.append(h1_candidate)

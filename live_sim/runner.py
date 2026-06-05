@@ -13,6 +13,7 @@ from data.downloader import fetch_recent, load_from_csv
 from data.resampler import TimeframeBuilder
 from entry.edge_buckets import build_signal_bucket
 from entry.edge_selector import EdgeSelector
+from entry.h1_execution import H1ExecutionEngine, build_h1_execution_snapshots
 from entry.htf_moonshot import (
     HTFMoonshotEngine,
     HTFStandardEngine,
@@ -456,6 +457,8 @@ def _build_live_candidate(
     moonshot_overlay,
     portfolio,
     swing_snapshot=None,
+    h1_snapshot=None,
+    h1_engine=None,
     htf_snapshot=None,
     htf_standard_engine=None,
     htf_engine=None,
@@ -493,6 +496,16 @@ def _build_live_candidate(
                 "row": row,
                 "bias": bias,
                 "bias_snapshot": bias_snapshot,
+                "htf_context_1d": (
+                    str((htf_snapshot or {}).get("htf_context_1d", "neutral") or "neutral")
+                    if htf_snapshot is not None
+                    else "neutral"
+                ),
+                "htf_context_1w": (
+                    str((htf_snapshot or {}).get("htf_context_1w", "neutral") or "neutral")
+                    if htf_snapshot is not None
+                    else "neutral"
+                ),
                 "edge_type": bucket["edge_type"],
                 "body_bucket": bucket["body_bucket"],
                 "vwap_bucket": bucket["vwap_bucket"],
@@ -533,6 +546,25 @@ def _build_live_candidate(
         )
         if htf_standard_candidate is not None:
             candidates.append(htf_standard_candidate)
+    if h1_engine is not None:
+        h1_runtime_policy_state = None
+        runtime_policy_resolver = getattr(portfolio, "strategy_runtime_policy_state", None)
+        if callable(runtime_policy_resolver):
+            h1_runtime_policy_state = runtime_policy_resolver(
+                "h1_execution",
+                getattr(h1_engine, "runtime_policy_guard", None),
+            )
+        h1_candidate = h1_engine.build_candidate(
+            symbol=symbol,
+            timestamp=row.name,
+            execution_row=row,
+            snapshot=h1_snapshot or {},
+            momentum_rank=momentum_rank,
+            top_symbols=top_symbols,
+            runtime_policy_state=h1_runtime_policy_state,
+        )
+        if h1_candidate is not None:
+            candidates.append(h1_candidate)
     if htf_engine is not None:
         htf_candidate = htf_engine.build_candidate(
             symbol=symbol,
@@ -605,6 +637,7 @@ def _run_portfolio_live_paper_sim(config=None):
     bias_detector = BiasDetector(config=config)
     edge_selector = EdgeSelector(config=config)
     moonshot_overlay = MoonshotOverlay(config=config)
+    h1_engine = H1ExecutionEngine(config=config)
     htf_standard_engine = HTFStandardEngine(config=config)
     htf_engine = HTFMoonshotEngine(config=config)
     htf_rotation_engine = HTFRotationEngine(config=config)
@@ -622,6 +655,7 @@ def _run_portfolio_live_paper_sim(config=None):
         cycle_start = time.time()
         execution_frames = {}
         swing_snapshots = {}
+        h1_snapshots = {}
         htf_snapshots = {}
         htf_macro_frames = {}
         htf_daily_frames = {}
@@ -653,6 +687,13 @@ def _run_portfolio_live_paper_sim(config=None):
                 df_1w,
                 config=config,
             )
+            h1_snapshots[symbol] = build_h1_execution_snapshots(
+                df_15m.index,
+                df_1h,
+                df_5h,
+                df_12h,
+                config=config,
+            )
             htf_snapshots[symbol] = build_htf_12h_snapshots(
                 df_15m.index,
                 df_12h,
@@ -682,6 +723,11 @@ def _run_portfolio_live_paper_sim(config=None):
                         "swing_snapshot": (
                             swing_snapshots[symbol].loc[row.name].to_dict()
                             if row.name in swing_snapshots[symbol].index
+                            else {}
+                        ),
+                        "h1_snapshot": (
+                            h1_snapshots[symbol].loc[row.name].to_dict()
+                            if row.name in h1_snapshots[symbol].index
                             else {}
                         ),
                         "htf_snapshot": latest_htf_context_by_symbol[symbol],
@@ -727,6 +773,8 @@ def _run_portfolio_live_paper_sim(config=None):
                     moonshot_overlay=moonshot_overlay,
                     portfolio=portfolio,
                     swing_snapshot=item.get("swing_snapshot"),
+                    h1_snapshot=item.get("h1_snapshot"),
+                    h1_engine=h1_engine,
                     htf_snapshot=item.get("htf_snapshot"),
                     htf_standard_engine=htf_standard_engine,
                     htf_engine=htf_engine,
