@@ -90,14 +90,26 @@ In practical terms:
 - the broad 26-symbol expansion has already been tested and rejected
 - the first selective-breadth holdout is already complete, and `DOTUSDT` was
   the only clean survivor
-- the next question is whether a **live Binance-discovered** universe can
-  surface better additive candidates without killing opportunity flow
+- the discovery infrastructure is useful as a research input, but discovery by
+  itself did not beat the selective manual baseline
+- `6H` is now the next serious bridge-layer hypothesis, and it has moved past
+  the "dormant scaffold" stage into validated research
+
+The immediate mission is therefore:
+
+- keep the live stack frozen
+- keep the current selective breadth and `12H` overlays unchanged
+- treat Binance-discovered breadth as a research feeder, not a production
+  universe
+- decide whether `h6_standard` deserves promotion into portfolio integration
+  research without choking trade flow
 
 | Area | Current status | Action |
 | --- | --- | --- |
 | Signal stack | Frozen | Do not add new signals |
 | Allocator-v2 | Calibrated agreement branch is the active research baseline | Keep active |
-| `1H` / `6H` layers | Dormant scaffolds only | Do not activate yet |
+| `1H` layer | Dormant scaffold only | Do not activate yet |
+| `6H` layer | Research-validated, not live-routed | Test portfolio integration next |
 | Static expanded universe data coverage | Complete for the first research snapshot | Keep as local research base |
 | Broad 26-symbol expansion | Completed and rejected | Do not treat raw breadth as automatically good |
 | Selective-breadth holdout | Completed | Treat `DOTUSDT` as the first validated add candidate |
@@ -114,6 +126,7 @@ Current active research branch:
 - `htf_12h_standard`
 - `htf_12h_moonshot`
 - `htf_12h_rotation`
+- reversible `6H` research policy for `h6_standard` and `h6_moonshot`
 - convexity probe/promote/add behavior
 - selective-breadth holdout result with `DOTUSDT` as the first surviving add
 - Binance-discovered universe workflow
@@ -130,31 +143,40 @@ Do **not** currently implement:
 - aggressive allocator tightening that suppresses trade flow just to make the
   backtest look cleaner
 
-The `1H` and `6H` layers already exist as dormant scaffolds in code and config.
-They are intentionally **not** routed into the live or backtest portfolio
-engine yet.
+`1H` remains a dormant scaffold in code and config.
+
+`6H` is now different:
+
+- both `h6_moonshot` and `h6_standard` exist as research sleeves
+- both have passed standalone validation
+- both have passed a lean holdout on the curated keep set
+- neither is routed into the live or portfolio backtest engine yet
 
 ## Current Bottleneck
 
 The current limitation is no longer missing history or missing allocator
-infrastructure. The current limitation is **live candidate discovery plus
-selection quality**.
+infrastructure. The current limitation is **portfolio integration quality**:
+deciding which additions actually improve the stack without starving trade
+flow.
 
 The repo has now proved four things:
 
 - the current 9-symbol allocator-v2 branch is a valid baseline
 - naive 26-symbol breadth degrades the portfolio
 - `DOTUSDT` can survive a lean holdout while the broader curated basket does not
-- a dynamic Binance-discovered pool still needs honest quality admission and
-  replay before it can replace the manual research universe
+- a dynamic Binance-discovered pool is useful as research input, but it still
+  did not beat the current selective baseline
+- `6H` now looks promising enough to deserve overlay research, but not blind
+  live activation
 
 So the current blocker is:
 
 - not more signals
 - not more timeframes
 - not more capital aggression
-- but proving which Binance-discovered symbols generalize after quality
-  admission without reducing the system to a brittle, low-frequency filter
+- but proving whether `h6_standard` can add portfolio value with a small sleeve
+  budget and reversible symbol policy, without turning the system into a
+  brittle, low-frequency machine
 
 ## Strategy Layer Map
 
@@ -166,7 +188,8 @@ So the current blocker is:
 | HTF moonshot | `12H` | Structural trend birth | Active | Reserved sleeve |
 | HTF rotation | `12H` cross-sectional | Leader reinforcement | Active | Reserved sleeve |
 | `1H` execution | `1H` | Premium intraday trend layer | Dormant scaffold | Not routed |
-| `6H` moonshot | `6H` | Early swing expansion bridge | Dormant scaffold | Not routed |
+| `6H` standard | `6H` | Bridge-layer normal execution sleeve | Research-validated | Not routed yet |
+| `6H` moonshot | `6H` | Early swing expansion bridge | Research-validated | Not routed yet |
 | Compounding | Portfolio level | Scale after proven stability | Deferred | Not active |
 
 ## Validation Ladder
@@ -178,7 +201,10 @@ So the current blocker is:
 | Expanded-universe data fill | Do extra liquid symbols have usable local `1m` history? | Completed |
 | Expanded-universe recent validation | Does broader opportunity flow help? | Completed |
 | Curated selective-breadth holdout | Do the added symbols survive out of sample? | Completed |
-| Binance-discovered universe validation | Do live exchange candidates beat stale manual breadth? | In progress |
+| Binance-discovered universe validation | Do live exchange candidates beat stale manual breadth? | Completed, failed as production universe |
+| `6H` standalone validation | Does `6H` show real bridge-layer edge? | Completed |
+| `6H` holdout and symbol curation | Does `6H` survive out of sample without killing frequency? | Completed |
+| `6H` portfolio integration research | Does `h6_standard` improve the current portfolio stack? | Next |
 | Full-history expanded validation | Does it survive older regimes too? | Pending |
 | Walk-forward validation | Does it generalize out of sample? | Pending |
 | Monte Carlo / stress | Is the path survivable? | Pending |
@@ -635,8 +661,48 @@ engine with:
 - normal `12H` higher-timeframe participation through `htf_12h_standard`
 - structural `12H` moonshot participation
 - a separate `12H` cross-sectional rotation sleeve for leader reinforcement
-- dormant `1H` and `6H` scaffolds that exist in code/config but are not wired
-  into live or backtest routing yet
+- dormant `1H` scaffolding that exists in code/config but is not wired into
+  live or backtest routing
+- research-only `6H` sleeves (`h6_standard`, `h6_moonshot`) plus a reversible
+  symbol policy, but still no live or portfolio backtest routing yet
+
+### Current `6H` research snapshot
+
+The `6H` bridge layer is no longer hypothetical. It now has enough measured
+evidence to be treated as a real candidate sleeve, while still remaining
+research-only.
+
+Validated `6H` research conclusions:
+
+- `h6_moonshot` has strong standalone training performance and survives holdout
+- `h6_standard` is cleaner than `h6_moonshot` in holdout on the curated keep
+  set
+- the same current-9 keep/drop structure now appears from both `h6_moonshot`
+  and `h6_standard` studies
+- the `6H` symbol policy must be reversible and sleeve-specific, not permanent
+
+Current `6H` keep symbols:
+
+- `BNBUSDT`
+- `XRPUSDT`
+- `ETHUSDT`
+- `TRXUSDT`
+- `AAVEUSDT`
+- `SOLUSDT`
+
+Current `6H` block symbols:
+
+- `AVAXUSDT`
+- `BTCUSDT`
+- `LINKUSDT`
+
+Current holdout summary on the full current-9 `h6_standard` research branch:
+
+| Branch | Trades | PF | Avg R | Avg Hold | Verdict |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `h6_standard` all symbols | `19` | `1.67` | `0.204` | `88.9h` | Promising but diluted |
+| `h6_standard` curated keeps | `14` | `2.12` | `0.299` | `91.4h` | Best current `6H` bridge candidate |
+| `h6_moonshot` curated keeps | `14` | `1.59` | `0.265` | `138.0h` | Stronger convex trainer, weaker holdout efficiency |
 
 ### Validated portfolio replay status
 
@@ -1136,9 +1202,12 @@ flowchart TD
     E -- Yes --> G[Run discovery-based allocator replay]
     G --> H{Selective additions improve?}
     H -- Yes --> I[Proceed to full-history and walk-forward validation]
-    H -- No --> J[Curate discovered symbols and rerun lean holdout]
-    I --> K[Only then study 6H execution]
-    K --> L[Only then consider pyramiding and compounding]
+    H -- No --> J[Keep discovery as research input only]
+    J --> K[Run 6H standalone validation and holdout]
+    K --> L{Does 6H survive holdout?}
+    L -- Yes --> M[Run 6H portfolio integration research]
+    L -- No --> N[Defer 6H and move to later 1H study]
+    I --> O[Only then consider broader timeframe expansion]
 ```
 
 ### How to read it
@@ -1166,14 +1235,17 @@ results.
 6. **Use the replay result to decide the next branch.**
    - If HTF and rotation improve, move deeper into validation with full-history,
      walk-forward, and stress testing.
-   - If broad expansion fails but a curated subset looks better, run a lean
-     holdout before touching live logic.
-   - If even curated breadth fails, that is evidence that the missing layer is
-     not more symbols alone, and only then does a study like `6H` become
-     justified.
-7. **Pyramiding and compounding stay at the end.**
+   - If broad expansion fails, keep discovery as a research feeder rather than
+     forcing it into production.
+   - After that, use the next sleeve study to decide whether a bridge layer
+     such as `6H` can add value without bloating overlap.
+7. **`6H` now sits between breadth research and any later `1H` work.**
+   The repo has already completed the standalone `6H` validation and holdout
+   path. The next question is portfolio integration, not raw `6H` existence.
+8. **Pyramiding and compounding stay at the end.**
    Those are scale amplifiers, not discovery tools. They only make sense after
-   broader opportunity flow and allocator behavior have already been proven.
+   broader opportunity flow, timeframe routing, and allocator behavior have
+   already been proven.
 
 ### Decision gate after expanded-universe validation
 
@@ -1230,15 +1302,19 @@ until the next validation step is complete:
 - convexity probe/promote/add behavior
 - calibrated allocator-v2 with agreement bonus and concentration brake
 
-The following future layers now exist only as non-operational scaffolds:
+The following future layers now exist only as non-operational scaffolds or
+research sleeves:
 
 - `strategy.h1_execution`
 - `strategy.h6_moonshot`
+- `strategy.h6_standard`
 
-They are intentionally disabled in config and are not routed by the current
-portfolio engine. Their only purpose right now is to preserve a clean growth
-path toward the `refactor.md` timeframe hierarchy without contaminating the
-validated stack.
+`strategy.h1_execution` is intentionally disabled in config and is not routed
+by the current portfolio engine.
+
+`strategy.h6_moonshot` and `strategy.h6_standard` are still not routed by the
+current portfolio engine either, but they have moved beyond scaffolding into
+measured research sleeves with holdout-backed symbol curation.
 
 ### What is intentionally deferred
 
@@ -1270,19 +1346,22 @@ This is the current staged plan extracted from the allocator results and the
 3. Treat the first selective-breadth holdout as completed evidence.
    `DOTUSDT` survived; `FILUSDT` did not; the broader `APT / ADA / SUI` basket
    did not yet earn promotion.
-4. Replace stale manual candidate selection with Binance-discovered candidate
-   discovery.
-   Use exchange-driven liquid spot `USDT` discovery as the next research input
-   layer, then let the existing quality validator and allocator replay decide
-   what survives.
-5. Only if discovery-based breadth produces real additive candidates should the
-   project move to curated discovery holdouts, then full-history expanded
-   validation and deeper walk-forward work.
-6. Only if HTF sleeves remain too economically weak after selective breadth
-   flow, run a `6H` candidate forward-return study.
-7. Only if the `6H` study proves unique positive edge, implement a true
-   `6H` live sleeve.
-   The current scaffold exists, but it is intentionally dormant.
+4. Treat Binance-discovered candidate discovery as implemented research
+   infrastructure, not as a production go-live trigger.
+   Discovery now replaces stale memory-based symbol picking, but discovered
+   breadth still has to beat the current selective baseline before it deserves
+   capital.
+5. Treat the current `6H` research branch as the next serious decision layer.
+   `h6_moonshot`, `h6_standard`, holdout curation, and reversible symbol policy
+   are now built and validated.
+6. Run `6H` portfolio integration research next.
+   Start with `current_9` baseline vs `current_9 + h6_standard` on the curated
+   keep set with a small sleeve budget. The question is no longer "does `6H`
+   have edge?" but "does `6H` add portfolio value without killing flow?"
+7. Only if `h6_standard` improves portfolio behavior should the project move to
+   a true routed `6H` live sleeve.
+   The runtime sleeve exists, but it is still intentionally not wired into the
+   active portfolio path.
 8. Run a `1H` candidate study after `6H`, not before.
    `1H` is more likely to overlap with `15m`, so it should be justified by
    evidence rather than architecture excitement.
@@ -1295,16 +1374,16 @@ This is the current staged plan extracted from the allocator results and the
 ### Why this order is deliberate
 
 The current bottleneck is not that the system lacks signals. It is that the
-project still needs a better **research input universe** than a stale hand-made
-symbol list.
+project now needs to prove whether the next sleeve can be added without
+damaging the capital-routing engine's trade flow and daily distribution.
 
 So the immediate question is:
 
 > can the current calibrated allocator become more economically stable if it
-> adds only the right Binance-discovered symbols, rather than just more
-> symbols or more rules?
+> adds only the right `6H` sleeve participation, on the right symbols, with the
+> right sleeve budget, rather than just more symbols or more rules?
 
-That is the next serious test. New timeframes come after that, not before.
+That is the next serious test. `1H` comes after that, not before.
 
 ### Pass criteria for the next stage
 
@@ -2690,8 +2769,10 @@ deliberate incompleteness.
   incremental edge, but portfolio interaction is still the hard problem.
 - The current full stack is still limited more by capital competition and
   distribution than by missing signal families.
-- `1H` and `6H` future sleeves now have placeholder modules and config, but
-  they are deliberately not active in runtime selection, allocation, or risk.
+- `1H` remains a placeholder scaffold only.
+- `6H` is no longer just a placeholder. It now has validated research modules,
+  holdout reports, and a reversible symbol policy, but it is still
+  deliberately not active in runtime selection, allocation, or risk.
 
 ### Execution realism
 

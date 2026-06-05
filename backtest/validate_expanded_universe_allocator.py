@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
+import traceback
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from copy import deepcopy
 from pathlib import Path
 
@@ -30,6 +33,13 @@ from common.universe import get_named_universe
 from config import AppConfig
 from entry.htf_moonshot import build_htf_12h_snapshots
 from entry.htf_rotation import build_htf_rotation_snapshots_by_symbol
+
+
+@contextmanager
+def _suppress_feature_generation_output():
+    with open(os.devnull, "w", encoding="utf-8", errors="ignore") as sink:
+        with redirect_stdout(sink), redirect_stderr(sink):
+            yield
 
 
 def _quality_progress_path(report_root: Path) -> Path:
@@ -261,14 +271,17 @@ def _validate_symbol_quality(
     except FileNotFoundError as exc:
         row["reasons"] = ["missing_local_history"]
         row["reject_reason"] = "missing_local_history"
+        row["error_stage"] = "history_load"
         row["source_path"] = None
         row["error"] = str(exc)
         return row
     except Exception as exc:
         row["reasons"] = ["history_load_failed"]
         row["reject_reason"] = "history_load_failed"
+        row["error_stage"] = "history_load"
         row["source_path"] = None
         row["error"] = str(exc)
+        row["traceback"] = traceback.format_exc(limit=8)
         return row
 
     source_path = Path(source_path)
@@ -336,20 +349,43 @@ def _validate_symbol_quality(
     row["recent_terminal_gap_days"] = row["recent_terminal_gap_minutes"] / 1440.0
 
     try:
-        df_15m, _, df_12h, df_1d, df_1w = _build_strategy_timeframes(clean_1m, config=base_config)
-        htf_snapshots = build_htf_12h_snapshots(df_15m.index, df_12h, df_1d, df_1w, config=base_config)
-        rotation_snapshots = build_htf_rotation_snapshots_by_symbol(
-            {symbol: df_15m.index},
-            {symbol: df_12h},
-            {symbol: df_1d},
-            {symbol: df_1w},
-            structural_snapshots_by_symbol={symbol: htf_snapshots},
-            config=base_config,
-        ).get(symbol, pd.DataFrame())
+        with _suppress_feature_generation_output():
+            df_15m, _, df_12h, df_1d, df_1w = _build_strategy_timeframes(clean_1m, config=base_config)
     except Exception as exc:
         row["reasons"] = ["feature_generation_failed"]
         row["reject_reason"] = "feature_generation_failed"
+        row["error_stage"] = "timeframe_build"
         row["error"] = str(exc)
+        row["traceback"] = traceback.format_exc(limit=8)
+        return row
+
+    try:
+        with _suppress_feature_generation_output():
+            htf_snapshots = build_htf_12h_snapshots(df_15m.index, df_12h, df_1d, df_1w, config=base_config)
+    except Exception as exc:
+        row["reasons"] = ["feature_generation_failed"]
+        row["reject_reason"] = "feature_generation_failed"
+        row["error_stage"] = "htf_snapshot_build"
+        row["error"] = str(exc)
+        row["traceback"] = traceback.format_exc(limit=8)
+        return row
+
+    try:
+        with _suppress_feature_generation_output():
+            rotation_snapshots = build_htf_rotation_snapshots_by_symbol(
+                {symbol: df_15m.index},
+                {symbol: df_12h},
+                {symbol: df_1d},
+                {symbol: df_1w},
+                structural_snapshots_by_symbol={symbol: htf_snapshots},
+                config=base_config,
+            ).get(symbol, pd.DataFrame())
+    except Exception as exc:
+        row["reasons"] = ["feature_generation_failed"]
+        row["reject_reason"] = "feature_generation_failed"
+        row["error_stage"] = "rotation_snapshot_build"
+        row["error"] = str(exc)
+        row["traceback"] = traceback.format_exc(limit=8)
         return row
 
     recent_15m = _recent_slice(df_15m, recent_start_ts, recent_end_ts)

@@ -863,6 +863,19 @@
       "enabled": false,
       "execution_timeframe": "6h",
       "promotion_role": "bridge_to_htf_moonshot",
+      "allowed_symbols": [
+        "AAVEUSDT",
+        "BNBUSDT",
+        "ETHUSDT",
+        "SOLUSDT",
+        "TRXUSDT",
+        "XRPUSDT"
+      ],
+      "blocked_symbols": [
+        "AVAXUSDT",
+        "BTCUSDT",
+        "LINKUSDT"
+      ],
       "base_risk_fraction": 0.0025,
       "max_total_risk_fraction": 0.008,
       "max_open_positions": 2,
@@ -880,6 +893,34 @@
       "selection_threshold_offset": -0.03,
       "selection_min_threshold": 0.74,
       "selection_max_threshold": 0.92
+    },
+    "h6_standard": {
+      "enabled": false,
+      "execution_timeframe": "6h",
+      "promotion_role": "bridge_standard_execution",
+      "allowed_symbols": [
+        "AAVEUSDT",
+        "BNBUSDT",
+        "ETHUSDT",
+        "SOLUSDT",
+        "TRXUSDT",
+        "XRPUSDT"
+      ],
+      "blocked_symbols": [
+        "AVAXUSDT",
+        "BTCUSDT",
+        "LINKUSDT"
+      ],
+      "base_risk_fraction": 0.0018,
+      "max_total_risk_fraction": 0.0055,
+      "max_open_positions": 2,
+      "min_score": 0.68,
+      "max_hold_6h_candles": 18,
+      "selection_bonus": 0.02,
+      "top_mover_bonus": 0.02,
+      "selection_threshold_offset": -0.10,
+      "selection_min_threshold": 0.62,
+      "selection_max_threshold": 0.88
     },
     "execution": {
       "mode": "weighted",

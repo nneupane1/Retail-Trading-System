@@ -3,7 +3,7 @@ import unittest
 import pandas as pd
 
 from entry.h1_execution import H1ExecutionEngine, build_h1_execution_snapshots
-from entry.h6_moonshot import H6MoonshotEngine, build_h6_moonshot_snapshots
+from entry.h6_moonshot import H6MoonshotEngine, H6StandardEngine, build_h6_moonshot_snapshots
 
 
 class DummyConfig:
@@ -45,6 +45,16 @@ class DummyConfig:
                     "max_total_risk_fraction": 0.008,
                     "max_open_positions": 2,
                     "max_hold_6h_candles": 30,
+                },
+                "h6_standard": {
+                    "enabled": True,
+                    "base_risk_fraction": 0.0018,
+                    "max_total_risk_fraction": 0.0055,
+                    "max_open_positions": 2,
+                    "max_hold_6h_candles": 18,
+                    "min_score": 0.68,
+                    "selection_bonus": 0.02,
+                    "top_mover_bonus": 0.02,
                 },
             }
         }
@@ -181,6 +191,10 @@ class FutureTimeframeLayerTests(unittest.TestCase):
         snapshot = {
             "h6_new_candle": True,
             "signal_event_long": True,
+            "h6_pass_structure_long": True,
+            "h6_pass_shape_long": True,
+            "h6_pass_12h_context_long": True,
+            "h6_pass_1d_context_long": True,
             "h6_score_long": 0.82,
             "h6_stop_long": 103.0,
             "h6_body_strength": 1.9,
@@ -201,6 +215,81 @@ class FutureTimeframeLayerTests(unittest.TestCase):
         self.assertIsNotNone(candidate)
         self.assertEqual("h6_moonshot", candidate["strategy_type"])
         self.assertTrue(candidate["deferred_layer"])
+
+    def test_h6_standard_engine_builds_looser_candidate_without_signal_event(self):
+        config = DummyConfig()
+        engine = H6StandardEngine(config=config)
+        execution_row = pd.Series({"close": 107.0}, name=pd.Timestamp("2026-01-01 18:00:00"))
+        snapshot = {
+            "h6_new_candle": True,
+            "signal_event_long": False,
+            "h6_pass_structure_long": True,
+            "h6_pass_shape_long": True,
+            "h6_pass_12h_context_long": True,
+            "h6_pass_1d_context_long": True,
+            "h6_score_long": 0.70,
+            "h6_stop_long": 103.0,
+            "h6_body_strength": 1.7,
+            "h6_range_expansion": 1.10,
+            "h6_context_12h": "bullish",
+            "signal_family_long": "h6_bridge_breakout",
+        }
+
+        candidate = engine.build_candidate(
+            symbol="ETHUSDT",
+            timestamp=execution_row.name,
+            execution_row=execution_row,
+            snapshot=snapshot,
+            momentum_rank=0.75,
+            top_symbols=["ETHUSDT"],
+        )
+
+        self.assertIsNotNone(candidate)
+        self.assertEqual("h6_standard", candidate["strategy_type"])
+        self.assertTrue(candidate["deferred_layer"])
+        self.assertGreater(candidate["selection_score"], candidate["score"])
+
+    def test_h6_symbol_filters_block_only_filtered_symbols(self):
+        config = DummyConfig()
+        config.data["strategy"]["h6_standard"]["allowed_symbols"] = ["ETHUSDT"]
+        config.data["strategy"]["h6_standard"]["blocked_symbols"] = ["BTCUSDT"]
+        engine = H6StandardEngine(config=config)
+        execution_row = pd.Series({"close": 107.0}, name=pd.Timestamp("2026-01-01 18:00:00"))
+        snapshot = {
+            "h6_new_candle": True,
+            "signal_event_long": False,
+            "h6_pass_structure_long": True,
+            "h6_pass_shape_long": True,
+            "h6_pass_12h_context_long": True,
+            "h6_pass_1d_context_long": True,
+            "h6_score_long": 0.70,
+            "h6_stop_long": 103.0,
+            "h6_body_strength": 1.7,
+            "h6_range_expansion": 1.10,
+            "h6_context_12h": "bullish",
+            "signal_family_long": "h6_bridge_breakout",
+        }
+
+        self.assertIsNotNone(
+            engine.build_candidate(
+                symbol="ETHUSDT",
+                timestamp=execution_row.name,
+                execution_row=execution_row,
+                snapshot=snapshot,
+                momentum_rank=0.75,
+                top_symbols=[],
+            )
+        )
+        self.assertIsNone(
+            engine.build_candidate(
+                symbol="BTCUSDT",
+                timestamp=execution_row.name,
+                execution_row=execution_row,
+                snapshot=snapshot,
+                momentum_rank=0.75,
+                top_symbols=[],
+            )
+        )
 
 
 if __name__ == "__main__":

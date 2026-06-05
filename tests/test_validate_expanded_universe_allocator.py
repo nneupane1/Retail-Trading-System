@@ -16,10 +16,74 @@ from backtest.validate_expanded_universe_allocator import (
     _scenario_requires_symbol_reset,
     _should_skip_expanded_scenario,
     _terminal_gap_minutes,
+    _validate_symbol_quality,
 )
 
 
 class ValidateExpandedUniverseAllocatorTests(unittest.TestCase):
+    def test_validate_symbol_quality_records_feature_generation_error_stage(self):
+        class _ConfigStub:
+            def require(self, *keys):
+                mapping = {
+                    ("binance", "default_interval"): "1m",
+                    ("history", "start_date"): "2026-05-20",
+                    ("history", "end_date"): "2026-05-22",
+                }
+                return mapping[keys]
+
+            def get(self, *keys, default=None):
+                return default
+
+        index = pd.date_range("2026-05-20 00:00:00", periods=1440 * 3, freq="1min")
+        clean_1m = pd.DataFrame(
+            {
+                "open": 1.0,
+                "high": 1.0,
+                "low": 1.0,
+                "close": 1.0,
+                "volume": 100.0,
+            },
+            index=index,
+        )
+        raw_frame = clean_1m.reset_index().rename(columns={"index": "timestamp"})
+        thresholds = {
+            "max_missing_1m_ratio": 1.0,
+            "max_missing_15m_ratio": 1.0,
+            "max_duplicate_1m_ratio": 1.0,
+            "max_ohlcv_nan_ratio": 1.0,
+            "min_recent_execution_rows": 0,
+            "min_recent_12h_rows": 0,
+            "min_recent_1d_rows": 0,
+            "min_recent_median_daily_quote_volume": 0.0,
+            "min_recent_min_daily_quote_volume": 0.0,
+            "max_recent_spread_proxy": 1.0,
+            "min_daily_bar_coverage_ratio_for_liquidity_stats": 0.95,
+            "max_recent_terminal_gap_minutes": 999999.0,
+        }
+
+        with patch(
+            "backtest.validate_expanded_universe_allocator._load_full_history",
+            return_value=(clean_1m, "fake.csv"),
+        ), patch(
+            "backtest.validate_expanded_universe_allocator._read_raw_history_csv",
+            return_value=raw_frame,
+        ), patch(
+            "backtest.validate_expanded_universe_allocator._build_strategy_timeframes",
+            side_effect=OSError(22, "Invalid argument"),
+        ):
+            row = _validate_symbol_quality(
+                "TESTUSDT",
+                base_config=_ConfigStub(),
+                recent_start="2026-05-20",
+                recent_end="2026-05-22",
+                thresholds=thresholds,
+            )
+
+        self.assertEqual("feature_generation_failed", row["reject_reason"])
+        self.assertEqual("timeframe_build", row["error_stage"])
+        self.assertIn("Invalid argument", row["error"])
+        self.assertIn("OSError", row["traceback"])
+
     def test_resolve_candidate_symbols_uses_binance_discovery_when_enabled(self):
         class _ConfigStub:
             def get(self, *keys, default=None):
