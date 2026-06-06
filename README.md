@@ -79,8 +79,10 @@ project something important:
 - stale human-picked universes are not a robust long-term research input
 
 The current mission is no longer to invent another sleeve. The current mission
-is to make the now-promoted routed `1H` branch observable and economically
-disciplined inside the multi-role portfolio.
+is to turn the now-promoted routed stack into an execution-ready paper system:
+prove the routed `1H` branch across full history, confirm the allocator lane is
+healthy under real cap pressure, and then move into a controlled live paper dry
+run.
 
 In practical terms:
 
@@ -102,6 +104,13 @@ In practical terms:
 - micro allocator coordination across sleeves was tested and rejected as too
   weak to matter
 - allocator lane pressure, not sleeve logic, was the real `1H` bottleneck
+- the full-history routed stack has now completed cleanly and passed its main
+  gate:
+  - final equity `EUR 57,006.19`
+  - profit factor `1.2746`
+  - max drawdown `-10.50%`
+  - total trades `16,104`
+  - routed `1H` remained `boost_active` and never triggered fallback
 
 The immediate mission is therefore:
 
@@ -110,9 +119,12 @@ The immediate mission is therefore:
 - treat Binance-discovered breadth as a research feeder, not a production
   universe
 - keep `6H` research-only
+- move the current routed stack into a controlled live paper dry run
 - monitor whether routed `1H` keeps earning its extra allocator lane
 - use cap-pressure and runtime-policy telemetry before doing any new allocator
   or sleeve redesign
+- keep the daily leader-focus idea as a separate research scaffold, not as part
+  of the routed system
 
 | Area | Current status | Action |
 | --- | --- | --- |
@@ -124,7 +136,7 @@ The immediate mission is therefore:
 | Broad 26-symbol expansion | Completed and rejected | Do not treat raw breadth as automatically good |
 | Selective-breadth holdout | Completed | Treat `DOTUSDT` as the first validated add candidate |
 | Current blocker | Honest candidate discovery and admission | Use Binance discovery + quality validation, not intuition |
-| Next validation | Routed `1H` observability | Read cap pressure, guard health, and lane usage before further allocator work |
+| Next validation | Controlled live paper dry run | Verify runtime behavior, guard state, and cap pressure in the live path |
 
 ## Current State / Do Not Touch
 
@@ -179,9 +191,10 @@ Do **not** currently implement:
 ## Current Bottleneck
 
 The current limitation is no longer missing history or missing allocator
-infrastructure. The current limitation is **capital-use observability**:
-making sure the promoted routed `1H` sleeve keeps improving the portfolio
-without silently becoming cap-bound, overlap-bound, or runtime-guard-bound.
+infrastructure. The current limitation is **runtime observability and live-path
+verification**: making sure the promoted routed `1H` sleeve keeps improving the
+portfolio without silently becoming cap-bound, overlap-bound, or
+runtime-guard-bound once the actual live paper loop is running.
 
 The repo has now proved four things:
 
@@ -203,7 +216,7 @@ So the current blocker is:
 - not more timeframes
 - not more capital aggression
 - but proving whether the routed `1H` sleeve continues to justify its extra
-  lane under real cap pressure and fallback-guard monitoring
+  lane under real cap pressure and fallback-guard monitoring in the live path
 
 ## Strategy Layer Map
 
@@ -241,7 +254,9 @@ So the current blocker is:
 | `1H` elite-long exceptions | Can rare high-quality longs add convexity? | Completed, failed |
 | `1H` bearish short-boost sweep | Can mild bearish alignment improve quality without killing flow? | Completed, promoted |
 | `1H` routed allocator lane sweep | Does `1H` need more capital room to realize its edge? | Completed, promoted |
-| Routed `1H` monitoring | Is promoted `1H` staying healthy under real cap pressure? | Current |
+| Routed `1H` monitoring | Is promoted `1H` staying healthy under real cap pressure? | Completed |
+| Full-history routed stack | Does the actual current routed stack hold up across the full window? | Completed, passed |
+| Controlled live paper dry run | Does the routed stack behave cleanly in the near-live loop? | Next |
 | Full-history expanded validation | Does it survive older regimes too? | Pending |
 | Walk-forward validation | Does it generalize out of sample? | Pending |
 | Monte Carlo / stress | Is the path survivable? | Pending |
@@ -526,6 +541,12 @@ Two practical clarifications matter:
 ## Next Commands
 
 ```bash
+# Run the full-history current routed stack validation
+python -m backtest.validate_full_routed_stack
+
+# Run the near-live paper path with the current routed stack
+python main_live.py
+
 # Discover the current Binance research universe
 python -m backtest.discover_binance_universe --top-n 40
 
@@ -540,6 +561,8 @@ python -m backtest.validate_curated_holdout
 
 # Run the full test suite
 python -m unittest discover -s tests -v
+# Build the separate research-only daily leader focus scaffold
+python -m backtest.build_daily_leader_focus_scaffold
 ```
 
 ## Timeframe Hierarchy
@@ -2887,7 +2910,7 @@ deliberate incompleteness.
   incremental edge, but portfolio interaction is still the hard problem.
 - The current full stack is still limited more by capital competition and
   distribution than by missing signal families.
-- `1H` remains a placeholder scaffold only.
+- `1H` is now a routed specialized short sleeve, not a placeholder scaffold.
 - `6H` is no longer just a placeholder. It now has validated research modules,
   holdout reports, and a reversible symbol policy, but it is still
   deliberately not active in runtime selection, allocation, or risk.

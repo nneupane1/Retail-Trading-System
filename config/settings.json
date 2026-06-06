@@ -133,6 +133,17 @@
     "start_date": "2018-01-01",
     "end_date": "2026-05-22"
   },
+  "research": {
+    "daily_leader_focus": {
+      "enabled": false,
+      "source_universe_name": "current_9",
+      "top_n": 1,
+      "lookback_days": 1,
+      "min_history_days": 90,
+      "min_daily_quote_volume": 5000000.0,
+      "require_positive_return": false
+    }
+  },
   "universe": {
     "active_set": "current_9",
     "discovery": {
