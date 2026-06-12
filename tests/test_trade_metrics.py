@@ -151,6 +151,47 @@ class TradeMetricsTests(unittest.TestCase):
         self.assertEqual(trade.profit_lock_trigger_r, 1.5)
         self.assertEqual(trade.profit_lock_stop_r, 0.25)
 
+    def test_trade_lifecycle_and_capital_request_roundtrip(self):
+        entry_row = pd.Series(
+            {
+                "close": 100.0,
+                "ll2": 95.0,
+            },
+            name=pd.Timestamp("2026-01-01 00:00:00"),
+        )
+
+        trade = Trade(entry_row, score=5, config=DummyConfig())
+        trade.annotate_capital_request(
+            request_type="fresh_entry",
+            capital_lane="1h",
+            lineage_id="BTCUSDT|h1_execution|short|bearish|2026-01-01T00:00:00",
+            lineage_parent_trade_id="parent-1",
+            lineage_reentry_count=2,
+        )
+        trade.transition_lifecycle(
+            "validated",
+            detail="open_r_confirmation",
+            timestamp=pd.Timestamp("2026-01-01 01:00:00"),
+        )
+
+        snapshot = trade.snapshot()
+        restored = Trade.from_snapshot(snapshot, config=DummyConfig())
+
+        self.assertEqual("fresh_entry", restored.request_type)
+        self.assertEqual("1h", restored.capital_lane)
+        self.assertEqual(
+            "BTCUSDT|h1_execution|short|bearish|2026-01-01T00:00:00",
+            restored.lineage_id,
+        )
+        self.assertEqual("parent-1", restored.lineage_parent_trade_id)
+        self.assertEqual(2, restored.lineage_reentry_count)
+        self.assertEqual("validated", restored.lifecycle_state)
+        self.assertEqual("open_r_confirmation", restored.lifecycle_detail)
+        self.assertEqual(
+            pd.Timestamp("2026-01-01 01:00:00").to_pydatetime(),
+            restored.lifecycle_updated_at,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -15,6 +15,8 @@ LIVE_SIGNAL_LOG_FIELDS = [
     "timestamp",
     "symbol",
     "side",
+    "request_type",
+    "capital_lane",
     "edge_type",
     "bias",
     "body_bucket",
@@ -48,6 +50,22 @@ LIVE_SIGNAL_LOG_FIELDS = [
     "htf_trailing_state",
     "htf_decay_reason",
     "htf_candidate_rank",
+    "strategy_sleeve_cap",
+    "shared_pool_cap",
+    "allocation_sleeve",
+    "allocation_priority",
+    "allocation_rank",
+    "allocated_risk_fraction",
+    "agreement_bonus",
+    "leader_dominance_boost",
+    "allocation_brake_active",
+    "allocation_brake_severity",
+    "coordination_active",
+    "coordination_rule",
+    "coordination_context_1d",
+    "coordination_priority_multiplier",
+    "coordination_base_risk_multiplier",
+    "coordination_sleeve_cap_multiplier",
 ]
 
 LIVE_ENGINE_CYCLE_FIELDS = [
@@ -88,6 +106,42 @@ LIVE_SYMBOL_PIPELINE_FIELDS = [
     "candidate_strategies",
     "top_mover",
     "momentum_rank",
+]
+
+LIVE_ALLOCATOR_DECISION_FIELDS = [
+    "timestamp",
+    "candidate_id",
+    "symbol",
+    "side",
+    "strategy_type",
+    "risk_group",
+    "request_type",
+    "capital_lane",
+    "score",
+    "selection_score",
+    "threshold",
+    "eligible",
+    "allocated",
+    "opened",
+    "initial_reason",
+    "final_reason",
+    "allocation_sleeve",
+    "allocation_rank",
+    "allocation_priority",
+    "base_risk_fraction",
+    "allocated_risk_fraction",
+    "strategy_sleeve_cap",
+    "group_risk_cap",
+    "shared_pool_cap",
+    "post_cycle_active_total_risk_fraction",
+    "post_cycle_active_shared_risk_fraction",
+    "post_cycle_active_strategy_risk_fraction",
+    "coordination_active",
+    "coordination_rule",
+    "agreement_bonus",
+    "leader_dominance_boost",
+    "allocation_brake_active",
+    "allocation_brake_severity",
 ]
 
 
@@ -353,6 +407,14 @@ class LivePortfolioStateLogger:
 
     def write_symbol_pipeline_status(self, rows):
         self._write_csv("symbol_pipeline_status.csv", LIVE_SYMBOL_PIPELINE_FIELDS, rows)
+
+    def append_allocator_decisions(self, rows):
+        for row in rows or []:
+            self._append_csv_row(
+                "allocator_decisions.csv",
+                LIVE_ALLOCATOR_DECISION_FIELDS,
+                row,
+            )
 
     def write_recent_strategy_bucket_summary(self, rows):
         target = self.output_dir / "recent_strategy_bucket_summary.csv"

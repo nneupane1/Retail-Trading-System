@@ -12,6 +12,11 @@ TRADE_LOG_FIELDS = [
     "opportunity_id",
     "symbol",
     "side",
+    "request_type",
+    "capital_lane",
+    "lineage_id",
+    "lineage_parent_trade_id",
+    "lineage_reentry_count",
     "signal_family",
     "edge_type",
     "body_bucket",
@@ -42,6 +47,9 @@ TRADE_LOG_FIELDS = [
     "regime_class",
     "entry_threshold",
     "exit_reason",
+    "lifecycle_state",
+    "lifecycle_detail",
+    "lifecycle_updated_at",
     "pressure_score",
     "opportunity_score",
     "score_bucket",
@@ -120,6 +128,19 @@ def trade_to_log_record(trade):
         "opportunity_id": getattr(trade, "opportunity_id", conditions.get("opportunity_id")),
         "symbol": getattr(trade, "symbol", conditions.get("symbol")),
         "side": getattr(trade, "side", conditions.get("side")),
+        "request_type": getattr(trade, "request_type", conditions.get("request_type")),
+        "capital_lane": getattr(trade, "capital_lane", conditions.get("capital_lane")),
+        "lineage_id": getattr(trade, "lineage_id", conditions.get("lineage_id")),
+        "lineage_parent_trade_id": getattr(
+            trade,
+            "lineage_parent_trade_id",
+            conditions.get("lineage_parent_trade_id"),
+        ),
+        "lineage_reentry_count": getattr(
+            trade,
+            "lineage_reentry_count",
+            conditions.get("lineage_reentry_count"),
+        ),
         "signal_family": getattr(trade, "signal_family", conditions.get("signal_family")),
         "edge_type": getattr(trade, "edge_type", conditions.get("edge_type")),
         "body_bucket": getattr(trade, "body_bucket", conditions.get("body_bucket")),
@@ -150,6 +171,13 @@ def trade_to_log_record(trade):
         "regime_class": getattr(trade, "regime_class", conditions.get("regime_class")),
         "entry_threshold": getattr(trade, "entry_threshold", conditions.get("entry_threshold")),
         "exit_reason": getattr(trade, "exit_reason", conditions.get("exit_reason")),
+        "lifecycle_state": getattr(trade, "lifecycle_state", conditions.get("lifecycle_state")),
+        "lifecycle_detail": getattr(trade, "lifecycle_detail", conditions.get("lifecycle_detail")),
+        "lifecycle_updated_at": getattr(
+            trade,
+            "lifecycle_updated_at",
+            conditions.get("lifecycle_updated_at"),
+        ),
         "pressure_score": getattr(trade, "pressure_score", conditions.get("pressure_score")),
         "opportunity_score": getattr(trade, "opportunity_score", conditions.get("opportunity_score")),
         "score_bucket": getattr(trade, "score_bucket", conditions.get("score_bucket")),
@@ -307,6 +335,11 @@ class Trade:
         self.trade_id = f"{self.side}_{_serialize_time(self.entry_time)}"
         self.opportunity_id = None
         self.symbol = None
+        self.request_type = "fresh_entry"
+        self.capital_lane = None
+        self.lineage_id = None
+        self.lineage_parent_trade_id = None
+        self.lineage_reentry_count = 0
 
         # Structure
         self.stop = row[self.stop_column]
@@ -358,6 +391,9 @@ class Trade:
         self.regime_score = None
         self.regime_class = None
         self.entry_threshold = None
+        self.lifecycle_state = "candidate"
+        self.lifecycle_detail = "constructed"
+        self.lifecycle_updated_at = self.entry_time
         self.edge_type = None
         self.body_bucket = None
         self.vwap_bucket = None
@@ -407,6 +443,11 @@ class Trade:
             "signal_family": self.signal_family,
             "opportunity_id": None,
             "symbol": None,
+            "request_type": self.request_type,
+            "capital_lane": self.capital_lane,
+            "lineage_id": self.lineage_id,
+            "lineage_parent_trade_id": self.lineage_parent_trade_id,
+            "lineage_reentry_count": self.lineage_reentry_count,
             "score": score,
             "body_strength": row.get("body_strength", None),
             "close_position": row.get("close_position", None),
@@ -423,6 +464,9 @@ class Trade:
             "pressure_score": None,
             "opportunity_score": None,
             "score_bucket": None,
+            "lifecycle_state": self.lifecycle_state,
+            "lifecycle_detail": self.lifecycle_detail,
+            "lifecycle_updated_at": self.lifecycle_updated_at,
             "momentum_rank": None,
             "strategy_type": self.strategy_type,
             "risk_group": self.risk_group,
@@ -667,6 +711,50 @@ class Trade:
     def annotate_opportunity(self, opportunity_id=None):
         self.opportunity_id = opportunity_id
         self.conditions["opportunity_id"] = opportunity_id
+
+    def annotate_capital_request(
+        self,
+        *,
+        request_type=None,
+        capital_lane=None,
+        lineage_id=None,
+        lineage_parent_trade_id=None,
+        lineage_reentry_count=None,
+    ):
+        if request_type is not None:
+            self.request_type = str(request_type)
+        if capital_lane is not None:
+            self.capital_lane = str(capital_lane)
+        if lineage_id is not None:
+            self.lineage_id = str(lineage_id)
+        if lineage_parent_trade_id is not None:
+            self.lineage_parent_trade_id = str(lineage_parent_trade_id)
+        if lineage_reentry_count is not None:
+            self.lineage_reentry_count = int(lineage_reentry_count or 0)
+        self.conditions.update(
+            {
+                "request_type": self.request_type,
+                "capital_lane": self.capital_lane,
+                "lineage_id": self.lineage_id,
+                "lineage_parent_trade_id": self.lineage_parent_trade_id,
+                "lineage_reentry_count": self.lineage_reentry_count,
+            }
+        )
+
+    def transition_lifecycle(self, state, *, detail=None, timestamp=None):
+        self.lifecycle_state = str(state or self.lifecycle_state or "candidate")
+        if detail is not None:
+            self.lifecycle_detail = str(detail)
+        normalized_time = _restore_time(_serialize_time(timestamp)) if timestamp is not None else None
+        self.lifecycle_updated_at = normalized_time or self.lifecycle_updated_at or self.entry_time
+        self.conditions.update(
+            {
+                "lifecycle_state": self.lifecycle_state,
+                "lifecycle_detail": self.lifecycle_detail,
+                "lifecycle_updated_at": self.lifecycle_updated_at,
+            }
+        )
+        return self.lifecycle_state
 
     def annotate_live_scoring(
         self,
@@ -955,6 +1043,11 @@ class Trade:
             "stop": self.stop,
             "active_stop": self.active_stop,
             "R": self.R,
+            "request_type": self.request_type,
+            "capital_lane": self.capital_lane,
+            "lineage_id": self.lineage_id,
+            "lineage_parent_trade_id": self.lineage_parent_trade_id,
+            "lineage_reentry_count": self.lineage_reentry_count,
             "entries": [
                 {
                     "price": entry_price,
@@ -999,6 +1092,9 @@ class Trade:
             "regime_score": self.regime_score,
             "regime_class": self.regime_class,
             "entry_threshold": self.entry_threshold,
+            "lifecycle_state": self.lifecycle_state,
+            "lifecycle_detail": self.lifecycle_detail,
+            "lifecycle_updated_at": _serialize_time(self.lifecycle_updated_at),
             "trail_state": self.trail_state,
             "trail_anchor_column": self.trail_anchor_column,
             "trail_anchor_price": self.trail_anchor_price,
@@ -1061,6 +1157,11 @@ class Trade:
         trade.stop = snapshot.get("stop")
         trade.active_stop = snapshot.get("active_stop", trade.stop)
         trade.R = snapshot.get("R")
+        trade.request_type = snapshot.get("request_type", "fresh_entry")
+        trade.capital_lane = snapshot.get("capital_lane")
+        trade.lineage_id = snapshot.get("lineage_id")
+        trade.lineage_parent_trade_id = snapshot.get("lineage_parent_trade_id")
+        trade.lineage_reentry_count = snapshot.get("lineage_reentry_count", 0)
         trade.entries = [
             (entry.get("price"), entry.get("size"))
             for entry in snapshot.get("entries", [])
@@ -1102,6 +1203,9 @@ class Trade:
         trade.regime_score = snapshot.get("regime_score")
         trade.regime_class = snapshot.get("regime_class")
         trade.entry_threshold = snapshot.get("entry_threshold")
+        trade.lifecycle_state = snapshot.get("lifecycle_state", "candidate")
+        trade.lifecycle_detail = snapshot.get("lifecycle_detail", "restored")
+        trade.lifecycle_updated_at = _restore_time(snapshot.get("lifecycle_updated_at"))
         trade.trail_state = snapshot.get("trail_state", "init")
         trade.trail_anchor_column = snapshot.get("trail_anchor_column")
         trade.trail_anchor_price = snapshot.get("trail_anchor_price")

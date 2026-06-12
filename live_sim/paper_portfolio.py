@@ -424,6 +424,30 @@ class LivePaperPortfolio:
             "strategy_risk_cap",
         }
 
+    @staticmethod
+    def _capital_lane_for_strategy(strategy_type):
+        normalized = str(strategy_type or "core")
+        if normalized.startswith("htf_12h_"):
+            return "12h"
+        if normalized.startswith("h6_"):
+            return "6h"
+        if normalized == "h1_execution" or normalized.startswith("h1_"):
+            return "1h"
+        return "15m"
+
+    def _lineage_id_for_candidate(self, candidate, timestamp):
+        symbol = str(candidate.get("symbol") or "unknown")
+        strategy_type = str(candidate.get("strategy_type", "core") or "core")
+        side = str(candidate.get("side") or "long")
+        context_1d = str(candidate.get("htf_context_1d") or "na")
+        time_value = self._normalize_time_value(candidate.get("timestamp") or timestamp)
+        lineage_time = (
+            time_value.isoformat()
+            if time_value is not None
+            else str(timestamp)
+        )
+        return f"{symbol}|{strategy_type}|{side}|{context_1d}|{lineage_time}"
+
     def _trim_selection_reason_history(self):
         if self.selection_monitor_recent_limit <= 0:
             return
@@ -438,16 +462,139 @@ class LivePaperPortfolio:
         for state in states:
             reason = str(final_reason_by_id.get(state["id"]) or "unknown")
             strategy_type = str(state.get("strategy_type") or "core")
+            candidate = dict(state.get("candidate") or {})
             self.selection_reason_counts[reason] += 1
             self.selection_reason_counts_by_strategy[strategy_type][reason] += 1
             self.selection_reason_history.append(
                 {
                     "timestamp": timestamp_value,
+                    "candidate_id": int(state.get("id", 0) or 0),
+                    "symbol": candidate.get("symbol"),
+                    "side": candidate.get("side"),
                     "strategy_type": strategy_type,
+                    "capital_lane": candidate.get(
+                        "capital_lane",
+                        self._capital_lane_for_strategy(strategy_type),
+                    ),
+                    "score": float(state.get("score", 0.0) or 0.0),
+                    "selection_score": float(state.get("selection_score", 0.0) or 0.0),
+                    "threshold": float(state.get("threshold", 0.0) or 0.0),
+                    "allocated_risk_fraction": float(
+                        state.get("allocated_risk_fraction", 0.0) or 0.0
+                    ),
+                    "allocation_rank": candidate.get("allocation_rank"),
+                    "allocation_priority": candidate.get("allocation_priority"),
                     "selection_reason": reason,
                 }
             )
         self._trim_selection_reason_history()
+
+    def _append_allocator_decision_rows(
+        self,
+        states,
+        final_reason_by_id,
+        timestamp,
+        allocated_state_ids,
+    ):
+        append_allocator_decisions = getattr(
+            self.state_logger,
+            "append_allocator_decisions",
+            None,
+        )
+        if not callable(append_allocator_decisions):
+            return
+
+        total_risk_fraction = self._active_risk_fraction()
+        shared_risk_fraction = self._active_shared_risk_fraction()
+        timestamp_value = self._normalize_time_value(timestamp)
+        rows = []
+        for state in states:
+            candidate = dict(state.get("candidate") or {})
+            strategy_type = str(state.get("strategy_type") or "core")
+            final_reason = str(final_reason_by_id.get(state["id"]) or "unknown")
+            rows.append(
+                {
+                    "timestamp": timestamp_value,
+                    "candidate_id": int(state.get("id", 0) or 0),
+                    "symbol": candidate.get("symbol"),
+                    "side": candidate.get("side"),
+                    "strategy_type": strategy_type,
+                    "risk_group": state.get("risk_group"),
+                    "request_type": candidate.get("request_type", "fresh_entry"),
+                    "capital_lane": candidate.get(
+                        "capital_lane",
+                        self._capital_lane_for_strategy(strategy_type),
+                    ),
+                    "score": float(state.get("score", 0.0) or 0.0),
+                    "selection_score": float(state.get("selection_score", 0.0) or 0.0),
+                    "threshold": float(state.get("threshold", 0.0) or 0.0),
+                    "eligible": state.get("reason") is None,
+                    "allocated": state.get("id") in allocated_state_ids,
+                    "opened": final_reason == "opened",
+                    "initial_reason": state.get("reason"),
+                    "final_reason": final_reason,
+                    "allocation_sleeve": candidate.get("allocation_sleeve"),
+                    "allocation_rank": candidate.get("allocation_rank"),
+                    "allocation_priority": candidate.get("allocation_priority"),
+                    "base_risk_fraction": float(
+                        state.get("base_risk_fraction", 0.0) or 0.0
+                    ),
+                    "allocated_risk_fraction": float(
+                        state.get("allocated_risk_fraction", 0.0) or 0.0
+                    ),
+                    "strategy_sleeve_cap": state.get("strategy_sleeve_cap"),
+                    "group_risk_cap": state.get("group_risk_cap"),
+                    "shared_pool_cap": candidate.get("shared_pool_cap"),
+                    "post_cycle_active_total_risk_fraction": total_risk_fraction,
+                    "post_cycle_active_shared_risk_fraction": shared_risk_fraction,
+                    "post_cycle_active_strategy_risk_fraction": (
+                        self._active_strategy_risk_fraction(strategy_type)
+                    ),
+                    "coordination_active": candidate.get("coordination_active"),
+                    "coordination_rule": candidate.get("coordination_rule"),
+                    "agreement_bonus": candidate.get("agreement_bonus"),
+                    "leader_dominance_boost": candidate.get("leader_dominance_boost"),
+                    "allocation_brake_active": candidate.get("allocation_brake_active"),
+                    "allocation_brake_severity": candidate.get("allocation_brake_severity"),
+                }
+            )
+        append_allocator_decisions(rows)
+
+    def _open_position_lifecycle_rows(self):
+        rows = []
+        for trade in self.open_positions:
+            rows.append(
+                {
+                    "trade_id": getattr(trade, "trade_id", None),
+                    "lineage_id": getattr(trade, "lineage_id", None),
+                    "symbol": getattr(trade, "symbol", None),
+                    "side": getattr(trade, "side", None),
+                    "strategy_type": getattr(trade, "strategy_type", None),
+                    "request_type": getattr(trade, "request_type", None),
+                    "capital_lane": getattr(trade, "capital_lane", None),
+                    "lifecycle_state": getattr(trade, "lifecycle_state", None),
+                    "lifecycle_detail": getattr(trade, "lifecycle_detail", None),
+                    "bars_held": int(getattr(trade, "bars_held", 0) or 0),
+                    "entry_layer_count": len(getattr(trade, "entries", []) or []),
+                    "open_r_multiple": float(
+                        getattr(trade, "trail_open_r_multiple", 0.0) or 0.0
+                    ),
+                }
+            )
+        rows.sort(
+            key=lambda item: (
+                str(item.get("capital_lane") or ""),
+                str(item.get("strategy_type") or ""),
+                str(item.get("symbol") or ""),
+            )
+        )
+        return rows
+
+    def _lifecycle_counts(self):
+        counts = defaultdict(int)
+        for trade in self.open_positions:
+            counts[str(getattr(trade, "lifecycle_state", "unknown") or "unknown")] += 1
+        return {str(state): int(count) for state, count in counts.items()}
 
     def _selection_reason_summary_rows(self, counts):
         total = sum(int(value or 0) for value in counts.values())
@@ -730,6 +877,8 @@ class LivePaperPortfolio:
             )
             next_stage = 1
             next_state = "promoted"
+            lifecycle_state = "validated"
+            lifecycle_detail = "convexity_promoted"
         elif stage == 1:
             if open_r_multiple < self.convexity_add_trigger_r:
                 return False
@@ -741,6 +890,8 @@ class LivePaperPortfolio:
             )
             next_stage = 2
             next_state = "expanded"
+            lifecycle_state = "expanded"
+            lifecycle_detail = "convexity_expanded"
         else:
             return False
 
@@ -812,6 +963,11 @@ class LivePaperPortfolio:
             max_target_multiple=getattr(trade, "convexity_max_target_multiple", None),
             add_count=trade.convexity_add_count,
             last_add_bar=trade.convexity_last_add_bar,
+        )
+        trade.transition_lifecycle(
+            lifecycle_state,
+            detail=lifecycle_detail,
+            timestamp=row.name,
         )
         return True
 
@@ -956,7 +1112,23 @@ class LivePaperPortfolio:
         else:
             trade.active_stop = max(float(trade.active_stop), trailing_stop)
 
+        open_r_multiple = self._open_r_multiple(trade, float(row["close"]))
+        if (
+            str(getattr(trade, "lifecycle_state", "candidate")) == "probe"
+            and open_r_multiple >= self.convexity_promote_trigger_r
+        ):
+            trade.transition_lifecycle(
+                "validated",
+                detail="htf_structure_confirmed",
+                timestamp=row.name,
+            )
+
         if decay_active:
+            trade.transition_lifecycle(
+                "decaying",
+                detail="htf_macro_decay",
+                timestamp=row.name,
+            )
             decay_count = int(getattr(trade, "conditions", {}).get("htf_decay_count", 0) or 0) + 1
             trade.conditions["htf_decay_count"] = decay_count
             if decay_count >= int(htf_context.get("htf_decay_12h_candles", 3) or 3):
@@ -1571,6 +1743,8 @@ class LivePaperPortfolio:
             "timestamp": candidate.get("timestamp"),
             "symbol": candidate.get("symbol"),
             "side": candidate.get("side"),
+            "request_type": candidate.get("request_type", "fresh_entry"),
+            "capital_lane": candidate.get("capital_lane"),
             "edge_type": candidate.get("edge_type"),
             "bias": candidate.get("bias"),
             "body_bucket": candidate.get("body_bucket"),
@@ -1736,6 +1910,10 @@ class LivePaperPortfolio:
         candidate["strategy_sleeve_cap"] = strategy_sleeve_cap
         candidate["shared_pool_cap"] = self.shared_pool_risk_fraction_cap
         candidate["allocation_sleeve"] = strategy_type
+        candidate["request_type"] = str(candidate.get("request_type") or "fresh_entry")
+        candidate["capital_lane"] = str(
+            candidate.get("capital_lane") or self._capital_lane_for_strategy(strategy_type)
+        )
 
         allowed_sides = self._allowed_sides_for_strategy(strategy_type)
         reason = None
@@ -2278,6 +2456,7 @@ class LivePaperPortfolio:
         )
         if callable(write_runtime_policy_summary):
             write_runtime_policy_summary(runtime_policy_rows)
+        lifecycle_rows = self._open_position_lifecycle_rows()
         self.state_logger.write_json(
             "portfolio_status.json",
             {
@@ -2332,6 +2511,8 @@ class LivePaperPortfolio:
                         recent_selection_reason_counts
                     ),
                 },
+                "lifecycle_counts": self._lifecycle_counts(),
+                "open_position_lifecycle_rows": lifecycle_rows,
                 "runtime_policy_states": runtime_policy_states,
                 "top_symbols": list(self.last_top_symbols),
             },
@@ -2628,6 +2809,11 @@ class LivePaperPortfolio:
         ]
 
     def close_trade(self, trade, row, *, reason, exit_price=None):
+        trade.transition_lifecycle(
+            "exited",
+            detail=reason,
+            timestamp=row.name,
+        )
         trade.annotate_exit(reason=reason)
         trade.close(row, exit_price=exit_price)
         self.account.update(trade)
@@ -2678,6 +2864,16 @@ class LivePaperPortfolio:
                 continue
 
             open_r_multiple = self._open_r_multiple(trade, float(row["close"]))
+            if (
+                str(getattr(trade, "lifecycle_state", "candidate")) == "probe"
+                and open_r_multiple >= self.convexity_promote_trigger_r
+                and not getattr(trade, "convexity_enabled", False)
+            ):
+                trade.transition_lifecycle(
+                    "validated",
+                    detail="open_r_confirmation",
+                    timestamp=row.name,
+                )
             trailing_activation_r = float(
                 getattr(trade, "trailing_activation_r", None)
                 or self.trailing_activation_r
@@ -2758,6 +2954,12 @@ class LivePaperPortfolio:
                 decay_score=result["decay_score"],
                 proposed_stop=(None if result["should_exit"] else result["proposed_stop"]),
             )
+            if str(result.get("state") or "") == "decay":
+                trade.transition_lifecycle(
+                    "decaying",
+                    detail="trail_decay",
+                    timestamp=row.name,
+                )
             if result["should_exit"]:
                 exit_reason = "state exit" if result["state"] == "exit" else "trend weakness"
                 self.close_trade(trade, row, reason=exit_reason)
@@ -2861,6 +3063,21 @@ class LivePaperPortfolio:
                 score=state["score"],
                 side=candidate["side"],
                 config=self.config,
+            )
+            trade.annotate_capital_request(
+                request_type=candidate.get("request_type", "fresh_entry"),
+                capital_lane=candidate.get(
+                    "capital_lane",
+                    self._capital_lane_for_strategy(strategy_type),
+                ),
+                lineage_id=self._lineage_id_for_candidate(candidate, timestamp),
+                lineage_parent_trade_id=None,
+                lineage_reentry_count=0,
+            )
+            trade.transition_lifecycle(
+                "allocated",
+                detail="allocator_open_approved",
+                timestamp=timestamp,
             )
             stop_price = float(
                 candidate.get("stop_price_override", trade.stop) or trade.stop
@@ -2990,6 +3207,15 @@ class LivePaperPortfolio:
                     add_count=0,
                     last_add_bar=0,
                 )
+            trade.transition_lifecycle(
+                "probe",
+                detail=(
+                    "convexity_probe_opened"
+                    if state["convexity_enabled"]
+                    else "initial_probe_opened"
+                ),
+                timestamp=timestamp,
+            )
             self.open_positions.append(trade)
             self.daily_entries_taken += 1
             opened_this_step += 1
@@ -3016,6 +3242,12 @@ class LivePaperPortfolio:
                 )
 
         self._record_selection_decisions(states, final_reason_by_id, timestamp)
+        self._append_allocator_decision_rows(
+            states,
+            final_reason_by_id,
+            timestamp,
+            allocated_state_ids,
+        )
         self._write_state_artifacts()
         final_reason_counts = defaultdict(int)
         for reason in final_reason_by_id.values():

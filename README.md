@@ -13,6 +13,20 @@ role-specialized sleeves rather than one monolithic strategy:
 The project now includes a live-paper cockpit with a FastAPI telemetry backend,
 a Next.js dashboard, and a one-command launcher.
 
+## Refactor Layer
+
+The repo now includes the first structural refactor layer needed before more
+advanced lineage/recycle logic:
+
+- explicit trade lifecycle states:
+  - `candidate -> allocated -> probe -> validated -> expanded -> decaying -> exited`
+- capital-routing metadata on every trade:
+  - `request_type`, `capital_lane`, `lineage_id`, re-entry count scaffold
+- allocator-decision forensics:
+  - every decision cycle can now be audited through `allocator_decisions.csv`
+- live continuity:
+  - the runner catches up from the last persisted runtime state before resuming
+
 ## Current Production-Like Stack
 
 - Active sleeves:
@@ -146,8 +160,10 @@ The live-paper path writes audit artifacts that the dashboard consumes,
 including:
 
 - portfolio status
+- open-position lifecycle rows
 - runtime policy rows
 - trade and signal logs
+- allocator decision audit rows
 - engine heartbeat
 - cycle history
 - symbol pipeline status

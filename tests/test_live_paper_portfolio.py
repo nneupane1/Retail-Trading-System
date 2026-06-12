@@ -467,6 +467,10 @@ class LivePaperPortfolioTests(unittest.TestCase):
             self.assertEqual(trade.symbol, "BTCUSDT")
             self.assertEqual(trade.score_bucket, "0.9-1.0")
             self.assertGreater(trade.intended_risk_per_trade, 0.0)
+            self.assertEqual("fresh_entry", trade.request_type)
+            self.assertEqual("15m", trade.capital_lane)
+            self.assertEqual("probe", trade.lifecycle_state)
+            self.assertIsNotNone(trade.lineage_id)
 
     def test_core_convexity_opens_as_probe_but_preserves_full_risk_target(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -526,6 +530,7 @@ class LivePaperPortfolioTests(unittest.TestCase):
             trade = portfolio.open_positions[0]
             self.assertTrue(trade.convexity_enabled)
             self.assertEqual(trade.convexity_state, "probe")
+            self.assertEqual("probe", trade.lifecycle_state)
             self.assertAlmostEqual(trade.convexity_probe_fraction, 0.35, places=7)
             self.assertGreater(trade.intended_risk_per_trade, trade.effective_risk_fraction)
             self.assertAlmostEqual(
@@ -618,6 +623,7 @@ class LivePaperPortfolioTests(unittest.TestCase):
             self.assertEqual(len(trade.entries), probe_entries + 1)
             self.assertEqual(trade.convexity_stage, 1)
             self.assertEqual(trade.convexity_state, "promoted")
+            self.assertEqual("validated", trade.lifecycle_state)
             self.assertGreater(trade.effective_risk_fraction, probe_risk)
 
     def test_adaptive_threshold_relaxes_when_day_is_behind_schedule(self):
@@ -2152,18 +2158,93 @@ class LivePaperPortfolioTests(unittest.TestCase):
             )
             self.assertIn("selection_reason_counts", status)
             self.assertIn("cap_pressure_summary", status)
+            self.assertIn("lifecycle_counts", status)
+            self.assertIn("open_position_lifecycle_rows", status)
             self.assertIn("runtime_policy_states", status)
             self.assertEqual(1, status["selection_reason_counts"]["shared_risk_cap"])
             self.assertEqual(
                 1,
                 status["cap_pressure_summary"]["cumulative"]["strategy_sleeve_cap_count"],
             )
+            self.assertEqual({}, status["lifecycle_counts"])
             self.assertEqual(
                 "fallback_short_only",
                 status["runtime_policy_states"]["h1_execution"]["label"],
             )
             self.assertTrue(Path(temp_dir, "selection_reason_summary.csv").exists())
             self.assertTrue(Path(temp_dir, "runtime_policy_summary.csv").exists())
+
+    def test_select_and_open_writes_allocator_decision_audit_and_lifecycle_rows(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config = DummyConfig(output_dir=temp_dir)
+            state_logger = LivePortfolioStateLogger(
+                output_dir=temp_dir,
+                config=config,
+            )
+            portfolio = LivePaperPortfolio(
+                config=config,
+                state_logger=state_logger,
+            )
+            timestamp = pd.Timestamp("2026-01-01 12:00:00")
+            row = pd.Series(
+                {
+                    "close": 100.0,
+                    "low": 99.0,
+                    "high": 101.0,
+                    "ll2": 95.0,
+                },
+                name=timestamp,
+            )
+
+            portfolio.reset_daily_state_if_needed(timestamp)
+            summary = portfolio.select_and_open(
+                [
+                    {
+                        "symbol": "BTCUSDT",
+                        "timestamp": timestamp,
+                        "side": "long",
+                        "row": row,
+                        "bias": "neutral",
+                        "edge_type": "impulse_breakout",
+                        "body_bucket": "strong",
+                        "vwap_bucket": "far",
+                        "bucket_key_text": "impulse_breakout|neutral|strong|far",
+                        "bucket_valid": True,
+                        "bucket_expected_return": 0.0002,
+                        "bucket_risk_mult": 1.0,
+                        "risk_mult": 1.0,
+                        "momentum_rank": 0.95,
+                        "is_top_mover": True,
+                        "score": 0.92,
+                        "score_bucket": "0.9-1.0",
+                        "feature_values": {
+                            "body_strength": 0.9,
+                            "close_position": 0.9,
+                            "vwap_score": 1.0,
+                            "momentum": 0.95,
+                        },
+                    }
+                ],
+                timestamp,
+            )
+
+            self.assertEqual(1, summary["opened_count"])
+            allocator_log = Path(temp_dir, "allocator_decisions.csv")
+            self.assertTrue(allocator_log.exists())
+            allocator_rows = pd.read_csv(allocator_log)
+            self.assertEqual(1, len(allocator_rows))
+            self.assertEqual("BTCUSDT", allocator_rows.iloc[0]["symbol"])
+            self.assertEqual("opened", allocator_rows.iloc[0]["final_reason"])
+            self.assertEqual("15m", allocator_rows.iloc[0]["capital_lane"])
+
+            status = json.loads(
+                Path(temp_dir, "portfolio_status.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(1, status["lifecycle_counts"]["probe"])
+            self.assertEqual(
+                "probe",
+                status["open_position_lifecycle_rows"][0]["lifecycle_state"],
+            )
 
     def test_allocator_cross_sleeve_coordination_boosts_bearish_h1_short(self):
         with tempfile.TemporaryDirectory() as temp_dir:
