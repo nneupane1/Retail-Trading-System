@@ -3017,3 +3017,27 @@ class LivePaperPortfolio:
 
         self._record_selection_decisions(states, final_reason_by_id, timestamp)
         self._write_state_artifacts()
+        final_reason_counts = defaultdict(int)
+        for reason in final_reason_by_id.values():
+            final_reason_counts[str(reason)] += 1
+        return {
+            "total_candidates": len(states),
+            "eligible_candidates": len(eligible_states),
+            "allocated_candidates": len(ordered_states),
+            "opened_count": opened_this_step,
+            "opened_by_strategy": {
+                str(strategy_type): int(count)
+                for strategy_type, count in opened_by_strategy.items()
+            },
+            "final_reason_counts": {
+                str(reason): int(count)
+                for reason, count in final_reason_counts.items()
+            },
+            "selected_symbols": sorted(
+                {
+                    str(state["candidate"].get("symbol"))
+                    for state in states
+                    if final_reason_by_id.get(state["id"]) == "opened"
+                }
+            ),
+        }

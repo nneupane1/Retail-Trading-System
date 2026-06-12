@@ -12,3 +12,6 @@ backtest/output/*
 !backtest/output/.gitkeep
 live_sim/output/*
 !live_sim/output/.gitkeep
+
+dashboard/node_modules/
+dashboard/.next/

@@ -50,6 +50,46 @@ LIVE_SIGNAL_LOG_FIELDS = [
     "htf_candidate_rank",
 ]
 
+LIVE_ENGINE_CYCLE_FIELDS = [
+    "cycle_count",
+    "status",
+    "cycle_started_at",
+    "cycle_completed_at",
+    "cycle_duration_seconds",
+    "poll_seconds",
+    "symbol_count",
+    "symbols_with_recent_fetch",
+    "total_recent_1m_rows",
+    "total_state_1m_rows",
+    "latest_recent_1m_timestamp",
+    "new_15m_symbol_count",
+    "new_15m_symbols",
+    "candidates_built",
+    "eligible_candidates",
+    "allocated_candidates",
+    "opened_count",
+    "top_symbols",
+    "portfolio_open_positions",
+    "equity",
+]
+
+LIVE_SYMBOL_PIPELINE_FIELDS = [
+    "symbol",
+    "recent_rows_1m",
+    "state_rows_1m",
+    "latest_recent_1m_timestamp",
+    "latest_15m_timestamp",
+    "latest_1h_timestamp",
+    "latest_6h_timestamp",
+    "latest_12h_timestamp",
+    "latest_1d_timestamp",
+    "new_15m_candle",
+    "candidate_count",
+    "candidate_strategies",
+    "top_mover",
+    "momentum_rank",
+]
+
 
 class _CsvLoggerBase:
     def __init__(self, filepath, fieldnames, reset=False):
@@ -145,6 +185,23 @@ class LivePortfolioStateLogger:
         target = self.output_dir / filename
         with target.open("w", encoding="utf-8") as file_handle:
             json.dump(payload, file_handle, indent=2, default=str)
+
+    def _write_csv(self, filename, fieldnames, rows):
+        target = self.output_dir / filename
+        with target.open("w", newline="", encoding="utf-8") as file_handle:
+            writer = csv.DictWriter(file_handle, fieldnames=fieldnames)
+            writer.writeheader()
+            for row in rows:
+                writer.writerow({field: row.get(field) for field in fieldnames})
+
+    def _append_csv_row(self, filename, fieldnames, row):
+        target = self.output_dir / filename
+        exists = target.exists()
+        with target.open("a", newline="", encoding="utf-8") as file_handle:
+            writer = csv.DictWriter(file_handle, fieldnames=fieldnames)
+            if not exists:
+                writer.writeheader()
+            writer.writerow({field: row.get(field) for field in fieldnames})
 
     def write_score_bucket_summary(self, rows):
         target = self.output_dir / "score_bucket_summary.csv"
@@ -287,6 +344,15 @@ class LivePortfolioStateLogger:
             writer.writeheader()
             for row in rows:
                 writer.writerow({field: row.get(field) for field in fieldnames})
+
+    def write_engine_heartbeat(self, payload):
+        self.write_json("engine_heartbeat.json", payload)
+
+    def append_engine_cycle(self, payload):
+        self._append_csv_row("engine_cycle_history.csv", LIVE_ENGINE_CYCLE_FIELDS, payload)
+
+    def write_symbol_pipeline_status(self, rows):
+        self._write_csv("symbol_pipeline_status.csv", LIVE_SYMBOL_PIPELINE_FIELDS, rows)
 
     def write_recent_strategy_bucket_summary(self, rows):
         target = self.output_dir / "recent_strategy_bucket_summary.csv"

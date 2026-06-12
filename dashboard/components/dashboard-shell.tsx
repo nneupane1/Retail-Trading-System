@@ -1,0 +1,1721 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
+import Link from "next/link";
+import useSWR from "swr";
+import { AnimatePresence, motion } from "framer-motion";
+import clsx from "clsx";
+import {
+  Activity,
+  AlertTriangle,
+  BarChart3,
+  BriefcaseBusiness,
+  CandlestickChart,
+  Clock3,
+  Globe,
+  LayoutGrid,
+  Radar,
+  Shield,
+  Sparkles,
+  Waves,
+} from "lucide-react";
+import { CandlePanel } from "@/components/candle-panel";
+import { MiniLineChart } from "@/components/mini-line-chart";
+
+type Row = Record<string, any>;
+type ViewKey = "overview" | "market" | "atlas" | "portfolio" | "allocator" | "runtime";
+
+type Snapshot = {
+  run?: { run_id: string; path: string; last_write_time?: number } | null;
+  portfolio_status: Record<string, any>;
+  runtime_policy_rows: Row[];
+  selection_reason_rows: Row[];
+  recent_selection_reason_rows: Row[];
+  selection_reason_by_strategy_rows: Row[];
+  daily_summary_rows: Row[];
+  trade_rows: Row[];
+  signal_rows: Row[];
+  engine_heartbeat: Record<string, any>;
+  engine_cycle_rows: Row[];
+  symbol_pipeline_rows: Row[];
+  latest_trade?: Row | null;
+  latest_signal?: Row | null;
+  available_symbols?: string[];
+};
+
+type Point = { label?: string; value: number };
+
+const API_URL = process.env.NEXT_PUBLIC_DASHBOARD_API_URL ?? "http://127.0.0.1:8000";
+const DASHBOARD_MODE = (process.env.NEXT_PUBLIC_DASHBOARD_MODE || "live").toLowerCase();
+const WS_URL = API_URL.replace(/^http/, "ws") + (DASHBOARD_MODE === "backtest" ? "/ws/backtest" : "/ws/live");
+const FALLBACK_SYMBOLS = [
+  "AAVEUSDT",
+  "AVAXUSDT",
+  "BNBUSDT",
+  "BTCUSDT",
+  "ETHUSDT",
+  "LINKUSDT",
+  "SOLUSDT",
+  "TRXUSDT",
+  "XRPUSDT",
+];
+
+const VIEW_TABS: {
+  key: ViewKey;
+  href: string;
+  label: string;
+  icon: React.ReactNode;
+  description: string;
+  eyebrow: string;
+}[] = [
+  {
+    key: "overview",
+    href: "/",
+    label: "Overview",
+    icon: <BarChart3 className="h-4 w-4" />,
+    description: "Role economics, equity rhythm, and multi-sleeve pulse.",
+    eyebrow: "Portfolio intelligence",
+  },
+  {
+    key: "market",
+    href: "/market",
+    label: "Market",
+    icon: <CandlestickChart className="h-4 w-4" />,
+    description: "Price, candles, tape, levels, and symbol rotation.",
+    eyebrow: "Execution theatre",
+  },
+  {
+    key: "atlas",
+    href: "/atlas",
+    label: "Atlas",
+    icon: <LayoutGrid className="h-4 w-4" />,
+    description: "Multi-asset, multi-timeframe alignment matrix.",
+    eyebrow: "Asset command grid",
+  },
+  {
+    key: "portfolio",
+    href: "/portfolio",
+    label: "Portfolio",
+    icon: <BriefcaseBusiness className="h-4 w-4" />,
+    description: "Blotters, sleeve leaderboard, and exposure context.",
+    eyebrow: "Execution book",
+  },
+  {
+    key: "allocator",
+    href: "/allocator",
+    label: "Allocator",
+    icon: <Radar className="h-4 w-4" />,
+    description: "Cap pressure, suppression reasons, and scarce-risk routing.",
+    eyebrow: "Capital routing",
+  },
+  {
+    key: "runtime",
+    href: "/runtime",
+    label: "Runtime",
+    icon: <Shield className="h-4 w-4" />,
+    description: "Guard health, freshness, recovery, and operator notes.",
+    eyebrow: "Operational health",
+  },
+];
+
+const fetcher = async <T,>(url: string): Promise<T> => {
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`Request failed: ${response.status}`);
+  }
+  return response.json();
+};
+
+function formatMoney(value: unknown) {
+  return new Intl.NumberFormat("en-DE", {
+    style: "currency",
+    currency: "EUR",
+    maximumFractionDigits: 2,
+  }).format(Number(value ?? 0));
+}
+
+function formatPct(value: unknown, digits = 2) {
+  return `${(Number(value ?? 0) * 100).toFixed(digits)}%`;
+}
+
+function number(value: unknown, digits = 2) {
+  return Number(value ?? 0).toFixed(digits);
+}
+
+function formatRunTime(value: unknown) {
+  if (!value) {
+    return "no timestamp";
+  }
+  const date = new Date(Number(value) * 1000);
+  return new Intl.DateTimeFormat("en-GB", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(date);
+}
+
+function formatFlexibleTime(value: unknown) {
+  if (!value) {
+    return "no timestamp";
+  }
+  if (typeof value === "number") {
+    return formatRunTime(value);
+  }
+  const asNumber = Number(value);
+  if (!Number.isNaN(asNumber) && String(value).trim() !== "") {
+    return formatRunTime(asNumber);
+  }
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+  return new Intl.DateTimeFormat("en-GB", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(date);
+}
+
+function parseRunTimestamp(value: unknown) {
+  if (typeof value === "number") {
+    return value > 1_000_000_000_000 ? Math.floor(value / 1000) : value;
+  }
+  if (!value) {
+    return null;
+  }
+  const asNumber = Number(value);
+  if (!Number.isNaN(asNumber) && String(value).trim() !== "") {
+    return asNumber > 1_000_000_000_000 ? Math.floor(asNumber / 1000) : asNumber;
+  }
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  return Math.floor(date.getTime() / 1000);
+}
+
+function getReplayTimestamp(snapshot: Snapshot | undefined, selectedSymbol: string) {
+  if (!snapshot) {
+    return null;
+  }
+  const dates = [] as Array<number>;
+
+  if (snapshot.latest_signal?.timestamp) {
+    const parsed = parseRunTimestamp(snapshot.latest_signal.timestamp);
+    if (parsed) {
+      dates.push(parsed);
+    }
+  }
+
+  if (snapshot.latest_trade?.exit_time) {
+    const parsed = parseRunTimestamp(snapshot.latest_trade.exit_time);
+    if (parsed) {
+      dates.push(parsed);
+    }
+  }
+
+  if (snapshot.latest_trade?.entry_time) {
+    const parsed = parseRunTimestamp(snapshot.latest_trade.entry_time);
+    if (parsed) {
+      dates.push(parsed);
+    }
+  }
+
+  const symbolSignal = snapshot.signal_rows
+    .filter((row) => String(row.symbol ?? "").toUpperCase() === selectedSymbol.toUpperCase())
+    .map((row) => parseRunTimestamp(row.timestamp))
+    .filter((value): value is number => typeof value === "number");
+
+  if (symbolSignal.length) {
+    dates.push(...symbolSignal);
+  }
+
+  if (snapshot.run?.last_write_time) {
+    const parsed = parseRunTimestamp(snapshot.run.last_write_time);
+    if (parsed) {
+      dates.push(parsed);
+    }
+  }
+
+  return dates.length ? Math.max(...dates) : null;
+}
+
+function timeframeBandForStrategy(strategyType: unknown) {
+  const key = String(strategyType ?? "").toLowerCase();
+  if (!key) {
+    return null;
+  }
+  if (key === "core" || key === "swing_moonshot") {
+    return "15m";
+  }
+  if (key === "h1_execution") {
+    return "1h";
+  }
+  if (key.includes("h6")) {
+    return "6h";
+  }
+  if (key.includes("htf_12h")) {
+    return "12h";
+  }
+  return null;
+}
+
+function useLiveSnapshot() {
+  const { data, mutate } = useSWR<Snapshot>(`${API_URL}/api/snapshot`, fetcher, {
+    refreshInterval: 10000,
+    revalidateOnFocus: false,
+  });
+  const [socketConnected, setSocketConnected] = useState(false);
+  const [lastPacketTimestamp, setLastPacketTimestamp] = useState<number | null>(null);
+
+  useEffect(() => {
+    const socket = new WebSocket(WS_URL);
+    socket.onopen = () => setSocketConnected(true);
+    socket.onclose = () => setSocketConnected(false);
+    socket.onerror = () => setSocketConnected(false);
+    socket.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data) as Snapshot;
+        setLastPacketTimestamp(Date.now());
+        void mutate(payload, false);
+      } catch {
+        // Ignore malformed packets.
+      }
+    };
+    return () => socket.close();
+  }, [mutate]);
+
+  return {
+    data,
+    socketConnected,
+    lastPacketTimestamp,
+  };
+}
+
+function SectionCard({
+  title,
+  eyebrow,
+  children,
+  className,
+  accent = "cyan",
+}: {
+  title: string;
+  eyebrow?: string;
+  children: React.ReactNode;
+  className?: string;
+  accent?: "cyan" | "orange" | "green";
+}) {
+  const accentClass =
+    accent === "orange"
+      ? "after:from-orange-400/70 after:to-transparent"
+      : accent === "green"
+        ? "after:from-emerald-400/70 after:to-transparent"
+        : "after:from-cyan-400/70 after:to-transparent";
+  const eyebrowClass =
+    accent === "orange"
+      ? "text-orange-300/75"
+      : accent === "green"
+        ? "text-emerald-300/75"
+        : "text-cyan-300/75";
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35 }}
+      className={clsx(
+        "glass-panel relative overflow-hidden rounded-[28px] border border-white/10 p-5 shadow-glow after:absolute after:inset-x-0 after:top-0 after:h-px after:bg-gradient-to-r",
+        accentClass,
+        className,
+      )}
+    >
+      <div className="mb-4 flex items-start justify-between gap-4">
+        <div>
+          {eyebrow ? (
+            <p className={clsx("text-[11px] uppercase tracking-[0.32em]", eyebrowClass)}>{eyebrow}</p>
+          ) : null}
+          <h2 className="mt-2 text-lg font-semibold text-white">{title}</h2>
+        </div>
+      </div>
+      {children}
+    </motion.section>
+  );
+}
+
+function HeaderMetric({
+  label,
+  value,
+  subtext,
+  tone = "neutral",
+  points = [],
+  pulse = false,
+}: {
+  label: string;
+  value: string;
+  subtext?: string;
+  tone?: "neutral" | "cyan" | "green" | "orange";
+  points?: Point[];
+  pulse?: boolean;
+}) {
+  const toneClass =
+    tone === "cyan"
+      ? "border-cyan-300/28 bg-[linear-gradient(180deg,rgba(8,45,62,0.72),rgba(7,19,34,0.9))]"
+      : tone === "green"
+        ? "border-emerald-300/28 bg-[linear-gradient(180deg,rgba(9,45,38,0.72),rgba(8,20,23,0.9))]"
+        : tone === "orange"
+          ? "border-orange-300/28 bg-[linear-gradient(180deg,rgba(52,31,18,0.78),rgba(24,16,21,0.92))]"
+          : "border-violet-200/18 bg-[linear-gradient(180deg,rgba(34,29,48,0.78),rgba(18,16,29,0.94))]";
+  const sparkTone = tone === "neutral" ? "cyan" : tone;
+  const sparkPoints = points.length ? points : [{ value: 0 }, { value: 0 }];
+  const compactValue = value.length > 18;
+  return (
+    <div className={clsx("flex min-h-[138px] min-w-0 flex-col justify-between rounded-[24px] border px-4 py-3 shadow-[0_18px_40px_rgba(0,0,0,0.22)]", toneClass)}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="text-[10px] uppercase tracking-[0.28em] text-white/52">{label}</div>
+        </div>
+        <div className="flex items-center gap-2">
+          <MiniLineChart
+            points={sparkPoints}
+            tone={sparkTone}
+            className="h-[30px] w-[70px] rounded-full border border-white/14 bg-black/12"
+            height={34}
+          />
+          <span
+            className={clsx(
+              "inline-flex h-2.5 w-2.5 shrink-0 rounded-full shadow-[0_0_16px_currentColor]",
+              tone === "green"
+                ? "bg-emerald-300"
+                : tone === "orange"
+                  ? "bg-orange-300"
+                  : tone === "cyan"
+                    ? "bg-cyan-300"
+                    : "bg-white/50",
+              pulse ? "animate-pulse" : "",
+            )}
+          />
+        </div>
+      </div>
+      <div className="mt-4 min-w-0">
+        <div
+          className={clsx(
+            "break-words font-semibold leading-tight text-white",
+            compactValue ? "text-[15px] md:text-base" : "text-[26px]",
+          )}
+        >
+          {value}
+        </div>
+        {subtext ? <div className="mt-2 text-xs leading-5 text-white/58">{subtext}</div> : null}
+      </div>
+    </div>
+  );
+}
+
+function MetricCard({
+  icon,
+  label,
+  value,
+  subtext,
+  tone = "cyan",
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  subtext: string;
+  tone?: "cyan" | "orange" | "green";
+}) {
+  const toneClass =
+    tone === "orange"
+      ? "from-orange-500/18 to-orange-500/4 border-orange-400/25"
+      : tone === "green"
+        ? "from-emerald-500/18 to-emerald-500/4 border-emerald-400/25"
+        : "from-cyan-500/18 to-cyan-500/4 border-cyan-400/25";
+  return (
+    <div className={clsx("rounded-2xl border bg-gradient-to-br p-4", toneClass)}>
+      <div className="mb-3 flex items-center gap-3 text-white/80">
+        <div className="rounded-xl border border-white/10 bg-white/5 p-2">{icon}</div>
+        <span className="text-xs uppercase tracking-[0.24em]">{label}</span>
+      </div>
+      <div className="text-2xl font-semibold text-white">{value}</div>
+      <div className="mt-2 text-sm text-white/55">{subtext}</div>
+    </div>
+  );
+}
+
+function StatPill({
+  label,
+  value,
+  tone = "neutral",
+}: {
+  label: string;
+  value: string;
+  tone?: "neutral" | "good" | "warning";
+}) {
+  const toneClass =
+    tone === "good"
+      ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-200"
+      : tone === "warning"
+        ? "border-orange-400/20 bg-orange-400/10 text-orange-200"
+        : "border-white/10 bg-white/5 text-white";
+  return (
+    <div className={clsx("rounded-2xl border-2 px-4 py-3", toneClass)}>
+      <div className="text-[11px] uppercase tracking-[0.22em] text-white/55">{label}</div>
+      <div className="mt-2 text-lg font-semibold">{value}</div>
+    </div>
+  );
+}
+
+function SignalStateCell({
+  row,
+  label,
+}: {
+  row?: Row;
+  label: string;
+}) {
+  if (!row) {
+    return (
+      <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2">
+        <div className="text-[10px] uppercase tracking-[0.2em] text-white/35">{label}</div>
+        <div className="mt-2 text-sm text-white/45">idle</div>
+      </div>
+    );
+  }
+  const side = String(row.side ?? "flat").toLowerCase();
+  const toneClass =
+    side === "long"
+      ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-200"
+      : side === "short"
+        ? "border-orange-400/20 bg-orange-400/10 text-orange-200"
+        : "border-white/10 bg-white/5 text-white";
+  return (
+    <div className={clsx("rounded-2xl border px-3 py-2", toneClass)}>
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-[10px] uppercase tracking-[0.2em] text-white/45">{label}</div>
+        <div className="text-[11px] uppercase tracking-[0.18em]">{side}</div>
+      </div>
+      <div className="mt-2 flex items-end justify-between gap-3">
+        <div className="text-base font-semibold">{number(row.selection_score, 2)}</div>
+        <div className="max-w-[110px] truncate text-[11px] text-white/55">
+          {row.strategy_type}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function DashboardShell({ view = "overview" }: { view?: ViewKey }) {
+  const { data: snapshot, socketConnected, lastPacketTimestamp } = useLiveSnapshot();
+  const [symbol, setSymbol] = useState("BTCUSDT");
+  const [timeframe, setTimeframe] = useState("15m");
+
+  const portfolio = snapshot?.portfolio_status ?? {};
+  const strategyStats = portfolio.strategy_stats ?? {};
+  const selectionRows = snapshot?.selection_reason_rows ?? [];
+  const recentSelectionRows = snapshot?.recent_selection_reason_rows ?? [];
+  const strategySelectionRows = snapshot?.selection_reason_by_strategy_rows ?? [];
+  const runtimeRows = snapshot?.runtime_policy_rows ?? [];
+  const trades = snapshot?.trade_rows ?? [];
+  const signals = snapshot?.signal_rows ?? [];
+  const engineHeartbeat = snapshot?.engine_heartbeat ?? {};
+  const engineCycleRows = snapshot?.engine_cycle_rows ?? [];
+  const symbolPipelineRows = snapshot?.symbol_pipeline_rows ?? [];
+  const availableSymbols = snapshot?.available_symbols?.length
+    ? snapshot.available_symbols
+    : FALLBACK_SYMBOLS;
+
+  useEffect(() => {
+    if (!availableSymbols.includes(symbol)) {
+      setSymbol(availableSymbols[0] ?? "BTCUSDT");
+    }
+  }, [availableSymbols, symbol]);
+
+  const strategyCards = useMemo(
+    () =>
+      Object.entries(strategyStats)
+        .map(([name, row]) => ({
+          name,
+          total_pnl: Number((row as Row).total_pnl ?? 0),
+          count: Number((row as Row).count ?? 0),
+          wins: Number((row as Row).wins ?? 0),
+          total_R: Number((row as Row).total_R ?? 0),
+        }))
+        .sort((a, b) => b.total_pnl - a.total_pnl),
+    [strategyStats],
+  );
+
+  const equityPoints = useMemo(
+    () =>
+      (snapshot?.daily_summary_rows ?? []).map((row, index) => ({
+        label: String(row.date ?? index),
+        value: Number(row.equity_end ?? row.equity_start ?? 0),
+      })),
+    [snapshot?.daily_summary_rows],
+  );
+
+  const pnlPoints = useMemo(
+    () =>
+      (snapshot?.daily_summary_rows ?? []).map((row, index) => ({
+        label: String(row.date ?? index),
+        value: Number(row.realized_pnl ?? 0),
+      })),
+    [snapshot?.daily_summary_rows],
+  );
+
+  const capPoints = useMemo(
+    () =>
+      (recentSelectionRows.length ? recentSelectionRows : selectionRows)
+        .slice(0, 10)
+        .reverse()
+        .map((row, index) => ({
+          label: String(row.selection_reason ?? index),
+          value: Number(row.count ?? 0),
+        })),
+    [recentSelectionRows, selectionRows],
+  );
+
+  const thresholdPoints = useMemo(
+    () =>
+      (snapshot?.daily_summary_rows ?? []).map((row, index) => ({
+        label: String(row.date ?? index),
+        value: Number(row.threshold ?? row.current_threshold ?? 0),
+      })),
+    [snapshot?.daily_summary_rows],
+  );
+
+  const topTradeRows = useMemo(() => trades.slice(-12).reverse(), [trades]);
+  const topSignalRows = useMemo(() => signals.slice(-18).reverse(), [signals]);
+  const runtimeRow = runtimeRows[0];
+  const topSymbols = Array.isArray(portfolio.top_symbols) ? portfolio.top_symbols : [];
+  const topSymbolSet = useMemo(() => new Set(topSymbols.map((item: string) => String(item))), [topSymbols]);
+  const recentCapPressure = portfolio.cap_pressure_summary?.recent ?? {};
+  const cumulativeCapPressure = portfolio.cap_pressure_summary?.cumulative ?? {};
+  const livePnl = Number(portfolio.equity ?? 0) - Number(portfolio.initial_equity ?? 0);
+  const latestTradePnl = Number(snapshot?.latest_trade?.pnl ?? 0);
+  const replayTimestamp = useMemo(() => getReplayTimestamp(snapshot, symbol), [snapshot, symbol]);
+  const connectionLabel =
+    DASHBOARD_MODE === "backtest"
+      ? snapshot?.run?.run_id
+        ? `replay ${snapshot.run.run_id}`
+        : "no run"
+      : socketConnected
+        ? "stream live"
+        : "reconnecting";
+  const connectionTone =
+    DASHBOARD_MODE === "backtest" ? (snapshot?.run ? "green" : "orange") : socketConnected ? "green" : "orange";
+  const viewMeta = VIEW_TABS.find((item) => item.key === view) ?? VIEW_TABS[0];
+  const runtimePoints = useMemo(() => {
+    const pf = Number(runtimeRow?.profit_factor ?? 0);
+    const avgR = Number(runtimeRow?.avg_R ?? 0);
+    const count = Number(runtimeRow?.count ?? 0);
+    return [{ value: pf }, { value: avgR * 10 }, { value: count }];
+  }, [runtimeRow]);
+  const enginePulsePoints = useMemo(
+    () =>
+      engineCycleRows.slice(-24).map((row, index) => ({
+        label: String(row.cycle_count ?? index),
+        value: Number(row.candidates_built ?? row.new_15m_symbol_count ?? 0),
+      })),
+    [engineCycleRows],
+  );
+  const ingestionPoints = useMemo(
+    () =>
+      engineCycleRows.slice(-24).map((row, index) => ({
+        label: String(row.cycle_count ?? index),
+        value: Number(row.total_recent_1m_rows ?? 0),
+      })),
+    [engineCycleRows],
+  );
+  const openFlowPoints = useMemo(
+    () =>
+      engineCycleRows.slice(-24).map((row, index) => ({
+        label: String(row.cycle_count ?? index),
+        value: Number(row.opened_count ?? 0),
+      })),
+    [engineCycleRows],
+  );
+  const pipelineBySymbol = useMemo(() => {
+    const map = new Map<string, Row>();
+    for (const row of symbolPipelineRows) {
+      map.set(String(row.symbol ?? "").toUpperCase(), row);
+    }
+    return map;
+  }, [symbolPipelineRows]);
+
+  const latestTradeBySymbol = useMemo(() => {
+    const map = new Map<string, Row>();
+    for (let index = trades.length - 1; index >= 0; index -= 1) {
+      const row = trades[index];
+      const symbolKey = String(row.symbol ?? "").toUpperCase();
+      if (!symbolKey || map.has(symbolKey)) {
+        continue;
+      }
+      map.set(symbolKey, row);
+    }
+    return map;
+  }, [trades]);
+
+  const signalBandsBySymbol = useMemo(() => {
+    const bandOrder = ["15m", "1h", "6h", "12h"];
+    const map = new Map<string, Record<string, Row | undefined>>();
+    for (let index = topSignalRows.length - 1; index >= 0; index -= 1) {
+      const row = topSignalRows[index];
+      const symbolKey = String(row.symbol ?? "").toUpperCase();
+      const band = timeframeBandForStrategy(row.strategy_type);
+      if (!symbolKey || !band) {
+        continue;
+      }
+      const bucket = map.get(symbolKey) ?? {};
+      const current = bucket[band];
+      if (!current || Number(row.selection_score ?? 0) >= Number(current.selection_score ?? 0)) {
+        bucket[band] = row;
+      }
+      map.set(symbolKey, bucket);
+    }
+    for (const item of availableSymbols) {
+      if (!map.has(item)) {
+        map.set(item, Object.fromEntries(bandOrder.map((band) => [band, undefined])));
+      }
+    }
+    return map;
+  }, [availableSymbols, topSignalRows]);
+
+  const symbolAtlasRows = useMemo(
+    () =>
+      availableSymbols.map((item) => {
+        const bands = signalBandsBySymbol.get(item) ?? {};
+        const lastTrade = latestTradeBySymbol.get(item);
+        const pipeline = pipelineBySymbol.get(item) ?? {};
+        return {
+          symbol: item,
+          isTop: topSymbolSet.has(item),
+          pipeline,
+          lastTrade,
+          lastTradePnl: Number(lastTrade?.pnl ?? 0),
+          lastTradeSide: String(lastTrade?.side ?? ""),
+          band15m: bands["15m"],
+          band1h: bands["1h"],
+          band6h: bands["6h"],
+          band12h: bands["12h"],
+          lastSignalTime:
+            bands["15m"]?.timestamp ??
+            bands["1h"]?.timestamp ??
+            bands["6h"]?.timestamp ??
+            bands["12h"]?.timestamp ??
+            null,
+        };
+      }),
+    [availableSymbols, latestTradeBySymbol, pipelineBySymbol, signalBandsBySymbol, topSymbolSet],
+  );
+
+  const topMoverCards = useMemo(
+    () =>
+      symbolAtlasRows
+        .filter((row) => row.isTop)
+        .slice(0, 4),
+    [symbolAtlasRows],
+  );
+
+  const overviewContent = (
+    <div className="grid gap-5">
+      <div className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr_0.95fr]">
+        <SectionCard title="Equity Wave" eyebrow="Daily curve" accent="cyan">
+          <div className="mb-3 flex items-center justify-between text-sm text-white/55">
+            <span>End-of-day equity path</span>
+            <span>{equityPoints.length} days</span>
+          </div>
+          <MiniLineChart points={equityPoints} tone="cyan" className="h-[190px]" />
+        </SectionCard>
+
+        <SectionCard title="PnL Rhythm" eyebrow="Realized daily pulse" accent="green">
+          <div className="mb-3 flex items-center justify-between text-sm text-white/55">
+            <span>Realized PnL by day</span>
+            <span>{pnlPoints.length} days</span>
+          </div>
+          <MiniLineChart points={pnlPoints} tone="green" className="h-[190px]" />
+        </SectionCard>
+
+        <SectionCard title="Stack Pulse" eyebrow="System role split" accent="green">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <StatPill label="Threshold source" value={String(portfolio.current_threshold_source ?? "base")} />
+            <StatPill label="Threshold floor" value={number(portfolio.current_threshold_floor, 2)} />
+            <StatPill
+              label="Recent cap block rate"
+              value={formatPct(recentCapPressure.cap_block_rate, 1)}
+              tone={(recentCapPressure.cap_block_rate ?? 0) > 0.2 ? "warning" : "good"}
+            />
+            <StatPill label="Top symbols" value={topSymbols.length ? String(topSymbols.length) : "none"} />
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {topSymbols.length ? (
+              topSymbols.map((item: string) => (
+                <span
+                  key={item}
+                  className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-xs uppercase tracking-[0.18em] text-cyan-200"
+                >
+                  {item}
+                </span>
+              ))
+            ) : (
+              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-[0.18em] text-white/50">
+                no active leaders yet
+              </span>
+            )}
+          </div>
+        </SectionCard>
+      </div>
+
+      <SectionCard title="Engine Pulse" eyebrow="Ingestion / sync / routing" accent="orange">
+        <div className="grid gap-5 xl:grid-cols-[0.95fr_0.95fr_1.1fr]">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <StatPill
+              label="Cycle state"
+              value={String(engineHeartbeat.status ?? "waiting")}
+              tone={String(engineHeartbeat.status ?? "").includes("routed") ? "good" : "neutral"}
+            />
+            <StatPill label="Cycle" value={String(engineHeartbeat.cycle_count ?? 0)} />
+            <StatPill
+              label="Latest 1m feed"
+              value={formatFlexibleTime(engineHeartbeat.latest_recent_1m_timestamp)}
+              tone={engineHeartbeat.latest_recent_1m_timestamp ? "good" : "warning"}
+            />
+            <StatPill label="New 15m symbols" value={String(engineHeartbeat.new_15m_symbol_count ?? 0)} />
+            <StatPill label="Candidates built" value={String(engineHeartbeat.candidates_built ?? 0)} />
+            <StatPill label="Opened this cycle" value={String(engineHeartbeat.opened_count ?? 0)} tone={Number(engineHeartbeat.opened_count ?? 0) > 0 ? "good" : "neutral"} />
+          </div>
+          <div className="grid gap-3">
+            <div>
+              <div className="mb-2 text-xs uppercase tracking-[0.24em] text-white/45">1m ingestion pressure</div>
+              <MiniLineChart points={ingestionPoints} tone="cyan" className="h-[130px]" />
+            </div>
+            <div>
+              <div className="mb-2 text-xs uppercase tracking-[0.24em] text-white/45">Candidate / route pulse</div>
+              <MiniLineChart points={enginePulsePoints} tone="orange" className="h-[130px]" />
+            </div>
+          </div>
+          <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-xs uppercase tracking-[0.24em] text-white/45">Current cycle readout</div>
+              <span className="rounded-full border border-cyan-400/18 bg-cyan-400/10 px-3 py-1 text-[10px] uppercase tracking-[0.2em] text-cyan-200">
+                {String(engineHeartbeat.symbol_count ?? availableSymbols.length)} symbols
+              </span>
+            </div>
+            <div className="mt-4 grid gap-3 text-sm text-white/65">
+              <div className="flex items-center justify-between gap-4 rounded-2xl border border-white/8 bg-black/10 px-4 py-3">
+                <span>Total recent 1m rows</span>
+                <span className="font-semibold text-white">{engineHeartbeat.total_recent_1m_rows ?? 0}</span>
+              </div>
+              <div className="flex items-center justify-between gap-4 rounded-2xl border border-white/8 bg-black/10 px-4 py-3">
+                <span>State rows in memory</span>
+                <span className="font-semibold text-white">{engineHeartbeat.total_state_1m_rows ?? 0}</span>
+              </div>
+              <div className="flex items-center justify-between gap-4 rounded-2xl border border-white/8 bg-black/10 px-4 py-3">
+                <span>Opened candidates this cycle</span>
+                <span className="font-semibold text-white">{engineHeartbeat.opened_count ?? 0}</span>
+              </div>
+              <div className="rounded-2xl border border-white/8 bg-black/10 px-4 py-3">
+                <div className="text-[11px] uppercase tracking-[0.18em] text-white/45">Selection reasons this cycle</div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {Object.entries(engineHeartbeat.selection_reason_counts ?? {}).length ? (
+                    Object.entries(engineHeartbeat.selection_reason_counts ?? {}).map(([reason, count]) => (
+                      <span
+                        key={reason}
+                        className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] uppercase tracking-[0.14em] text-white/70"
+                      >
+                        {String(reason)} {String(count)}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-white/45">No routing reason changes recorded yet.</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </SectionCard>
+
+      <SectionCard title="Sleeve PnL" eyebrow="Role decomposition">
+        <div className="grid gap-4 xl:grid-cols-3">
+          {strategyCards.length ? (
+            strategyCards.map((row) => (
+              <div key={row.name} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.24em] text-white/45">{row.name}</div>
+                    <div className="mt-1 text-lg font-semibold">{formatMoney(row.total_pnl)}</div>
+                  </div>
+                  <div className="text-right text-sm text-white/60">
+                    <div>{row.count} trades</div>
+                    <div>{row.wins} wins</div>
+                  </div>
+                </div>
+                <div className="mt-3 text-sm text-white/55">total R {number(row.total_R, 2)}</div>
+              </div>
+            ))
+          ) : (
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/55">
+              No sleeve PnL rows yet.
+            </div>
+          )}
+        </div>
+      </SectionCard>
+
+      <SectionCard title="Leader Deck" eyebrow="Active market focus" accent="cyan">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {topMoverCards.length ? (
+            topMoverCards.map((row) => (
+              <div key={row.symbol} className="rounded-2xl border border-cyan-400/18 bg-cyan-400/8 p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.24em] text-cyan-200/70">{row.symbol}</div>
+                    <div className="mt-2 text-lg font-semibold text-white">
+                      {row.band15m?.side ?? row.band1h?.side ?? row.band12h?.side ?? "watch"}
+                    </div>
+                  </div>
+                  <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2 py-1 text-[10px] uppercase tracking-[0.22em] text-cyan-100">
+                    top mover
+                  </span>
+                </div>
+                <div className="mt-4 grid gap-2">
+                  <SignalStateCell row={row.band15m} label="15m" />
+                  <SignalStateCell row={row.band1h} label="1H" />
+                  <SignalStateCell row={row.band12h} label="12H" />
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/55 md:col-span-2 xl:col-span-4">
+              No active leader rows yet.
+            </div>
+          )}
+        </div>
+      </SectionCard>
+    </div>
+  );
+
+  const marketContent = (
+    <div className="grid gap-5 xl:grid-cols-[1.52fr_0.92fr]">
+      <SectionCard title="Market Panel" eyebrow="Price / trades / levels" className="min-h-[680px]">
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-[0.24em] text-white/65">
+            Replay clipping through {formatFlexibleTime(replayTimestamp)}
+          </div>
+          <select
+            className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white"
+            value={symbol}
+            onChange={(event) => setSymbol(event.target.value)}
+          >
+            {availableSymbols.map((item) => (
+              <option key={item} value={item} className="bg-slate-950">
+                {item}
+              </option>
+            ))}
+          </select>
+          <select
+            className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white"
+            value={timeframe}
+            onChange={(event) => setTimeframe(event.target.value)}
+          >
+            {["1m", "15m", "1h", "6h", "12h", "1D"].map((item) => (
+              <option key={item} value={item} className="bg-slate-950">
+                {item}
+              </option>
+            ))}
+          </select>
+          <div className="rounded-2xl border border-cyan-400/20 bg-cyan-400/10 px-4 py-2 text-xs uppercase tracking-[0.24em] text-cyan-200">
+            Pan / zoom / price levels / trade markers
+          </div>
+          <div className={clsx(
+            "rounded-2xl px-4 py-2 text-xs uppercase tracking-[0.24em]",
+            connectionTone === "green"
+              ? "border border-emerald-400/20 bg-emerald-400/10 text-emerald-200"
+              : "border border-amber-400/20 bg-amber-400/10 text-amber-200",
+          )}>
+            {connectionLabel}
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-[0.24em] text-white/60">
+              last write {formatRunTime(snapshot?.run?.last_write_time)}
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-[0.24em] text-white/60">
+              replay progress {formatFlexibleTime(replayTimestamp)}
+            </div>
+          </div>
+        </div>
+        <CandlePanel
+          symbol={symbol}
+          timeframe={timeframe}
+          apiUrl={API_URL}
+          untilTime={replayTimestamp}
+          runId={snapshot?.run?.run_id ?? undefined}
+        />
+      </SectionCard>
+
+      <div className="grid gap-5">
+        <SectionCard title="Trade Tape" eyebrow="Latest exits">
+          <div className="space-y-2">
+            {topTradeRows.length ? (
+              topTradeRows.map((trade, index) => {
+                const pnl = Number(trade.pnl ?? 0);
+                return (
+                  <div
+                    key={`${trade.trade_id ?? trade.entry_time ?? index}`}
+                    className="grid grid-cols-[1.1fr_0.8fr_0.7fr_0.6fr] items-center rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm"
+                  >
+                    <div>
+                      <div className="font-medium text-white">{trade.symbol}</div>
+                      <div className="text-xs uppercase tracking-[0.16em] text-white/45">{trade.strategy_type}</div>
+                    </div>
+                    <div className="text-white/70">{trade.side}</div>
+                    <div className={pnl >= 0 ? "text-emerald-300" : "text-orange-300"}>{formatMoney(pnl)}</div>
+                    <div className="text-right text-white/45">{trade.exit_reason || "n/a"}</div>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/55">
+                No closed trades in the current run yet.
+              </div>
+            )}
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Symbol Switchboard" eyebrow="Live market roster">
+          <div className="grid gap-3 sm:grid-cols-2">
+            {symbolAtlasRows.slice(0, 10).map((row) => (
+              <button
+                key={row.symbol}
+                type="button"
+                onClick={() => setSymbol(row.symbol)}
+                className={clsx(
+                  "rounded-2xl border px-4 py-3 text-left transition-all",
+                  row.symbol === symbol
+                    ? "border-cyan-400/30 bg-cyan-400/12 shadow-glow"
+                    : "border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/8",
+                )}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="text-sm font-semibold text-white">{row.symbol}</div>
+                  {row.isTop ? (
+                    <span className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2 py-1 text-[10px] uppercase tracking-[0.18em] text-cyan-200">
+                      leader
+                    </span>
+                  ) : null}
+                </div>
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  <SignalStateCell row={row.band15m} label="15m" />
+                  <SignalStateCell row={row.band1h} label="1H" />
+                  <SignalStateCell row={row.band12h} label="12H" />
+                </div>
+                <div className="mt-3 flex items-center justify-between text-[11px] uppercase tracking-[0.18em] text-white/45">
+                  <span>1m {formatFlexibleTime(row.pipeline.latest_recent_1m_timestamp)}</span>
+                  <span>{row.pipeline.candidate_count ?? 0} candidates</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        </SectionCard>
+      </div>
+    </div>
+  );
+
+  const atlasContent = (
+    <div className="grid gap-5">
+      <div className="grid gap-5 xl:grid-cols-[1.3fr_0.7fr]">
+        <SectionCard title="Asset Atlas" eyebrow="Multi-timeframe alignment matrix" accent="cyan">
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-left text-sm">
+              <thead className="text-white/45">
+                <tr>
+                  <th className="pb-3 pr-4 font-medium">Symbol</th>
+                  <th className="pb-3 pr-4 font-medium">1m feed</th>
+                  <th className="pb-3 pr-4 font-medium">Leader</th>
+                  <th className="pb-3 pr-4 font-medium">15M</th>
+                  <th className="pb-3 pr-4 font-medium">1H</th>
+                  <th className="pb-3 pr-4 font-medium">6H</th>
+                  <th className="pb-3 pr-4 font-medium">12H</th>
+                  <th className="pb-3 pr-4 font-medium">Candidates</th>
+                  <th className="pb-3 pr-4 font-medium">Last exit</th>
+                </tr>
+              </thead>
+              <tbody>
+                {symbolAtlasRows.map((row) => (
+                  <tr key={row.symbol} className="border-t border-white/6 align-top">
+                    <td className="py-4 pr-4">
+                      <div className="font-semibold text-white">{row.symbol}</div>
+                      <div className="mt-1 text-xs uppercase tracking-[0.18em] text-white/35">
+                        {row.lastSignalTime ? formatFlexibleTime(row.lastSignalTime) : "awaiting signal"}
+                      </div>
+                    </td>
+                    <td className="py-4 pr-4">
+                      <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2">
+                        <div className="text-[11px] uppercase tracking-[0.18em] text-white/45">
+                          {formatFlexibleTime(row.pipeline.latest_recent_1m_timestamp)}
+                        </div>
+                        <div className="mt-2 text-xs text-white/60">
+                          {row.pipeline.recent_rows_1m ?? 0} fresh / {row.pipeline.state_rows_1m ?? 0} state
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-4 pr-4">
+                      {row.isTop ? (
+                        <span className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2 py-1 text-[10px] uppercase tracking-[0.18em] text-cyan-200">
+                          top
+                        </span>
+                      ) : (
+                        <span className="text-white/35">-</span>
+                      )}
+                    </td>
+                    <td className="py-4 pr-4"><SignalStateCell row={row.band15m} label="15m" /></td>
+                    <td className="py-4 pr-4"><SignalStateCell row={row.band1h} label="1H" /></td>
+                    <td className="py-4 pr-4"><SignalStateCell row={row.band6h} label="6H" /></td>
+                    <td className="py-4 pr-4"><SignalStateCell row={row.band12h} label="12H" /></td>
+                    <td className="py-4 pr-4">
+                      <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2">
+                        <div className="text-sm font-semibold text-white">{row.pipeline.candidate_count ?? 0}</div>
+                        <div className="mt-1 text-[11px] uppercase tracking-[0.18em] text-white/45">
+                          {row.pipeline.candidate_strategies || "none"}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-4 pr-4">
+                      {row.lastTrade ? (
+                        <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2">
+                          <div className={clsx("text-sm font-semibold", row.lastTradePnl >= 0 ? "text-emerald-300" : "text-orange-300")}>
+                            {formatMoney(row.lastTradePnl)}
+                          </div>
+                          <div className="mt-1 text-[11px] uppercase tracking-[0.18em] text-white/45">
+                            {row.lastTrade.strategy_type} / {row.lastTradeSide}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-white/35">none</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Atlas Notes" eyebrow="How to read the matrix" accent="green">
+          <div className="grid gap-4">
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm leading-6 text-white/60">
+              This grid is designed for a multi-role book. `15M` shows tactical flow, `1H` shows the
+              specialized short sleeve, `6H` remains a shadow research lane, and `12H` shows structural
+              conviction. Rows are meant to be scanned horizontally, not read one symbol at a time.
+            </div>
+            <StatPill label="Tracked symbols" value={String(availableSymbols.length)} />
+            <StatPill label="Active top movers" value={String(topSymbols.length)} tone={topSymbols.length ? "good" : "neutral"} />
+            <StatPill label="Latest signal tape" value={String(topSignalRows.length)} />
+          </div>
+        </SectionCard>
+      </div>
+    </div>
+  );
+
+  const portfolioContent = (
+    <div className="grid gap-5">
+      <div className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr_0.9fr]">
+        <MetricCard
+          icon={<BriefcaseBusiness className="h-4 w-4" />}
+          label="Open book"
+          value={String(portfolio.open_positions ?? 0)}
+          subtext={`daily entries ${portfolio.daily_entries_taken ?? 0}`}
+          tone="cyan"
+        />
+        <MetricCard
+          icon={<Activity className="h-4 w-4" />}
+          label="Live PnL"
+          value={formatMoney(livePnl)}
+          subtext={`closed today ${formatMoney(portfolio.daily_closed_pnl ?? 0)}`}
+          tone={livePnl >= 0 ? "green" : "orange"}
+        />
+        <MetricCard
+          icon={<Sparkles className="h-4 w-4" />}
+          label="Top mover roster"
+          value={topSymbols.length ? topSymbols.join(" / ") : "idle"}
+          subtext={snapshot?.run?.run_id ?? "no run"}
+          tone="green"
+        />
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-[1.08fr_0.92fr]">
+        <SectionCard title="Execution Blotter" eyebrow="Recent closed trades" accent="cyan">
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-left text-sm">
+              <thead className="text-white/45">
+                <tr>
+                  <th className="pb-3 pr-4 font-medium">Symbol</th>
+                  <th className="pb-3 pr-4 font-medium">Strategy</th>
+                  <th className="pb-3 pr-4 font-medium">Side</th>
+                  <th className="pb-3 pr-4 font-medium">PnL</th>
+                  <th className="pb-3 pr-4 font-medium">Exit</th>
+                </tr>
+              </thead>
+              <tbody>
+                {topTradeRows.length ? (
+                  topTradeRows.map((trade, index) => {
+                    const pnl = Number(trade.pnl ?? 0);
+                    return (
+                      <tr key={`${trade.trade_id ?? trade.exit_time ?? index}`} className="border-t border-white/6">
+                        <td className="py-3 pr-4 text-white">{trade.symbol}</td>
+                        <td className="py-3 pr-4 text-white/65">{trade.strategy_type}</td>
+                        <td className="py-3 pr-4 text-white/65">{trade.side}</td>
+                        <td className={clsx("py-3 pr-4 font-medium", pnl >= 0 ? "text-emerald-300" : "text-orange-300")}>
+                          {formatMoney(pnl)}
+                        </td>
+                        <td className="py-3 pr-4 text-white/45">{trade.exit_reason || "n/a"}</td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={5} className="py-6 text-center text-white/50">
+                      No closed trades yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Sleeve Leaderboard" eyebrow="Pnl by routed role" accent="green">
+          <div className="grid gap-3">
+            {strategyCards.length ? (
+              strategyCards.map((row) => (
+                <div key={row.name} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-xs uppercase tracking-[0.22em] text-white/45">{row.name}</div>
+                      <div className="mt-1 text-lg font-semibold text-white">{formatMoney(row.total_pnl)}</div>
+                    </div>
+                    <div className="text-right text-sm text-white/55">
+                      <div>{row.count} trades</div>
+                      <div>R {number(row.total_R, 2)}</div>
+                    </div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-white/55">No sleeve stats yet.</div>
+            )}
+          </div>
+        </SectionCard>
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
+        <SectionCard title="Signal Ladder" eyebrow="Recent candidates" accent="orange">
+          <div className="space-y-2">
+            {topSignalRows.length ? (
+              topSignalRows.slice(0, 12).map((signal, index) => (
+                <div
+                  key={`${signal.timestamp ?? index}-${signal.symbol ?? "signal"}`}
+                  className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="font-medium text-white">{signal.symbol}</div>
+                      <div className="text-xs uppercase tracking-[0.18em] text-white/45">
+                        {signal.strategy_type} / {signal.side}
+                      </div>
+                    </div>
+                    <div className="text-sm text-cyan-200">{number(signal.selection_score, 3)}</div>
+                  </div>
+                  <div className="mt-2 text-xs text-white/55">{signal.selection_reason}</div>
+                </div>
+              ))
+            ) : (
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-white/55">No signal ladder yet.</div>
+            )}
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Current Book Context" eyebrow="What the live paper engine exposes" accent="cyan">
+          <div className="grid gap-4 md:grid-cols-2">
+            <StatPill label="Open positions" value={String(portfolio.open_positions ?? 0)} />
+            <StatPill label="Closed trades today" value={String(portfolio.daily_closed_trades ?? 0)} />
+            <StatPill label="Loss streak" value={String(portfolio.daily_loss_streak ?? 0)} tone={(portfolio.daily_loss_streak ?? 0) > 1 ? "warning" : "good"} />
+            <StatPill label="Current threshold" value={number(portfolio.current_threshold, 2)} />
+          </div>
+          <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm leading-6 text-white/60">
+            The live paper engine currently exposes full portfolio state, sleeve economics, and tape output.
+            If you want true institutional open-position blotters next, the next backend step is to publish
+            per-position detail rows directly into the telemetry snapshot.
+          </div>
+        </SectionCard>
+      </div>
+    </div>
+  );
+
+  const allocatorContent = (
+    <div className="grid gap-5">
+      <div className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
+        <SectionCard title="Cap Pressure" eyebrow="Allocator friction" accent="orange">
+          <div className="grid grid-cols-2 gap-3">
+            <MetricCard
+              icon={<Radar className="h-4 w-4" />}
+              label="Opened"
+              value={String(cumulativeCapPressure.opened_count ?? 0)}
+              subtext={`share ${number(cumulativeCapPressure.opened_share ?? 0, 3)}`}
+              tone="green"
+            />
+            <MetricCard
+              icon={<Waves className="h-4 w-4" />}
+              label="Cap blocked"
+              value={String(cumulativeCapPressure.cap_blocked_count ?? 0)}
+              subtext={`rate ${formatPct(cumulativeCapPressure.cap_block_rate ?? 0, 1)}`}
+              tone="orange"
+            />
+          </div>
+          <div className="mt-4 space-y-2">
+            {(recentSelectionRows.length ? recentSelectionRows : selectionRows).slice(0, 8).map((row) => (
+              <div key={String(row.selection_reason)} className="flex items-center gap-3">
+                <div className="w-36 shrink-0 text-sm text-white/60">{row.selection_reason}</div>
+                <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/5">
+                  <div
+                    className={clsx(
+                      "h-full rounded-full",
+                      String(row.is_cap_pressure).toLowerCase() === "true"
+                        ? "bg-gradient-to-r from-orange-400 to-orange-600"
+                        : "bg-gradient-to-r from-cyan-400 to-cyan-600",
+                    )}
+                    style={{ width: `${Math.min(100, Number(row.share_of_decisions ?? 0) * 100)}%` }}
+                  />
+                </div>
+                <div className="w-16 text-right text-sm text-white/75">{row.count}</div>
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Allocator Reason Matrix" eyebrow="Per-sleeve suppression map" accent="orange">
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-left text-sm">
+              <thead className="text-white/45">
+                <tr>
+                  <th className="pb-3 pr-4 font-medium">Strategy</th>
+                  <th className="pb-3 pr-4 font-medium">Reason</th>
+                  <th className="pb-3 pr-4 font-medium">Count</th>
+                  <th className="pb-3 pr-4 font-medium">Share</th>
+                </tr>
+              </thead>
+              <tbody>
+                {strategySelectionRows.length ? (
+                  strategySelectionRows.slice(0, 18).map((row, index) => (
+                    <tr key={`${row.strategy_type}-${row.selection_reason}-${index}`} className="border-t border-white/6">
+                      <td className="py-3 pr-4 text-white">{row.strategy_type}</td>
+                      <td className="py-3 pr-4 text-white/65">{row.selection_reason}</td>
+                      <td className="py-3 pr-4 text-white/75">{row.count}</td>
+                      <td className="py-3 pr-4 text-white/45">{number(row.share_of_strategy_decisions, 3)}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={4} className="py-6 text-center text-sm text-white/50">
+                      No allocator reason matrix rows yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </SectionCard>
+      </div>
+
+      <SectionCard title="Allocator Context" eyebrow="Shared versus sleeve pressure" accent="cyan">
+        <div className="grid gap-4 md:grid-cols-3">
+          <StatPill label="Shared cap count" value={String(cumulativeCapPressure.shared_risk_cap_count ?? 0)} />
+          <StatPill label="Sleeve cap count" value={String(cumulativeCapPressure.strategy_sleeve_cap_count ?? 0)} />
+          <StatPill label="Allocator zero-risk count" value={String(cumulativeCapPressure.allocator_zero_risk_count ?? 0)} />
+        </div>
+      </SectionCard>
+    </div>
+  );
+
+  const runtimeContent = (
+    <div className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
+      <div className="grid gap-5">
+        <SectionCard title="Engine Heartbeat" eyebrow="Cycle-by-cycle liveness" accent="cyan">
+          <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <StatPill
+                label="Cycle state"
+                value={String(engineHeartbeat.status ?? "waiting")}
+                tone={String(engineHeartbeat.status ?? "").includes("routed") ? "good" : "neutral"}
+              />
+              <StatPill label="Cycle duration" value={`${number(engineHeartbeat.cycle_duration_seconds, 2)}s`} />
+              <StatPill label="Latest 1m timestamp" value={formatFlexibleTime(engineHeartbeat.latest_recent_1m_timestamp)} />
+              <StatPill label="New 15m symbols" value={String(engineHeartbeat.new_15m_symbol_count ?? 0)} />
+            </div>
+            <div className="grid gap-3">
+              <div>
+                <div className="mb-2 text-xs uppercase tracking-[0.24em] text-white/45">Engine throughput</div>
+                <MiniLineChart points={ingestionPoints} tone="cyan" className="h-[120px]" />
+              </div>
+              <div>
+                <div className="mb-2 text-xs uppercase tracking-[0.24em] text-white/45">Opened flow</div>
+                <MiniLineChart points={openFlowPoints} tone="green" className="h-[120px]" />
+              </div>
+            </div>
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Runtime Policy" eyebrow="Guard health" accent="orange">
+          <div className="space-y-3">
+            {runtimeRows.length ? (
+              runtimeRows.map((row) => (
+                <div key={String(row.strategy_type)} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.24em] text-white/50">{row.strategy_type}</p>
+                      <h3 className="mt-1 text-xl font-semibold">{row.label}</h3>
+                    </div>
+                    <div
+                      className={clsx(
+                        "rounded-full border px-3 py-1 text-xs",
+                        String(row.fallback_to_short_only).toLowerCase() === "true"
+                          ? "border-orange-400/20 bg-orange-400/10 text-orange-200"
+                          : "border-emerald-400/20 bg-emerald-400/10 text-emerald-200",
+                      )}
+                    >
+                      fallback {String(row.fallback_to_short_only)}
+                    </div>
+                  </div>
+                  <div className="mt-4 grid grid-cols-3 gap-3 text-sm text-white/70">
+                    <div>
+                      <div className="text-white/45">count</div>
+                      <div className="mt-1 text-white">{row.count}</div>
+                    </div>
+                    <div>
+                      <div className="text-white/45">PF</div>
+                      <div className="mt-1 text-white">{number(row.profit_factor, 2)}</div>
+                    </div>
+                    <div>
+                      <div className="text-white/45">avg R</div>
+                      <div className="mt-1 text-white">{number(row.avg_R, 3)}</div>
+                    </div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/55">
+                No runtime policy rows yet.
+              </div>
+            )}
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Runtime Freshness" eyebrow="Connection and timestamps" accent="green">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <StatPill label="Stream status" value={connectionLabel} tone={socketConnected ? "good" : "warning"} />
+            <StatPill label="Last packet" value={lastPacketTimestamp ? formatRunTime(lastPacketTimestamp / 1000) : "waiting"} />
+            <StatPill label="Run last write" value={formatRunTime(snapshot?.run?.last_write_time)} />
+            <StatPill label="Latest trade PnL" value={formatMoney(latestTradePnl)} tone={latestTradePnl >= 0 ? "good" : "warning"} />
+          </div>
+        </SectionCard>
+      </div>
+
+      <div className="grid gap-5">
+        <SectionCard title="Timeframe Synchronization" eyebrow="Per-symbol live feed and evaluation state" accent="orange">
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-left text-sm">
+              <thead className="text-white/45">
+                <tr>
+                  <th className="pb-3 pr-4 font-medium">Symbol</th>
+                  <th className="pb-3 pr-4 font-medium">1m latest</th>
+                  <th className="pb-3 pr-4 font-medium">15m latest</th>
+                  <th className="pb-3 pr-4 font-medium">1h latest</th>
+                  <th className="pb-3 pr-4 font-medium">12h latest</th>
+                  <th className="pb-3 pr-4 font-medium">New 15m</th>
+                  <th className="pb-3 pr-4 font-medium">Candidates</th>
+                </tr>
+              </thead>
+              <tbody>
+                {symbolPipelineRows.length ? (
+                  symbolPipelineRows.map((row) => (
+                    <tr key={String(row.symbol)} className="border-t border-white/6">
+                      <td className="py-3 pr-4 font-semibold text-white">{row.symbol}</td>
+                      <td className="py-3 pr-4 text-white/65">{formatFlexibleTime(row.latest_recent_1m_timestamp)}</td>
+                      <td className="py-3 pr-4 text-white/65">{formatFlexibleTime(row.latest_15m_timestamp)}</td>
+                      <td className="py-3 pr-4 text-white/65">{formatFlexibleTime(row.latest_1h_timestamp)}</td>
+                      <td className="py-3 pr-4 text-white/65">{formatFlexibleTime(row.latest_12h_timestamp)}</td>
+                      <td className="py-3 pr-4">
+                        <span
+                          className={clsx(
+                            "rounded-full border px-2 py-1 text-[10px] uppercase tracking-[0.18em]",
+                            String(row.new_15m_candle).toLowerCase() === "true"
+                              ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-200"
+                              : "border-white/10 bg-white/5 text-white/50",
+                          )}
+                        >
+                          {String(row.new_15m_candle).toLowerCase() === "true" ? "yes" : "no"}
+                        </span>
+                      </td>
+                      <td className="py-3 pr-4 text-white/70">
+                        {row.candidate_count} {row.candidate_strategies ? `/${row.candidate_strategies}` : ""}
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={7} className="py-6 text-center text-white/50">
+                      No symbol pipeline rows yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Operator Notes" eyebrow="How the cockpit should be read" accent="green">
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="mb-2 flex items-center gap-2 text-cyan-200">
+                <CandlestickChart className="h-4 w-4" />
+                <span className="text-sm font-medium">Price and execution</span>
+              </div>
+              <p className="text-sm leading-6 text-white/60">
+                Inspect local candles with pan and zoom, see trade markers on the bar stream, and read
+                the latest candidate tape without leaving the run context.
+              </p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="mb-2 flex items-center gap-2 text-emerald-200">
+                <Shield className="h-4 w-4" />
+                <span className="text-sm font-medium">Allocator pressure</span>
+              </div>
+              <p className="text-sm leading-6 text-white/60">
+                Track whether the routed stack is healthy because the sleeve is good, or whether it is
+                being starved by shared-pool caps, sleeve caps, or a guard fallback.
+              </p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="mb-2 flex items-center gap-2 text-orange-200">
+                <AlertTriangle className="h-4 w-4" />
+                <span className="text-sm font-medium">Truthful scope</span>
+              </div>
+              <p className="text-sm leading-6 text-white/60">
+                This cockpit is an observer layer around live-paper artifacts. It does not place trades,
+                invent fills, or bypass the routed engine. It visualizes what the live stack already writes.
+              </p>
+            </div>
+          </div>
+        </SectionCard>
+      </div>
+    </div>
+  );
+
+  const currentView = {
+    overview: overviewContent,
+    market: marketContent,
+    atlas: atlasContent,
+    portfolio: portfolioContent,
+    allocator: allocatorContent,
+    runtime: runtimeContent,
+  }[view];
+
+  return (
+    <main className="min-h-screen bg-transparent text-white">
+      <header className="fixed inset-x-0 top-0 z-50 border-b border-white/8 bg-[#040914]/78 backdrop-blur-2xl">
+        <div className="mx-auto flex max-w-[1900px] flex-col gap-6 px-5 py-5 md:px-8 md:py-6 xl:px-10 xl:py-7">
+          <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)] xl:items-center">
+            <div className="relative hidden h-[244px] overflow-hidden rounded-[38px] bg-[linear-gradient(145deg,rgba(11,23,45,0.7),rgba(6,12,28,0.42)_30%,rgba(8,18,39,0.7))] shadow-[0_26px_70px_rgba(5,10,28,0.55)] xl:block">
+              <div className="absolute inset-0 flex items-center justify-center">
+                <Image
+                  src="/logo-hero.png"
+                  alt="Retail Trading System hero logo"
+                  fill
+                  className="object-contain p-0 drop-shadow-[0_0_28px_rgba(83,242,255,0.16)] scale-[1.21]"
+                  priority
+                />
+              </div>
+            </div>
+
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full border border-cyan-300/30 bg-cyan-400/14 px-3 py-1 text-[10px] uppercase tracking-[0.34em] text-cyan-100 shadow-[0_0_18px_rgba(83,242,255,0.12)]">
+                  Retail Trading System
+                </span>
+                {DASHBOARD_MODE === "backtest" ? (
+                  <span className="rounded-full border border-amber-300/30 bg-amber-400/14 px-3 py-1 text-[10px] uppercase tracking-[0.28em] text-amber-100 shadow-[0_0_18px_rgba(251,191,36,0.12)]">
+                    Backtest Cockpit
+                  </span>
+                ) : (
+                  <span className="rounded-full border border-sky-300/30 bg-sky-400/14 px-3 py-1 text-[10px] uppercase tracking-[0.28em] text-sky-100 shadow-[0_0_18px_rgba(56,189,248,0.12)]">
+                    Live Paper Cockpit
+                  </span>
+                )}
+                <span className="rounded-full border border-emerald-300/28 bg-emerald-400/14 px-3 py-1 text-[10px] uppercase tracking-[0.28em] text-emerald-100 shadow-[0_0_18px_rgba(52,211,153,0.12)]">
+                  {viewMeta.eyebrow}
+                </span>
+              </div>
+              <h1 className="mt-4 text-4xl font-semibold tracking-[0.01em] text-white md:text-[2.5rem]">
+                Command Deck
+              </h1>
+              {DASHBOARD_MODE === "backtest" ? (
+                <>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <span className="inline-block rounded-full border border-amber-400/20 bg-amber-400/8 px-3 py-1 text-xs uppercase tracking-[0.18em] text-amber-200">
+                      BACKTEST MODE
+                    </span>
+                    <span className="inline-block rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-xs uppercase tracking-[0.18em] text-cyan-200">
+                      {snapshot?.run?.run_id ? `run ${snapshot.run.run_id}` : "no run loaded"}
+                    </span>
+                    <span className="inline-block rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-[0.18em] text-white/65">
+                      {snapshot?.run?.path ? `path ${snapshot.run.path}` : "path unknown"}
+                    </span>
+                    <span className="inline-block rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-[0.18em] text-white/65">
+                      replay {formatFlexibleTime(replayTimestamp)}
+                    </span>
+                  </div>
+                  <div className="mt-4 rounded-3xl border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
+                    This is backtest replay state. The chart and markers show the latest loaded snapshot for the selected run, not the full historical data.
+                  </div>
+                </>
+              ) : null}
+              <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-200/72 md:text-[15px]">
+                Stable command header, cinematic asset rail, and route-backed lower cockpit modules for
+                market, atlas, portfolio, allocator, and runtime operations without losing spatial
+                orientation.
+              </p>
+
+              <div className="mt-5 flex flex-wrap gap-2">
+                {VIEW_TABS.map((tab) => {
+                  const isActive = view === tab.key;
+                  return (
+                    <Link
+                      key={tab.key}
+                      href={tab.href}
+                      className={clsx(
+                        "group flex items-center gap-2 rounded-2xl border px-4 py-2 text-sm transition-all",
+                        isActive
+                          ? "border-cyan-300/36 bg-cyan-400/14 text-cyan-50 shadow-[0_0_24px_rgba(83,242,255,0.14)]"
+                          : "border-slate-200/10 bg-slate-900/35 text-slate-200/72 hover:border-cyan-300/20 hover:bg-slate-800/45 hover:text-white",
+                      )}
+                    >
+                      {tab.icon}
+                      <span>{tab.label}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-8">
+            <HeaderMetric
+              label="Connection"
+              value={connectionLabel}
+              subtext={formatFlexibleTime(engineHeartbeat.latest_recent_1m_timestamp || snapshot?.run?.last_write_time)}
+              tone={connectionTone}
+              points={[
+                { value: socketConnected ? 1 : 0.2 },
+                { value: socketConnected ? 1 : 0.25 },
+                { value: socketConnected ? 1 : 0.15 },
+              ]}
+              pulse
+            />
+            <HeaderMetric
+              label="Engine"
+              value={String(engineHeartbeat.status ?? "waiting")}
+              subtext={`cycle ${engineHeartbeat.cycle_count ?? 0}`}
+              tone={String(engineHeartbeat.status ?? "").includes("routed") ? "green" : "cyan"}
+              points={enginePulsePoints}
+              pulse
+            />
+            <HeaderMetric
+              label="Replay"
+              value={formatFlexibleTime(replayTimestamp)}
+              subtext={snapshot?.run?.run_id ? `run ${snapshot.run.run_id}` : "no run"}
+              tone="orange"
+              points={[{ value: 1 }, { value: 0.7 }, { value: 0.4 }]}
+            />
+            <HeaderMetric
+              label="Equity"
+              value={formatMoney(portfolio.equity)}
+              subtext={`PnL ${formatMoney(livePnl)}`}
+              tone={livePnl >= 0 ? "green" : "orange"}
+              points={equityPoints.slice(-20)}
+            />
+            <HeaderMetric
+              label="Guard"
+              value={runtimeRow?.label ?? "n/a"}
+              subtext={`PF ${number(runtimeRow?.profit_factor, 2)}`}
+              tone="orange"
+              points={runtimePoints}
+              pulse={String(runtimeRow?.fallback_to_short_only).toLowerCase() !== "true"}
+            />
+            <HeaderMetric
+              label="Open positions"
+              value={String(portfolio.open_positions ?? 0)}
+              subtext={`entries ${portfolio.daily_entries_taken ?? 0}`}
+              tone="cyan"
+              points={pnlPoints.slice(-20)}
+            />
+            <HeaderMetric
+              label="Shared cap"
+              value={String(cumulativeCapPressure.shared_risk_cap_count ?? 0)}
+              subtext={`recent ${recentCapPressure.shared_risk_cap_count ?? 0}`}
+              tone="cyan"
+              points={capPoints}
+            />
+            <HeaderMetric
+              label="Top symbols"
+              value={topSymbols.length ? topSymbols.join(" / ") : "idle"}
+              subtext={snapshot?.run?.run_id ?? "no run"}
+              tone="neutral"
+              points={thresholdPoints.slice(-20)}
+            />
+          </div>
+
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex items-center gap-3 rounded-2xl border border-slate-200/10 bg-slate-900/40 px-4 py-2 text-sm text-slate-200/78 shadow-[0_18px_40px_rgba(4,9,20,0.24)]">
+              <Globe className="h-4 w-4 text-cyan-200" />
+              <span>{viewMeta.description}</span>
+            </div>
+
+            <div className="flex items-center gap-3 rounded-2xl border border-slate-200/10 bg-slate-900/40 px-4 py-2 text-sm text-slate-200/78 shadow-[0_18px_40px_rgba(4,9,20,0.24)]">
+              <Clock3 className="h-4 w-4 text-orange-200" />
+              <span>
+                {DASHBOARD_MODE === "backtest"
+                  ? snapshot?.run?.last_write_time
+                    ? formatRunTime(snapshot.run.last_write_time)
+                    : "awaiting data"
+                  : lastPacketTimestamp
+                    ? formatRunTime(lastPacketTimestamp / 1000)
+                    : "awaiting stream"}
+              </span>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div className="px-5 pb-8 pt-[580px] md:px-8 md:pt-[620px] xl:px-10 xl:pt-[540px] 2xl:pt-[500px]">
+        <div className="data-grid mx-auto max-w-[1900px] rounded-[34px] border border-white/8 p-4 md:p-6">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={view}
+              initial={{ opacity: 0, y: 18 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -18 }}
+              transition={{ duration: 0.26 }}
+              className="min-h-[720px]"
+            >
+              {currentView}
+            </motion.div>
+          </AnimatePresence>
+        </div>
+      </div>
+    </main>
+  );
+}

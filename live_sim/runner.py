@@ -1,6 +1,7 @@
 """Runs the near-live simulation loop using recent Binance data and shared strategy components."""
 
 import time
+from collections import defaultdict
 from pathlib import Path
 
 import pandas as pd
@@ -372,6 +373,101 @@ def _momentum_ranks(execution_frames, lookback_bars):
     return ranks, top_symbols
 
 
+def _frame_latest_timestamp(frame):
+    if frame is None or frame.empty:
+        return None
+    return str(pd.Timestamp(frame.index.max()))
+
+
+def _build_symbol_pipeline_rows(
+    *,
+    symbols,
+    execution_frames,
+    direction_frames,
+    trend_frames,
+    macro_frames,
+    daily_frames,
+    states,
+    recent_row_counts,
+    recent_timestamps,
+    new_symbols_by_name,
+    momentum_ranks,
+    top_symbols,
+    candidate_counts_by_symbol,
+    candidate_strategies_by_symbol,
+):
+    top_symbol_set = set(top_symbols or [])
+    rows = []
+    for symbol in symbols:
+        rows.append(
+            {
+                "symbol": symbol,
+                "recent_rows_1m": int(recent_row_counts.get(symbol, 0)),
+                "state_rows_1m": int(len(states.get(symbol, []))),
+                "latest_recent_1m_timestamp": recent_timestamps.get(symbol),
+                "latest_15m_timestamp": _frame_latest_timestamp(execution_frames.get(symbol)),
+                "latest_1h_timestamp": _frame_latest_timestamp(direction_frames.get(symbol)),
+                "latest_6h_timestamp": _frame_latest_timestamp(trend_frames.get(symbol)),
+                "latest_12h_timestamp": _frame_latest_timestamp(macro_frames.get(symbol)),
+                "latest_1d_timestamp": _frame_latest_timestamp(daily_frames.get(symbol)),
+                "new_15m_candle": symbol in new_symbols_by_name,
+                "candidate_count": int(candidate_counts_by_symbol.get(symbol, 0)),
+                "candidate_strategies": ",".join(sorted(candidate_strategies_by_symbol.get(symbol, set()))),
+                "top_mover": symbol in top_symbol_set,
+                "momentum_rank": float(momentum_ranks.get(symbol, 0.0)),
+            }
+        )
+    return rows
+
+
+def _build_engine_heartbeat(
+    *,
+    cycle_count,
+    cycle_started_at,
+    cycle_completed_at,
+    cycle_duration_seconds,
+    poll_seconds,
+    symbols,
+    states,
+    recent_row_counts,
+    recent_timestamps,
+    new_symbols,
+    candidates,
+    selection_summary,
+    top_symbols,
+    portfolio,
+    status,
+):
+    latest_recent_timestamp = None
+    recent_values = [value for value in recent_timestamps.values() if value]
+    if recent_values:
+        latest_recent_timestamp = max(recent_values)
+    return {
+        "cycle_count": int(cycle_count),
+        "status": str(status),
+        "cycle_started_at": str(pd.Timestamp(cycle_started_at)),
+        "cycle_completed_at": str(pd.Timestamp(cycle_completed_at)),
+        "cycle_duration_seconds": float(cycle_duration_seconds),
+        "poll_seconds": float(poll_seconds),
+        "symbol_count": int(len(symbols)),
+        "symbols_with_recent_fetch": int(sum(1 for count in recent_row_counts.values() if count > 0)),
+        "total_recent_1m_rows": int(sum(recent_row_counts.values())),
+        "total_state_1m_rows": int(sum(len(frame) for frame in states.values())),
+        "latest_recent_1m_timestamp": latest_recent_timestamp,
+        "new_15m_symbol_count": int(len(new_symbols)),
+        "new_15m_symbols": [item["symbol"] for item in new_symbols],
+        "candidates_built": int(len(candidates)),
+        "eligible_candidates": int(selection_summary.get("eligible_candidates", 0)),
+        "allocated_candidates": int(selection_summary.get("allocated_candidates", 0)),
+        "opened_count": int(selection_summary.get("opened_count", 0)),
+        "opened_by_strategy": dict(selection_summary.get("opened_by_strategy", {})),
+        "selection_reason_counts": dict(selection_summary.get("final_reason_counts", {})),
+        "top_symbols": list(top_symbols or []),
+        "portfolio_open_positions": int(len(getattr(portfolio, "open_positions", []))),
+        "equity": float(getattr(portfolio.account, "equity", 0.0)),
+    }
+
+
 def _run_single_symbol_live_sim(symbol=None, config=None):
     config = config or AppConfig.load()
     configure_debug(config=config)
@@ -653,7 +749,10 @@ def _run_portfolio_live_paper_sim(config=None):
     while True:
         cycle_count += 1
         cycle_start = time.time()
+        cycle_started_at = pd.Timestamp.utcnow()
         execution_frames = {}
+        direction_frames = {}
+        trend_frames = {}
         swing_snapshots = {}
         h1_snapshots = {}
         htf_snapshots = {}
@@ -663,10 +762,14 @@ def _run_portfolio_live_paper_sim(config=None):
         latest_rows_by_symbol = {}
         latest_htf_context_by_symbol = {}
         new_symbols = []
+        recent_row_counts = {}
+        recent_timestamps = {}
 
         for index, symbol in enumerate(symbols):
             print(f"\nFetching latest 1m data for {symbol}...")
             df_recent = fetch_recent(symbol=symbol, interval=interval, limit=recent_limit)
+            recent_row_counts[symbol] = int(len(df_recent))
+            recent_timestamps[symbol] = _frame_latest_timestamp(df_recent)
             states[symbol] = _merge_recent_into_state(
                 df_existing=states[symbol],
                 df_recent=df_recent,
@@ -678,6 +781,8 @@ def _run_portfolio_live_paper_sim(config=None):
                 config=config,
             )
             execution_frames[symbol] = df_15m
+            direction_frames[symbol] = df_1h
+            trend_frames[symbol] = df_5h
             htf_macro_frames[symbol] = df_12h
             htf_daily_frames[symbol] = df_1d
             htf_weekly_frames[symbol] = df_1w
@@ -745,6 +850,19 @@ def _run_portfolio_live_paper_sim(config=None):
             structural_snapshots_by_symbol=htf_snapshots,
             config=config,
         )
+        momentum_ranks, top_symbols = _momentum_ranks(
+            execution_frames,
+            lookback_bars=momentum_lookback_bars,
+        )
+        candidates = []
+        selection_summary = {
+            "eligible_candidates": 0,
+            "allocated_candidates": 0,
+            "opened_count": 0,
+            "opened_by_strategy": {},
+            "final_reason_counts": {},
+        }
+        status = "waiting_for_new_15m"
 
         if new_symbols:
             timestamp = max(item["row"].name for item in new_symbols)
@@ -753,12 +871,6 @@ def _run_portfolio_live_paper_sim(config=None):
                 latest_rows_by_symbol,
                 htf_context_by_symbol=latest_htf_context_by_symbol,
             )
-            momentum_ranks, top_symbols = _momentum_ranks(
-                execution_frames,
-                lookback_bars=momentum_lookback_bars,
-            )
-
-            candidates = []
             for item in new_symbols:
                 if item["df_1h"].empty or item["df_5h"].empty or item["df_12h"].empty:
                     continue
@@ -789,15 +901,65 @@ def _run_portfolio_live_paper_sim(config=None):
                 candidates.extend(symbol_candidates)
 
             if candidates:
-                portfolio.select_and_open(candidates, timestamp)
+                selection_summary = portfolio.select_and_open(candidates, timestamp) or selection_summary
+                status = "routed_candidates"
             else:
                 print("No live paper candidates qualified on this 15m step")
                 portfolio.flush_state()
+                status = "evaluated_no_candidates"
         else:
             print("No new 15m candle across the universe yet")
             portfolio.flush_state()
 
+        candidate_counts_by_symbol = defaultdict(int)
+        candidate_strategies_by_symbol = defaultdict(set)
+        for candidate in candidates:
+            symbol_key = str(candidate.get("symbol", ""))
+            if not symbol_key:
+                continue
+            candidate_counts_by_symbol[symbol_key] += 1
+            strategy_name = str(candidate.get("strategy_type", ""))
+            if strategy_name:
+                candidate_strategies_by_symbol[symbol_key].add(strategy_name)
+        new_symbols_by_name = {item["symbol"] for item in new_symbols}
+        symbol_pipeline_rows = _build_symbol_pipeline_rows(
+            symbols=symbols,
+            execution_frames=execution_frames,
+            direction_frames=direction_frames,
+            trend_frames=trend_frames,
+            macro_frames=htf_macro_frames,
+            daily_frames=htf_daily_frames,
+            states=states,
+            recent_row_counts=recent_row_counts,
+            recent_timestamps=recent_timestamps,
+            new_symbols_by_name=new_symbols_by_name,
+            momentum_ranks=momentum_ranks,
+            top_symbols=top_symbols,
+            candidate_counts_by_symbol=candidate_counts_by_symbol,
+            candidate_strategies_by_symbol=candidate_strategies_by_symbol,
+        )
         cycle_time = time.time() - cycle_start
+        cycle_completed_at = pd.Timestamp.utcnow()
+        engine_heartbeat = _build_engine_heartbeat(
+            cycle_count=cycle_count,
+            cycle_started_at=cycle_started_at,
+            cycle_completed_at=cycle_completed_at,
+            cycle_duration_seconds=cycle_time,
+            poll_seconds=poll_seconds,
+            symbols=symbols,
+            states=states,
+            recent_row_counts=recent_row_counts,
+            recent_timestamps=recent_timestamps,
+            new_symbols=new_symbols,
+            candidates=candidates,
+            selection_summary=selection_summary,
+            top_symbols=top_symbols,
+            portfolio=portfolio,
+            status=status,
+        )
+        portfolio.state_logger.write_engine_heartbeat(engine_heartbeat)
+        portfolio.state_logger.append_engine_cycle(engine_heartbeat)
+        portfolio.state_logger.write_symbol_pipeline_status(symbol_pipeline_rows)
         print(f"\nPortfolio cycle completed in {cycle_time:.2f}s")
         if max_cycles is not None and cycle_count >= int(max_cycles):
             break
