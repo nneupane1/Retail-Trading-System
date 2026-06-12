@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from common.dashboard_telemetry import (
     build_trade_markers,
+    _has_live_artifacts,
     latest_live_run,
     list_live_runs,
     load_live_dashboard_snapshot,
@@ -67,8 +68,12 @@ def _resolve_run_dir(run_id: str | None) -> Path | None:
 
     # explicit run id: check live output first, then backtest output
     live_root = cfg.path("live_sim", "output_dir") / run_id
-    if live_root.exists():
+    if live_root.exists() and _has_live_artifacts(live_root):
         return live_root
+
+    live_output_root = cfg.path("live_sim", "output_dir")
+    if live_output_root.exists() and _has_live_artifacts(live_output_root):
+        return live_output_root
 
     back_root = cfg.path("backtest", "output_dir") / run_id
     if back_root.exists():

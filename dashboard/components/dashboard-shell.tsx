@@ -598,6 +598,11 @@ export function DashboardShell({ view = "overview" }: { view?: ViewKey }) {
   const livePnl = Number(portfolio.equity ?? 0) - Number(portfolio.initial_equity ?? 0);
   const latestTradePnl = Number(snapshot?.latest_trade?.pnl ?? 0);
   const replayTimestamp = useMemo(() => getReplayTimestamp(snapshot, symbol), [snapshot, symbol]);
+  const liveFeedTimestamp = useMemo(
+    () => parseRunTimestamp(engineHeartbeat.latest_recent_1m_timestamp ?? snapshot?.run?.last_write_time),
+    [engineHeartbeat.latest_recent_1m_timestamp, snapshot?.run?.last_write_time],
+  );
+  const chartClipTimestamp = DASHBOARD_MODE === "backtest" ? replayTimestamp : null;
   const connectionLabel =
     DASHBOARD_MODE === "backtest"
       ? snapshot?.run?.run_id
@@ -904,7 +909,9 @@ export function DashboardShell({ view = "overview" }: { view?: ViewKey }) {
       <SectionCard title="Market Panel" eyebrow="Price / trades / levels" className="min-h-[680px]">
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-[0.24em] text-white/65">
-            Replay clipping through {formatFlexibleTime(replayTimestamp)}
+            {DASHBOARD_MODE === "backtest"
+              ? `Replay clipping through ${formatFlexibleTime(replayTimestamp)}`
+              : `Live feed through ${formatFlexibleTime(liveFeedTimestamp)}`}
           </div>
           <select
             className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white"
@@ -944,7 +951,9 @@ export function DashboardShell({ view = "overview" }: { view?: ViewKey }) {
               last write {formatRunTime(snapshot?.run?.last_write_time)}
             </div>
             <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-[0.24em] text-white/60">
-              replay progress {formatFlexibleTime(replayTimestamp)}
+              {DASHBOARD_MODE === "backtest"
+                ? `replay progress ${formatFlexibleTime(replayTimestamp)}`
+                : `strategy checkpoint ${formatFlexibleTime(replayTimestamp)}`}
             </div>
           </div>
         </div>
@@ -952,7 +961,7 @@ export function DashboardShell({ view = "overview" }: { view?: ViewKey }) {
           symbol={symbol}
           timeframe={timeframe}
           apiUrl={API_URL}
-          untilTime={replayTimestamp}
+          untilTime={chartClipTimestamp}
           runId={snapshot?.run?.run_id ?? undefined}
         />
       </SectionCard>

@@ -7,10 +7,11 @@ from pathlib import Path
 import pandas as pd
 
 from bias.bias_detector import BiasDetector
+from data.binance_client import BinanceClient
 from common.debug import configure_debug, debug_print as print
 from common.universe import resolve_symbols_from_config
 from config import AppConfig
-from data.downloader import fetch_recent, load_from_csv
+from data.downloader import MarketDataDownloader, fetch_recent, load_from_csv
 from data.resampler import TimeframeBuilder
 from entry.edge_buckets import build_signal_bucket
 from entry.edge_selector import EdgeSelector
@@ -230,6 +231,12 @@ def _bootstrap_history_paths(symbol, interval, config):
     return final_path, partial_path
 
 
+def _runtime_state_path(symbol, interval, config):
+    base_path = Path(config.require("storage", "base_path"))
+    folder = base_path / symbol / interval
+    return folder / f"{symbol}_{interval}_live_runtime.csv"
+
+
 def _resolve_live_history_file(folder, symbol, interval, start_date, end_date):
     exact_path = folder / f"{symbol}_{interval}_{start_date}_to_{end_date}.csv"
     if exact_path.exists():
@@ -295,7 +302,104 @@ def _load_live_bootstrap_history(symbol, interval, warmup_minutes, config):
 
     df_1m = load_from_csv(source_path)
     df_1m = _trim_live_window(df_1m, warmup_minutes)
+    runtime_path = _runtime_state_path(symbol, interval, config)
+    if runtime_path.exists():
+        runtime_df = load_from_csv(runtime_path)
+        df_1m = _merge_recent_into_state(df_1m, runtime_df, warmup_minutes)
+        return df_1m, runtime_path
     return df_1m, source_path
+
+
+def _persist_runtime_state(symbol, interval, df_1m, config):
+    runtime_path = _runtime_state_path(symbol, interval, config)
+    runtime_path.parent.mkdir(parents=True, exist_ok=True)
+    df_1m.to_csv(runtime_path, index_label="timestamp")
+    return runtime_path
+
+
+def _frame_end_utc_ms(frame):
+    if frame is None or frame.empty:
+        return None
+    latest = pd.Timestamp(frame.index.max())
+    if latest.tzinfo is None:
+        latest = latest.tz_localize("UTC")
+    else:
+        latest = latest.tz_convert("UTC")
+    return int(latest.timestamp() * 1000)
+
+
+def _fetch_closed_range(symbol, interval, start_ts, end_ts, config, *, client=None):
+    if start_ts is None or end_ts is None or int(start_ts) > int(end_ts):
+        return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
+
+    client = client or BinanceClient(config=config)
+    limit = int(config.require("binance", "historical_limit"))
+    throttle = float(config.require("binance", "throttle_seconds"))
+    closed_only = bool(config.require("binance", "closed_klines_only"))
+    frames = []
+    cursor = int(start_ts)
+
+    while cursor <= int(end_ts):
+        raw = client.get_klines(
+            symbol=symbol,
+            interval=interval,
+            startTime=cursor,
+            endTime=int(end_ts),
+            limit=limit,
+            verbose=True,
+        )
+        if not raw:
+            break
+
+        frame = MarketDataDownloader.klines_to_df(raw, closed_only=closed_only)
+        if frame.empty:
+            break
+
+        frames.append(frame)
+        latest_ms = MarketDataDownloader._to_utc_ms(frame.index.max())
+        next_cursor = latest_ms + 60_000
+        if next_cursor <= cursor:
+            break
+
+        cursor = next_cursor
+        if throttle > 0:
+            time.sleep(throttle)
+
+    if not frames:
+        return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
+
+    combined = pd.concat(frames)
+    combined = combined[~combined.index.duplicated(keep="last")].sort_index()
+    return combined
+
+
+def _catch_up_live_state(symbol, interval, df_1m_state, warmup_minutes, config, *, client=None):
+    latest_ms = _frame_end_utc_ms(df_1m_state)
+    if latest_ms is None:
+        return df_1m_state
+
+    catchup_end = pd.Timestamp.utcnow().floor("min") - pd.Timedelta(minutes=1)
+    catchup_end_ms = int(catchup_end.timestamp() * 1000)
+    if latest_ms >= catchup_end_ms:
+        return df_1m_state
+
+    catchup_end_label = catchup_end if catchup_end.tzinfo is not None else catchup_end.tz_localize("UTC")
+    print(
+        f"Catching up {symbol} live state from "
+        f"{pd.Timestamp(latest_ms, unit='ms', tz='UTC')} to {catchup_end_label}"
+    )
+    catchup = _fetch_closed_range(
+        symbol=symbol,
+        interval=interval,
+        start_ts=latest_ms + 60_000,
+        end_ts=catchup_end_ms,
+        config=config,
+        client=client,
+    )
+    if catchup.empty:
+        return df_1m_state
+
+    return _merge_recent_into_state(df_1m_state, catchup, warmup_minutes)
 
 
 def _discover_live_symbols(config):
@@ -719,6 +823,8 @@ def _run_portfolio_live_paper_sim(config=None):
     )
 
     states = {}
+    binance_client = BinanceClient(config=config)
+    persisted_state_timestamps = {}
     for symbol in symbols:
         df_1m_state, source_path = _load_live_bootstrap_history(
             symbol=symbol,
@@ -726,8 +832,19 @@ def _run_portfolio_live_paper_sim(config=None):
             warmup_minutes=warmup_minutes,
             config=config,
         )
+        df_1m_state = _catch_up_live_state(
+            symbol=symbol,
+            interval=interval,
+            df_1m_state=df_1m_state,
+            warmup_minutes=warmup_minutes,
+            config=config,
+            client=binance_client,
+        )
         states[symbol] = df_1m_state
+        runtime_path = _persist_runtime_state(symbol, interval, df_1m_state, config)
+        persisted_state_timestamps[symbol] = _frame_end_utc_ms(df_1m_state)
         print(f"Loaded {symbol} bootstrap source: {source_path}")
+        print(f"Persisted runtime state: {runtime_path}")
 
     builder = TimeframeBuilder(config=config)
     bias_detector = BiasDetector(config=config)
@@ -775,6 +892,10 @@ def _run_portfolio_live_paper_sim(config=None):
                 df_recent=df_recent,
                 warmup_minutes=warmup_minutes,
             )
+            latest_state_ms = _frame_end_utc_ms(states[symbol])
+            if latest_state_ms and latest_state_ms > int(persisted_state_timestamps.get(symbol, 0) or 0):
+                _persist_runtime_state(symbol, interval, states[symbol], config)
+                persisted_state_timestamps[symbol] = latest_state_ms
             df_15m, df_1h, df_5h, df_12h, df_1d, df_1w = _build_live_timeframes(
                 states[symbol],
                 builder=builder,

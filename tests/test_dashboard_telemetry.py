@@ -3,7 +3,47 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from common.dashboard_telemetry import build_trade_markers, load_live_dashboard_snapshot
+from common.dashboard_telemetry import build_trade_markers, list_live_runs, load_live_dashboard_snapshot, load_symbol_candles
+
+
+class DummyConfig:
+    def __init__(self, root_dir):
+        self.root_dir = Path(root_dir)
+        self.data = {
+            "live_sim": {
+                "output_dir": str(self.root_dir / "live_output"),
+            },
+            "storage": {
+                "base_path": str(self.root_dir / "data_storage"),
+            },
+            "binance": {
+                "default_interval": "1m",
+            },
+            "history": {
+                "start_date": "2018-01-01",
+                "end_date": "2026-05-12",
+            },
+        }
+
+    def require(self, *keys):
+        value = self.data
+        for key in keys:
+            value = value[key]
+        return value
+
+    def get(self, *keys, default=None):
+        value = self.data
+        for key in keys:
+            if not isinstance(value, dict) or key not in value:
+                return default
+            value = value[key]
+        return value
+
+    def path(self, *keys, default=None):
+        value = self.get(*keys, default=default)
+        if value is None:
+            return None
+        return Path(value)
 
 
 class DashboardTelemetryTests(unittest.TestCase):
@@ -98,6 +138,53 @@ class DashboardTelemetryTests(unittest.TestCase):
         self.assertEqual(2, len(markers))
         self.assertEqual("arrowDown", markers[0]["shape"])
         self.assertEqual("circle", markers[1]["shape"])
+
+    def test_list_live_runs_prefers_root_live_output_with_artifacts(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = DummyConfig(tmpdir)
+            live_root = config.path("live_sim", "output_dir")
+            live_root.mkdir(parents=True, exist_ok=True)
+            (live_root / "engine_heartbeat.json").write_text(
+                json.dumps({"cycle_count": 3}),
+                encoding="utf-8",
+            )
+            (live_root / "portfolio_status.json").write_text(
+                json.dumps({"equity": 10000}),
+                encoding="utf-8",
+            )
+            log_dir = live_root / "cockpit_launcher_20260613_003459"
+            log_dir.mkdir(parents=True, exist_ok=True)
+            (log_dir / "live_engine.stdout.log").write_text("ok", encoding="utf-8")
+
+            rows = list_live_runs(config=config)
+
+            self.assertEqual(1, len(rows))
+            self.assertEqual(str(live_root), rows[0]["path"])
+
+    def test_load_symbol_candles_prefers_live_runtime_file(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = DummyConfig(tmpdir)
+            folder = config.path("storage", "base_path") / "BTCUSDT" / "1m"
+            folder.mkdir(parents=True, exist_ok=True)
+            historical_path = folder / "BTCUSDT_1m_2018-01-01_to_2026-05-12.csv"
+            historical_path.write_text(
+                "timestamp,open,high,low,close,volume\n"
+                "2026-05-12 00:00:00,1,1,1,1,1\n",
+                encoding="utf-8",
+            )
+            runtime_path = folder / "BTCUSDT_1m_live_runtime.csv"
+            runtime_path.write_text(
+                "timestamp,open,high,low,close,volume\n"
+                "2026-06-13 00:00:00,2,2,2,2,2\n"
+                "2026-06-13 00:01:00,3,3,3,3,3\n",
+                encoding="utf-8",
+            )
+
+            payload = load_symbol_candles("BTCUSDT", timeframe="1m", limit=5, config=config)
+
+            self.assertEqual(str(runtime_path), payload["source_path"])
+            self.assertEqual(2, len(payload["candles"]))
+            self.assertEqual(3.0, payload["candles"][-1]["close"])
 
 
 if __name__ == "__main__":

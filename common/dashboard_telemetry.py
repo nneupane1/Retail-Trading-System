@@ -36,6 +36,37 @@ def _resolve_live_output_root(config: AppConfig) -> Path:
     return config.path("live_sim", "output_dir")
 
 
+def _runtime_state_path(folder: Path, *, symbol: str, interval: str) -> Path:
+    return folder / f"{symbol}_{interval}_live_runtime.csv"
+
+
+def _has_live_artifacts(path: Path) -> bool:
+    artifact_names = [
+        "portfolio_status.json",
+        "engine_heartbeat.json",
+        "engine_cycle_history.csv",
+        "symbol_pipeline_status.csv",
+        "trades.csv",
+        "signals.csv",
+    ]
+    return any((path / name).exists() for name in artifact_names)
+
+
+def _artifact_mtime(path: Path) -> float:
+    artifact_names = [
+        "portfolio_status.json",
+        "engine_heartbeat.json",
+        "engine_cycle_history.csv",
+        "symbol_pipeline_status.csv",
+        "trades.csv",
+        "signals.csv",
+    ]
+    times = [(path / name).stat().st_mtime for name in artifact_names if (path / name).exists()]
+    if times:
+        return max(times)
+    return path.stat().st_mtime
+
+
 def _resolve_history_file(
     folder: Path,
     *,
@@ -90,8 +121,19 @@ def list_live_runs(config: AppConfig | None = None) -> list[dict[str, Any]]:
         return []
 
     rows: list[dict[str, Any]] = []
+    if _has_live_artifacts(output_root):
+        rows.append(
+            {
+                "run_id": output_root.name,
+                "path": str(output_root),
+                "has_portfolio_status": (output_root / "portfolio_status.json").exists(),
+                "last_write_time": _artifact_mtime(output_root),
+            }
+        )
     for path in output_root.iterdir():
         if not path.is_dir():
+            continue
+        if not _has_live_artifacts(path):
             continue
         status_path = path / "portfolio_status.json"
         rows.append(
@@ -99,7 +141,7 @@ def list_live_runs(config: AppConfig | None = None) -> list[dict[str, Any]]:
                 "run_id": path.name,
                 "path": str(path),
                 "has_portfolio_status": status_path.exists(),
-                "last_write_time": path.stat().st_mtime,
+                "last_write_time": _artifact_mtime(path),
             }
         )
     rows.sort(key=lambda item: item["last_write_time"], reverse=True)
@@ -218,7 +260,8 @@ def load_symbol_candles(
     symbol = str(symbol).upper()
     interval = config.require("binance", "default_interval")
     folder = config.path("storage", "base_path") / symbol / interval
-    source_path = _resolve_history_file(
+    runtime_path = _runtime_state_path(folder, symbol=symbol, interval=interval)
+    source_path = runtime_path if runtime_path.exists() else _resolve_history_file(
         folder,
         symbol=symbol,
         interval=interval,
