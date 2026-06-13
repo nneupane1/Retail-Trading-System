@@ -305,6 +305,40 @@ class LiveSimRunnerTests(unittest.TestCase):
             self.assertEqual(df_1m.index[-1], pd.Timestamp("2026-06-13 00:01:00"))
             self.assertEqual(df_1m["close"].iloc[-1], 6)
 
+    def test_load_live_bootstrap_history_recovers_malformed_runtime_state(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config = DummyConfig(storage_base_path=temp_dir)
+            folder = Path(temp_dir) / "BTCUSDT" / "1m"
+            folder.mkdir(parents=True, exist_ok=True)
+
+            final_path = folder / "BTCUSDT_1m_2018-01-01_to_2026-05-12.csv"
+            final_path.write_text(
+                "timestamp,open,high,low,close,volume\n"
+                "2026-05-12 00:00:00,1,1,1,1,1\n"
+                "2026-05-12 00:01:00,2,2,2,2,2\n",
+                encoding="utf-8",
+            )
+            runtime_path = _runtime_state_path("BTCUSDT", "1m", config)
+            runtime_path.write_text(
+                "timestamp,open,high,low,close,volume\n"
+                "2026-06-13 00:00:00,5,5,5,5,5\n"
+                "2026-06-13 00:01:00,6,6,6,6,6,999\n"
+                "2026-06-13 00:02:00,7,7,7,7,7\n",
+                encoding="utf-8",
+            )
+
+            df_1m, source_path = _load_live_bootstrap_history(
+                symbol="BTCUSDT",
+                interval="1m",
+                warmup_minutes=60 * 24 * 60,
+                config=config,
+            )
+
+            self.assertEqual(source_path, runtime_path)
+            self.assertTrue((folder / "BTCUSDT_1m_live_runtime.corrupt.csv").exists())
+            self.assertEqual(df_1m.index[-1], pd.Timestamp("2026-06-13 00:02:00"))
+            self.assertEqual(df_1m["close"].iloc[-1], 7)
+
     def test_momentum_ranks_prioritize_stronger_recent_symbols(self):
         dates = pd.date_range("2026-01-01", periods=5, freq="15min")
         frames = {

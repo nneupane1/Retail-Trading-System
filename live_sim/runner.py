@@ -1,10 +1,12 @@
 """Runs the near-live simulation loop using recent Binance data and shared strategy components."""
 
+import shutil
 import time
 from collections import defaultdict
 from pathlib import Path
 
 import pandas as pd
+from pandas.errors import ParserError
 
 from bias.bias_detector import BiasDetector
 from data.binance_client import BinanceClient
@@ -237,6 +239,64 @@ def _runtime_state_path(symbol, interval, config):
     return folder / f"{symbol}_{interval}_live_runtime.csv"
 
 
+def _recover_runtime_state_csv(runtime_path, config):
+    try:
+        return load_from_csv(runtime_path)
+    except ParserError as error:
+        print(
+            f"Runtime state CSV is malformed and will be recovered: {runtime_path} | "
+            f"{error}"
+        )
+    except ValueError as error:
+        print(
+            f"Runtime state CSV failed validation and will be recovered: {runtime_path} | "
+            f"{error}"
+        )
+
+    try:
+        repaired = pd.read_csv(
+            runtime_path,
+            parse_dates=["timestamp"],
+            on_bad_lines="skip",
+        )
+    except Exception as repair_error:
+        print(
+            f"Runtime state CSV recovery failed while parsing repaired rows: "
+            f"{runtime_path} | {repair_error}"
+        )
+        backup_path = runtime_path.with_name(f"{runtime_path.stem}.corrupt.csv")
+        shutil.move(str(runtime_path), str(backup_path))
+        print(f"Quarantined corrupt runtime state: {backup_path}")
+        return None
+
+    if repaired.empty:
+        backup_path = runtime_path.with_name(f"{runtime_path.stem}.corrupt.csv")
+        shutil.move(str(runtime_path), str(backup_path))
+        print(f"Runtime state contained no salvageable rows. Quarantined: {backup_path}")
+        return None
+
+    repaired.set_index("timestamp", inplace=True)
+    try:
+        repaired = MarketDataDownloader._validate_ohlcv(repaired)
+    except Exception as repair_error:
+        backup_path = runtime_path.with_name(f"{runtime_path.stem}.corrupt.csv")
+        shutil.move(str(runtime_path), str(backup_path))
+        print(
+            f"Runtime state recovery produced invalid OHLCV rows. Quarantined: "
+            f"{backup_path} | {repair_error}"
+        )
+        return None
+
+    backup_path = runtime_path.with_name(f"{runtime_path.stem}.corrupt.csv")
+    shutil.copyfile(runtime_path, backup_path)
+    repaired.to_csv(runtime_path, index_label="timestamp")
+    print(
+        f"Recovered runtime state CSV by skipping malformed rows. "
+        f"Backup: {backup_path} | Repaired rows: {len(repaired)}"
+    )
+    return repaired
+
+
 def _resolve_live_history_file(folder, symbol, interval, start_date, end_date):
     exact_path = folder / f"{symbol}_{interval}_{start_date}_to_{end_date}.csv"
     if exact_path.exists():
@@ -304,9 +364,10 @@ def _load_live_bootstrap_history(symbol, interval, warmup_minutes, config):
     df_1m = _trim_live_window(df_1m, warmup_minutes)
     runtime_path = _runtime_state_path(symbol, interval, config)
     if runtime_path.exists():
-        runtime_df = load_from_csv(runtime_path)
-        df_1m = _merge_recent_into_state(df_1m, runtime_df, warmup_minutes)
-        return df_1m, runtime_path
+        runtime_df = _recover_runtime_state_csv(runtime_path, config)
+        if runtime_df is not None:
+            df_1m = _merge_recent_into_state(df_1m, runtime_df, warmup_minutes)
+            return df_1m, runtime_path
     return df_1m, source_path
 
 
