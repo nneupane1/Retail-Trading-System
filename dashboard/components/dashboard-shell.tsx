@@ -25,6 +25,7 @@ import { MiniLineChart } from "@/components/mini-line-chart";
 
 type Row = Record<string, any>;
 type ViewKey = "overview" | "market" | "atlas" | "portfolio" | "allocator" | "runtime";
+type DashboardMode = "paper" | "backtest" | "live";
 
 type Snapshot = {
   run?: { run_id: string; path: string; last_write_time?: number } | null;
@@ -47,8 +48,6 @@ type Snapshot = {
 type Point = { label?: string; value: number };
 
 const API_URL = process.env.NEXT_PUBLIC_DASHBOARD_API_URL ?? "http://127.0.0.1:8000";
-const DASHBOARD_MODE = (process.env.NEXT_PUBLIC_DASHBOARD_MODE || "live").toLowerCase();
-const WS_URL = API_URL.replace(/^http/, "ws") + (DASHBOARD_MODE === "backtest" ? "/ws/backtest" : "/ws/live");
 const FALLBACK_SYMBOLS = [
   "AAVEUSDT",
   "AVAXUSDT",
@@ -61,9 +60,8 @@ const FALLBACK_SYMBOLS = [
   "XRPUSDT",
 ];
 
-const VIEW_TABS: {
+const VIEW_DEFS: {
   key: ViewKey;
-  href: string;
   label: string;
   icon: React.ReactNode;
   description: string;
@@ -71,7 +69,6 @@ const VIEW_TABS: {
 }[] = [
   {
     key: "overview",
-    href: "/",
     label: "Overview",
     icon: <BarChart3 className="h-4 w-4" />,
     description: "Role economics, equity rhythm, and multi-sleeve pulse.",
@@ -79,7 +76,6 @@ const VIEW_TABS: {
   },
   {
     key: "market",
-    href: "/market",
     label: "Market",
     icon: <CandlestickChart className="h-4 w-4" />,
     description: "Price, candles, tape, levels, and symbol rotation.",
@@ -87,7 +83,6 @@ const VIEW_TABS: {
   },
   {
     key: "atlas",
-    href: "/atlas",
     label: "Atlas",
     icon: <LayoutGrid className="h-4 w-4" />,
     description: "Multi-asset, multi-timeframe alignment matrix.",
@@ -95,7 +90,6 @@ const VIEW_TABS: {
   },
   {
     key: "portfolio",
-    href: "/portfolio",
     label: "Portfolio",
     icon: <BriefcaseBusiness className="h-4 w-4" />,
     description: "Blotters, sleeve leaderboard, and exposure context.",
@@ -103,7 +97,6 @@ const VIEW_TABS: {
   },
   {
     key: "allocator",
-    href: "/allocator",
     label: "Allocator",
     icon: <Radar className="h-4 w-4" />,
     description: "Cap pressure, suppression reasons, and scarce-risk routing.",
@@ -111,13 +104,68 @@ const VIEW_TABS: {
   },
   {
     key: "runtime",
-    href: "/runtime",
     label: "Runtime",
     icon: <Shield className="h-4 w-4" />,
     description: "Guard health, freshness, recovery, and operator notes.",
     eyebrow: "Operational health",
   },
 ];
+
+const MODE_META: Record<
+  DashboardMode,
+  {
+    shellLabel: string;
+    eyebrow: string;
+    description: string;
+    accent: string;
+    summary: string;
+    routeBase: string;
+  }
+> = {
+  paper: {
+    shellLabel: "Paper Execution Cockpit",
+    eyebrow: "simulated execution rail",
+    description: "Live paper telemetry, signal routing, allocator pressure, and chart-level execution flow.",
+    accent: "border-sky-300/30 bg-sky-400/14 text-sky-100 shadow-[0_0_18px_rgba(56,189,248,0.12)]",
+    summary: "Simulated execution stack consuming live market data with full routing, evaluation, and portfolio telemetry.",
+    routeBase: "/paper",
+  },
+  backtest: {
+    shellLabel: "Backtest Intelligence Lab",
+    eyebrow: "research replay rail",
+    description: "Historical replay, validation artefacts, allocator diagnostics, and strategy forensics.",
+    accent: "border-amber-300/30 bg-amber-400/14 text-amber-100 shadow-[0_0_18px_rgba(251,191,36,0.12)]",
+    summary: "Historical run analysis tied to the same cockpit language used by paper execution and runtime operations.",
+    routeBase: "/backtest",
+  },
+  live: {
+    shellLabel: "Live Operations Deck",
+    eyebrow: "runtime command rail",
+    description: "Operational readiness, stream health, synchronization, guards, and execution-state observability.",
+    accent: "border-emerald-300/28 bg-emerald-400/14 text-emerald-100 shadow-[0_0_18px_rgba(52,211,153,0.12)]",
+    summary: "Operational command view aligned to eventual live execution, while consuming the active runtime telemetry rail.",
+    routeBase: "/live",
+  },
+};
+
+function normalizeDashboardMode(value?: string): DashboardMode {
+  const normalized = String(value ?? "").toLowerCase();
+  if (normalized === "backtest") {
+    return "backtest";
+  }
+  if (normalized === "live") {
+    return "live";
+  }
+  return "paper";
+}
+
+function buildViewTabs(mode: DashboardMode) {
+  const base = MODE_META[mode].routeBase;
+  return VIEW_DEFS.map((tab) => ({
+    ...tab,
+    href: tab.key === "overview" ? base : `${base}/${tab.key}`,
+  }));
+}
 
 const fetcher = async <T,>(url: string): Promise<T> => {
   const response = await fetch(url, { cache: "no-store" });
@@ -267,8 +315,15 @@ function timeframeBandForStrategy(strategyType: unknown) {
   return null;
 }
 
-function useLiveSnapshot() {
-  const { data, mutate } = useSWR<Snapshot>(`${API_URL}/api/snapshot`, fetcher, {
+function useLiveSnapshot(mode: DashboardMode) {
+  const snapshotUrl = `${API_URL}/api/snapshot?mode=${encodeURIComponent(mode)}`;
+  const socketUrl =
+    API_URL.replace(/^http/, "ws") +
+    (mode === "backtest"
+      ? `/ws/backtest?mode=${encodeURIComponent(mode)}`
+      : `/ws/live?mode=${encodeURIComponent(mode)}`);
+
+  const { data, mutate } = useSWR<Snapshot>(snapshotUrl, fetcher, {
     refreshInterval: 10000,
     revalidateOnFocus: false,
   });
@@ -276,7 +331,7 @@ function useLiveSnapshot() {
   const [lastPacketTimestamp, setLastPacketTimestamp] = useState<number | null>(null);
 
   useEffect(() => {
-    const socket = new WebSocket(WS_URL);
+    const socket = new WebSocket(socketUrl);
     socket.onopen = () => setSocketConnected(true);
     socket.onclose = () => setSocketConnected(false);
     socket.onerror = () => setSocketConnected(false);
@@ -290,7 +345,7 @@ function useLiveSnapshot() {
       }
     };
     return () => socket.close();
-  }, [mutate]);
+  }, [mutate, socketUrl]);
 
   return {
     data,
@@ -509,8 +564,17 @@ function SignalStateCell({
   );
 }
 
-export function DashboardShell({ view = "overview" }: { view?: ViewKey }) {
-  const { data: snapshot, socketConnected, lastPacketTimestamp } = useLiveSnapshot();
+export function DashboardShell({
+  view = "overview",
+  mode = normalizeDashboardMode(process.env.NEXT_PUBLIC_DASHBOARD_MODE || "paper"),
+}: {
+  view?: ViewKey;
+  mode?: DashboardMode;
+}) {
+  const dashboardMode = normalizeDashboardMode(mode);
+  const modeMeta = MODE_META[dashboardMode];
+  const viewTabs = useMemo(() => buildViewTabs(dashboardMode), [dashboardMode]);
+  const { data: snapshot, socketConnected, lastPacketTimestamp } = useLiveSnapshot(dashboardMode);
   const [symbol, setSymbol] = useState("BTCUSDT");
   const [timeframe, setTimeframe] = useState("15m");
 
@@ -602,9 +666,9 @@ export function DashboardShell({ view = "overview" }: { view?: ViewKey }) {
     () => parseRunTimestamp(engineHeartbeat.latest_recent_1m_timestamp ?? snapshot?.run?.last_write_time),
     [engineHeartbeat.latest_recent_1m_timestamp, snapshot?.run?.last_write_time],
   );
-  const chartClipTimestamp = DASHBOARD_MODE === "backtest" ? replayTimestamp : null;
+  const chartClipTimestamp = dashboardMode === "backtest" ? replayTimestamp : null;
   const connectionLabel =
-    DASHBOARD_MODE === "backtest"
+    dashboardMode === "backtest"
       ? snapshot?.run?.run_id
         ? `replay ${snapshot.run.run_id}`
         : "no run"
@@ -612,8 +676,8 @@ export function DashboardShell({ view = "overview" }: { view?: ViewKey }) {
         ? "stream live"
         : "reconnecting";
   const connectionTone =
-    DASHBOARD_MODE === "backtest" ? (snapshot?.run ? "green" : "orange") : socketConnected ? "green" : "orange";
-  const viewMeta = VIEW_TABS.find((item) => item.key === view) ?? VIEW_TABS[0];
+    dashboardMode === "backtest" ? (snapshot?.run ? "green" : "orange") : socketConnected ? "green" : "orange";
+  const viewMeta = viewTabs.find((item) => item.key === view) ?? viewTabs[0];
   const runtimePoints = useMemo(() => {
     const pf = Number(runtimeRow?.profit_factor ?? 0);
     const avgR = Number(runtimeRow?.avg_R ?? 0);
@@ -909,7 +973,7 @@ export function DashboardShell({ view = "overview" }: { view?: ViewKey }) {
       <SectionCard title="Market Panel" eyebrow="Price / trades / levels" className="min-h-[680px]">
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-[0.24em] text-white/65">
-            {DASHBOARD_MODE === "backtest"
+            {dashboardMode === "backtest"
               ? `Replay clipping through ${formatFlexibleTime(replayTimestamp)}`
               : `Live feed through ${formatFlexibleTime(liveFeedTimestamp)}`}
           </div>
@@ -951,7 +1015,7 @@ export function DashboardShell({ view = "overview" }: { view?: ViewKey }) {
               last write {formatRunTime(snapshot?.run?.last_write_time)}
             </div>
             <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-[0.24em] text-white/60">
-              {DASHBOARD_MODE === "backtest"
+              {dashboardMode === "backtest"
                 ? `replay progress ${formatFlexibleTime(replayTimestamp)}`
                 : `strategy checkpoint ${formatFlexibleTime(replayTimestamp)}`}
             </div>
@@ -963,6 +1027,7 @@ export function DashboardShell({ view = "overview" }: { view?: ViewKey }) {
           apiUrl={API_URL}
           untilTime={chartClipTimestamp}
           runId={snapshot?.run?.run_id ?? undefined}
+          mode={dashboardMode}
         />
       </SectionCard>
 
@@ -1555,15 +1620,9 @@ export function DashboardShell({ view = "overview" }: { view?: ViewKey }) {
                 <span className="rounded-full border border-cyan-300/30 bg-cyan-400/14 px-3 py-1 text-[10px] uppercase tracking-[0.34em] text-cyan-100 shadow-[0_0_18px_rgba(83,242,255,0.12)]">
                   Retail Trading System
                 </span>
-                {DASHBOARD_MODE === "backtest" ? (
-                  <span className="rounded-full border border-amber-300/30 bg-amber-400/14 px-3 py-1 text-[10px] uppercase tracking-[0.28em] text-amber-100 shadow-[0_0_18px_rgba(251,191,36,0.12)]">
-                    Backtest Cockpit
-                  </span>
-                ) : (
-                  <span className="rounded-full border border-sky-300/30 bg-sky-400/14 px-3 py-1 text-[10px] uppercase tracking-[0.28em] text-sky-100 shadow-[0_0_18px_rgba(56,189,248,0.12)]">
-                    Live Paper Cockpit
-                  </span>
-                )}
+                <span className={clsx("rounded-full px-3 py-1 text-[10px] uppercase tracking-[0.28em]", modeMeta.accent)}>
+                  {modeMeta.shellLabel}
+                </span>
                 <span className="rounded-full border border-emerald-300/28 bg-emerald-400/14 px-3 py-1 text-[10px] uppercase tracking-[0.28em] text-emerald-100 shadow-[0_0_18px_rgba(52,211,153,0.12)]">
                   {viewMeta.eyebrow}
                 </span>
@@ -1571,9 +1630,29 @@ export function DashboardShell({ view = "overview" }: { view?: ViewKey }) {
               <h1 className="mt-4 text-4xl font-semibold tracking-[0.01em] text-white md:text-[2.5rem]">
                 Command Deck
               </h1>
-              {DASHBOARD_MODE === "backtest" ? (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {(["paper", "backtest", "live"] as DashboardMode[]).map((item) => {
+                  const isActive = item === dashboardMode;
+                  const meta = MODE_META[item];
+                  return (
+                    <Link
+                      key={item}
+                      href={meta.routeBase}
+                      className={clsx(
+                        "rounded-full border px-3 py-1 text-xs uppercase tracking-[0.18em] transition-all",
+                        isActive
+                          ? "border-cyan-300/28 bg-cyan-400/14 text-cyan-100 shadow-[0_0_20px_rgba(83,242,255,0.12)]"
+                          : "border-white/10 bg-white/5 text-white/60 hover:border-cyan-300/18 hover:text-white",
+                      )}
+                    >
+                      {meta.shellLabel}
+                    </Link>
+                  );
+                })}
+              </div>
+              {dashboardMode === "backtest" ? (
                 <>
-                  <div className="mt-2 flex flex-wrap gap-2">
+                  <div className="mt-3 flex flex-wrap gap-2">
                     <span className="inline-block rounded-full border border-amber-400/20 bg-amber-400/8 px-3 py-1 text-xs uppercase tracking-[0.18em] text-amber-200">
                       BACKTEST MODE
                     </span>
@@ -1591,15 +1670,17 @@ export function DashboardShell({ view = "overview" }: { view?: ViewKey }) {
                     This is backtest replay state. The chart and markers show the latest loaded snapshot for the selected run, not the full historical data.
                   </div>
                 </>
+              ) : dashboardMode === "live" ? (
+                <div className="mt-4 rounded-3xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">
+                  Live Operations is the runtime command surface. It stays wired to the active telemetry rail and is ready to front a future execution adapter without redesigning the cockpit.
+                </div>
               ) : null}
               <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-200/72 md:text-[15px]">
-                Stable command header, cinematic asset rail, and route-backed lower cockpit modules for
-                market, atlas, portfolio, allocator, and runtime operations without losing spatial
-                orientation.
+                {modeMeta.summary}
               </p>
 
               <div className="mt-5 flex flex-wrap gap-2">
-                {VIEW_TABS.map((tab) => {
+                {viewTabs.map((tab) => {
                   const isActive = view === tab.key;
                   return (
                     <Link
@@ -1696,7 +1777,7 @@ export function DashboardShell({ view = "overview" }: { view?: ViewKey }) {
             <div className="flex items-center gap-3 rounded-2xl border border-slate-200/10 bg-slate-900/40 px-4 py-2 text-sm text-slate-200/78 shadow-[0_18px_40px_rgba(4,9,20,0.24)]">
               <Clock3 className="h-4 w-4 text-orange-200" />
               <span>
-                {DASHBOARD_MODE === "backtest"
+                {dashboardMode === "backtest"
                   ? snapshot?.run?.last_write_time
                     ? formatRunTime(snapshot.run.last_write_time)
                     : "awaiting data"

@@ -44,19 +44,21 @@ export function CandlePanel({
   apiUrl,
   untilTime,
   runId,
+  mode = "paper",
 }: {
   symbol: string;
   timeframe: string;
   apiUrl: string;
   untilTime?: number | null;
   runId?: string | null;
+  mode?: "paper" | "backtest" | "live";
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const viewKeyRef = useRef<string>("");
 
-  const url = `${apiUrl}/api/candles?symbol=${symbol}&timeframe=${timeframe}&limit=700${runId ? `&run_id=${encodeURIComponent(runId)}` : ""}`;
+  const url = `${apiUrl}/api/candles?symbol=${symbol}&timeframe=${timeframe}&limit=700&mode=${encodeURIComponent(mode)}${runId ? `&run_id=${encodeURIComponent(runId)}` : ""}`;
   const { data } = useSWR<CandlePayload>(
     url,
     fetcher,

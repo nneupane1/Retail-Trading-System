@@ -2,8 +2,8 @@ import "./globals.css";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Retail Trading System | Live Command Deck",
-  description: "Professional live paper-trading command deck for the routed multi-sleeve system."
+  title: "Retail Trading System | Command Center",
+  description: "Institutional multi-mode trading cockpit for backtest intelligence, paper execution, and runtime operations."
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

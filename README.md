@@ -73,6 +73,11 @@ means:
 The cockpit is designed as a fixed command header plus route-backed lower
 modules:
 
+- top-level command center routes:
+  - `/` for the mode selector / command-center landing page
+  - `/paper` for paper execution telemetry
+  - `/backtest` for replay and research inspection
+  - `/live` for runtime / live-operations framing on the same telemetry rail
 - `Overview`: equity, sleeve stats, daily rhythm, high-level portfolio pulse
 - `Market`: candles, trade markers, candidate tape, symbol/timeframe replay
 - `Atlas`: multi-asset and multi-timeframe command grid
