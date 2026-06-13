@@ -1,96 +1,567 @@
 # Retail Trading System
 
-Retail Trading System is a modular research, backtest, and live-paper framework
-for Binance futures-style OHLCV trading. The current stack is built around
-role-specialized sleeves rather than one monolithic strategy:
+Retail Trading System is a modular research, backtest, live-paper, and cockpit
+framework for Binance-style OHLCV trading. The system is intentionally built as
+multi-asset, multi-timeframe, and multi-role rather than treating one signal as
+the answer to every market condition.
 
-- `15m` core for tactical long/short flow
-- `12H` standard, moonshot, and rotation sleeves for structural participation
-- routed `1H` execution as a short-specialist sleeve with mild bearish-HTF boost
-- shared-cap allocator and telemetry layer that decides which opportunities
-  deserve risk right now
+The operating idea is simple:
 
-The project now includes a live-paper cockpit with a FastAPI telemetry backend,
-a Next.js dashboard, and a one-command launcher.
+- let fast execution layers keep opportunity flow alive
+- let higher-timeframe layers capture structural moves and convexity
+- let a shared-cap allocator decide which sleeve, symbol, and direction deserve
+  risk right now
+- preserve enough telemetry that every important decision can be inspected later
 
-## Refactor Layer
+This repository is therefore not just a signal script. It is a full pipeline:
+historical data coverage, `1m` ingestion, higher-timeframe rebuilding, feature
+generation, context detection, candidate formation, risk routing, trade
+lifecycle management, historical replay, live paper execution, and a modern
+dashboard stack that exposes what the engine is doing.
 
-The repo now includes the first structural refactor layer needed before more
-advanced lineage/recycle logic:
+The codebase now has two equally important surfaces:
 
-- explicit trade lifecycle states:
-  - `candidate -> allocated -> probe -> validated -> expanded -> decaying -> exited`
-- capital-routing metadata on every trade:
-  - `request_type`, `capital_lane`, `lineage_id`, re-entry count scaffold
-- allocator-decision forensics:
-  - every decision cycle can now be audited through `allocator_decisions.csv`
-- live continuity:
-  - the runner catches up from the last persisted runtime state before resuming
+- the trading engine itself
+- the command-center cockpit used to observe research, paper execution, and
+  future live operations in a unified layout
+
+## Table of Contents
+
+- [Current Mission](#current-mission)
+- [Current Production-Like Stack](#current-production-like-stack)
+- [System Roles At A Glance](#system-roles-at-a-glance)
+- [Validation Ladder](#validation-ladder)
+- [Command Center Modes](#command-center-modes)
+- [Cockpit Surface Map](#cockpit-surface-map)
+- [Repository Map](#repository-map)
+- [System Overview](#system-overview)
+- [Architectural Philosophy](#architectural-philosophy)
+- [High-Level Operating Model](#high-level-operating-model)
+- [Timeframe Hierarchy](#timeframe-hierarchy)
+- [Configuration Model](#configuration-model)
+- [Data Layer](#data-layer)
+- [Feature Layer](#feature-layer)
+- [Context Layer](#context-layer)
+- [Entry Layer](#entry-layer)
+- [Risk And Trade Management](#risk-and-trade-management)
+- [Simulation Core](#simulation-core)
+- [Trade Lifecycle Refactor Layer](#trade-lifecycle-refactor-layer)
+- [What Happens Each Engine Cycle](#what-happens-each-engine-cycle)
+- [Live Continuity And Catch-Up Model](#live-continuity-and-catch-up-model)
+- [Operational Workflow](#operational-workflow)
+- [Current Research Conclusions](#current-research-conclusions)
+- [Outputs And Telemetry](#outputs-and-telemetry)
+- [Backtest / Paper / Runtime Artifacts](#backtest--paper--runtime-artifacts)
+- [Backtest Mode](#backtest-mode)
+- [Live Simulation Mode](#live-simulation-mode)
+- [Testing And Verification](#testing-and-verification)
+- [Design Invariants](#design-invariants)
+- [Known Constraints And Current Boundaries](#known-constraints-and-current-boundaries)
+- [Extension Guide](#extension-guide)
+- [Quick Start](#quick-start)
+- [Dependencies](#dependencies)
+
+## Current Mission
+
+The immediate priority is not adding more strategy cleverness. The immediate
+priority is making the existing routed stack more operationally complete:
+
+| Area | Current state | Why it matters | Next focus |
+| --- | --- | --- | --- |
+| Core strategy sleeves | Active and validated enough for continued paper work | Edge is already specialized by role | Keep stable |
+| `1H` routed sleeve | Promoted as short-specialist branch | Adds differentiated downside exploitation | Monitor and protect |
+| `6H` sleeves | Research only | Useful for future study, not production routing | Keep separate |
+| Shared-cap allocator | Active | Capital competition is real | Improve observability and coordination |
+| Live paper cockpit | Active foundation | Needed to see what the engine is doing in real time | Expand visibility and polish |
+| Live continuity | Partially scaffolded | Engine must resume from prior state cleanly | Strengthen catch-up and persistence |
+| Dashboard UX | Functional but still evolving | Must show activity even when no trade fires | Improve clarity, density, and elegance |
 
 ## Current Production-Like Stack
 
-- Active sleeves:
-  - `15m` core
-  - `15m` swing moonshot
-  - `12H` standard
-  - `12H` moonshot
-  - `12H` rotation
-  - `1H` routed short sleeve with reversible runtime guard
-- Research-only sleeves:
-  - `6H` standard
-  - `6H` moonshot
-- Current universe:
-  - selective multi-asset baseline, with broad-universe discovery kept as a
-    research feeder rather than a production default
+The current production-like stack is role-specialized:
 
-## What The System Is Optimizing
+| Sleeve | Timeframe | Current status | Role |
+| --- | --- | --- | --- |
+| Core | `15m` | Active | Tactical long/short execution flow |
+| Swing moonshot | `15m` | Active | Tactical convexity participation |
+| Standard HTF | `12H` | Active | Structural higher-timeframe participation |
+| HTF moonshot | `12H` | Active | Larger structural expansion attempts |
+| HTF rotation | `12H` | Active | Cross-sectional leader reinforcement |
+| Routed `1H` | `1H` | Active | Specialized short-side execution sleeve |
+| Standard `6H` | `6H` | Research only | Mid-timeframe candidate study |
+| Moonshot `6H` | `6H` | Research only | Mid-timeframe convexity study |
 
-The design goal is portfolio efficiency, not maximum raw trigger count. That
-means:
+The stack is deliberately asymmetric. Every timeframe is not forced to do the
+same job.
 
-- sleeves are allowed to specialize instead of trading every market condition
-- capital competition is treated as real
-- weak overlap is filtered out at the allocator layer
-- telemetry is first-class, so you can see data flow, signal formation,
-  suppression reasons, routing decisions, and live-paper state in real time
+## System Roles At A Glance
+
+| Layer | What it is supposed to do | What it should not do |
+| --- | --- | --- |
+| `15m` core | Keep opportunity flow alive, handle tactical long/short execution, react to local momentum | Pretend it is the only source of edge |
+| `12H` layers | Capture structural trend, slow leadership, and larger profit geometry | Chase dense intraday noise |
+| `1H` routed sleeve | Exploit downside imbalance and context-backed short edge | Be forced into symmetric long participation |
+| `6H` research sleeves | Expand research coverage and future candidate discovery | Be treated as production sleeves prematurely |
+| Allocator | Route scarce shared risk toward the strongest opportunities | Assume every valid signal deserves capital |
+| Cockpit | Make internal engine activity visible and interpretable | Be mistaken for the execution engine itself |
+
+## Validation Ladder
+
+| Stage | Question answered | Status |
+| --- | --- | --- |
+| Unit tests | Does the code behave mechanically? | Passing |
+| Curated multi-asset validation | Does selective breadth help more than naive breadth? | Completed |
+| `12H` sleeve promotion | Do structural sleeves deserve live-paper routing? | Completed |
+| `1H` specialization work | Is `1H` better as a short-specialist sleeve? | Completed |
+| `6H` research | Does `6H` show standalone edge worth future study? | Completed as research |
+| Routed portfolio stack validation | Do active sleeves work better together than alone? | Completed enough for continued paper work |
+| Live-paper observability | Can the operator see the engine state clearly? | In progress |
+| Continuity/catch-up hardening | Can runtime resume and backfill from prior state reliably? | In progress |
+| Full paper-runtime maturation | Is the system ready for prolonged 24/7 paper ops? | Next major gate |
+
+## Command Center Modes
+
+The dashboard is no longer intended to be a single live page. It is now a
+command-center surface with a stable spatial layout and separate operating
+modes.
+
+| Route | Purpose | Operator framing |
+| --- | --- | --- |
+| `/` | Command-center landing page | Main mode selector and high-level system entry |
+| `/paper` | Paper Execution Cockpit | Active paper trading and telemetry |
+| `/backtest` | Backtest Intelligence Lab | Historical replay, research, and validation inspection |
+| `/live` | Live Operations Deck | Runtime-oriented operational framing for future live deployment |
+
+### Command-center route model
+
+```mermaid
+flowchart TD
+    A[Command Center /] --> B[Paper Execution /paper]
+    A --> C[Backtest Intelligence /backtest]
+    A --> D[Live Operations /live]
+
+    B --> B1[Overview]
+    B --> B2[Market]
+    B --> B3[Atlas]
+    B --> B4[Portfolio]
+    B --> B5[Allocator]
+    B --> B6[Runtime]
+
+    C --> C1[Replay overview]
+    C --> C2[Historical market view]
+    C --> C3[Validation atlas]
+    C --> C4[Backtest portfolio]
+    C --> C5[Allocator forensics]
+    C --> C6[Runtime diagnostics]
+
+    D --> D1[Operational overview]
+    D --> D2[Market watch]
+    D --> D3[System atlas]
+    D --> D4[Execution book]
+    D --> D5[Guard and cap pressure]
+    D --> D6[Service/runtime health]
+```
+
+## Cockpit Surface Map
+
+The cockpit is designed around a persistent top command header and a lower
+region that changes by module.
+
+| Module | Main purpose | What should be visible |
+| --- | --- | --- |
+| `Overview` | System pulse | Equity, PF, sleeve contributions, daily rhythm |
+| `Market` | Price and execution theater | Candles, levels, trade markers, live/replay feed state |
+| `Atlas` | Multi-asset status map | Symbol-by-symbol and timeframe-by-timeframe state |
+| `Portfolio` | Execution book | Open positions, recent exits, sleeve attribution |
+| `Allocator` | Scarce-risk routing | Cap pressure, suppressions, selection reasons |
+| `Runtime` | Engine state | Heartbeats, cycle count, data freshness, guard status |
+
+The dashboard is not a broker. It visualizes what the engine and telemetry
+layer are actually writing.
 
 ## Repository Map
 
-- [`backtest/`](backtest/) for the historical engine, validation helpers, and
-  checkpoint logic
-- [`common/`](common/) for shared utilities, progress tracking, and dashboard
-  telemetry loading
-- [`dashboard/`](dashboard/) for the Next.js live cockpit frontend
-- [`dashboard_api/`](dashboard_api/) for the FastAPI backend and websocket
-  stream
-- [`live_sim/`](live_sim/) for the live-paper runner, portfolio loop, logging,
-  and telemetry writes
-- [`config/`](config/) for strategy, allocator, and branch settings
-- [`tests/`](tests/) for unit and integration coverage
+| Path | Responsibility |
+| --- | --- |
+| `backtest/` | Historical runner, validation helpers, reporting, checkpoints |
+| `bias/` | Directional context logic |
+| `common/` | Shared runtime helpers, telemetry loading, audit utilities |
+| `config/` | Configuration loader, settings, branch and baseline definitions |
+| `dashboard/` | Next.js command-center frontend |
+| `dashboard_api/` | FastAPI + websocket telemetry backend |
+| `data/` | Binance client, history downloading, resampling |
+| `entry/` | Entry logic, scoring, breakout/retest handling |
+| `exit/` | Hard-exit logic |
+| `features/` | Feature pipeline, candle metrics, indicators |
+| `live_sim/` | Live-paper runner, cycle loop, logging, portfolio state writes |
+| `position/` | Risk-based sizing |
+| `pyramiding/` | Add-to-winner and convexity controls |
+| `regime/` | Higher-timeframe regime evaluation |
+| `simulation/` | Trade/account/simulator core |
+| `sniffing/` | Trend-health and trail-state logic |
+| `tests/` | Unit and regression coverage |
+| `main_download.py` | Historical `1m` downloader |
+| `main_resample.py` | Manual HTF rebuild utility |
+| `main_backtest.py` | Historical replay entry point |
+| `main_live.py` | Paper/live-style runtime entry point |
+| `main_walkforward.py` | Walk-forward validation entry point |
+| `main_monte_carlo.py` | Robustness/stress entry point |
+| `main_calibrate.py` | Opportunity calibration reports |
+| `main_edge_lab.py` | Isolated edge-family diagnostics |
+| `run_live_cockpit.py` | One-command live paper cockpit launcher |
+| `run_backtest_cockpit.py` | One-command backtest cockpit launcher |
 
-## Live Cockpit
+## System Overview
 
-The cockpit is designed as a fixed command header plus route-backed lower
-modules:
+At a high level, the system ingests `1m` candles, rebuilds all required higher
+timeframes from that canonical base, computes features and context, forms
+sleeve-specific candidates, and then asks the allocator which opportunities
+deserve shared risk. That sequence matters because the project is designed
+around the idea that market observation, signal creation, capital routing, and
+trade management are separate economic jobs.
 
-- top-level command center routes:
-  - `/` for the mode selector / command-center landing page
-  - `/paper` for paper execution telemetry
-  - `/backtest` for replay and research inspection
-  - `/live` for runtime / live-operations framing on the same telemetry rail
-- `Overview`: equity, sleeve stats, daily rhythm, high-level portfolio pulse
-- `Market`: candles, trade markers, candidate tape, symbol/timeframe replay
-- `Atlas`: multi-asset and multi-timeframe command grid
-- `Portfolio`: trades, sleeve leaderboard, open-state context
-- `Allocator`: cap pressure, suppression reasons, scarce-risk routing
-- `Runtime`: engine heartbeat, data freshness, symbol pipeline, guard state
+The reason the system is multi-timeframe is not aesthetic complexity. It comes
+from a specific research conclusion: different time horizons expose different
+types of edge. The `15m` layer is good at finding frequent tactical setups and
+keeping opportunity flow alive. The `12H` sleeves are good at capturing slow
+structural moves where a small move on the higher timeframe can represent days
+or weeks of lower-timeframe work. The `1H` sleeve turned out not to be a
+general-purpose execution layer, but a specialized short-side engine. The
+allocator exists because these edges compete for the same capital.
 
-The dashboard is not a broker or execution engine. It visualizes what the
-live-paper stack is actually writing.
+This repo is therefore best understood as a coordinated portfolio machine. A
+signal is not promoted just because it exists. It must survive context,
+quality, and capital competition.
 
-## One-Command Launch
+## Architectural Philosophy
 
-Run the full live-paper cockpit from the repo root:
+The architectural philosophy is to prefer specialization over forced symmetry,
+and coordination over blind breadth.
+
+That leads to a few practical decisions:
+
+- each sleeve is allowed to have a different job
+- higher-timeframe structure is not reduced to a decorative filter
+- capital can stay idle when the current opportunity set is weak
+- telemetry is treated as a core system requirement, not an optional dashboard
+  extra
+
+The repo deliberately avoids the common mistake of making every layer do
+everything. When a system tries to make `15m`, `1H`, `6H`, and `12H` all trade
+the same market move in the same way, it often creates duplication, hidden
+correlation, and allocator dilution. The current architecture instead tries to
+create division of labor:
+
+- `15m` handles tactical flow
+- `12H` handles structural participation and leader capture
+- `1H` handles a narrower downside-exploitation role
+- `6H` remains a research surface until it proves it deserves shared capital
+
+The philosophy behind this is empirical, not ideological. The system reached
+this structure through repeated validation and elimination, not because symmetry
+was considered bad in the abstract. Longs were tested on `1H`; they did not
+earn their place. Broad universe expansion was tested naively; it diluted the
+system. The present design is the result of observed edge, not preference.
+
+## High-Level Operating Model
+
+```mermaid
+flowchart TD
+    A1[Local 1m history]
+    A2[Fresh Binance 1m stream/poll]
+    A1 --> A3[Unified 1m state]
+    A2 --> A3
+    A3 --> A4[Resample and align HTFs]
+
+    A4 --> B1[15m execution frame]
+    A4 --> B2[1H routed frame]
+    A4 --> B3[12H structural frames]
+    A4 --> B4[Additional context frames]
+
+    B1 --> C1[Feature pipeline]
+    B2 --> C2[Short-specialist context]
+    B3 --> C3[HTF structure and rotation context]
+    B4 --> C4[Bias and regime state]
+
+    C1 --> D1[15m core candidates]
+    C1 --> D2[15m swing moonshot candidates]
+    C2 --> D3[1H routed short candidates]
+    C3 --> D4[12H standard candidates]
+    C3 --> D5[12H moonshot candidates]
+    C3 --> D6[12H rotation candidates]
+
+    D1 --> E1[Allocator and routing layer]
+    D2 --> E1
+    D3 --> E1
+    D4 --> E1
+    D5 --> E1
+    D6 --> E1
+    C4 --> E1
+
+    E1 --> E2[Shared-cap competition]
+    E2 --> E3[Open / suppress / defer]
+
+    E3 --> F1[Trade lifecycle management]
+    F1 --> F2[Probe, validate, expand, decay, exit]
+    F2 --> G1[Trades, signals, portfolio state]
+    G1 --> H1[FastAPI telemetry]
+    H1 --> H2[Command-center cockpit]
+```
+
+The key idea is that the repo is not just a trigger engine. It is a
+capital-routing engine.
+
+## Timeframe Hierarchy
+
+The timeframes are chosen because they solve different problems, not because
+more timeframes automatically improve the system.
+
+| Timeframe | Why it exists | Current role |
+| --- | --- | --- |
+| `1m` | Canonical market data source and live continuity substrate | Base ingestion layer |
+| `15m` | Main execution clock and tactical opportunity discovery | Core trading layer |
+| `1H` | Intermediate execution/context surface where downside asymmetry appeared | Routed short-specialist sleeve |
+| `6H` | Mid-timeframe bridge between tactical and structural behavior | Research-only sleeve family |
+| `12H` | Structural trend and convexity capture | Standard, moonshot, and rotation sleeves |
+
+### Why the hierarchy matters
+
+The higher timeframe is not just a slower chart. It changes the economic meaning
+of a move. A `1R` move on `12H` can represent a much larger market regime shift
+than a `1R` move on `15m`, which is why the system must allow higher-timeframe
+sleeves to execute real trades rather than acting only as filters. At the same
+time, relying only on `12H` would make the system too sparse, so the `15m` core
+remains essential for flow.
+
+### Candle alignment and lookahead control
+
+All higher-timeframe views are rebuilt from `1m` data and sliced only through
+the timestamp that would already be known at that point in the run. This is a
+basic but essential design rule. Without it, backtests become optimistic and
+live behavior stops matching historical logic.
+
+## Configuration Model
+
+Configuration is intentionally centralized so that behavior changes can be made
+without scattering strategic assumptions across the codebase.
+
+| Area | Typical contents |
+| --- | --- |
+| `config/settings.json` | Core runtime, account, history, strategy, and allocator settings |
+| `config/baselines/` | Named baseline configurations |
+| `config/branches/` | Research branch and candidate branch definitions |
+
+In practice, the configuration model controls:
+
+- history range and storage behavior
+- per-sleeve enablement
+- risk budgets and sizing assumptions
+- side policies and filters
+- allocator behavior
+- runtime debug and telemetry behavior
+
+The important principle is that threshold or policy changes should generally be
+expressed in configuration first. Hardcoding a research decision into strategy
+logic too early makes later validation harder and more error-prone.
+
+## Data Layer
+
+The data layer exists to make `1m` history durable, resumable, and suitable for
+rebuilding every higher timeframe the engine needs.
+
+### Main responsibilities
+
+| Component area | Responsibility |
+| --- | --- |
+| Binance client | Fetch recent and historical candles |
+| Historical downloader | Build local `1m` coverage with checkpoint safety |
+| Resampler | Rebuild `15m`, `1H`, `6H`, `12H`, and other HTFs from `1m` |
+| Continuity merge | Append fresh candles onto persisted local history |
+
+The design choice to make `1m` the canonical base series is deliberate. It
+avoids drift between prebuilt timeframe files and keeps backtest/live behavior
+aligned. It also means the same raw series can support future refactors around
+restart continuity and real-time dashboard streaming.
+
+## Feature Layer
+
+The feature layer converts raw candles into a state that the strategy can
+reason about without mixing raw data handling into the simulator itself.
+
+### Feature pipeline responsibilities
+
+- trend and EMA structure
+- range and compression logic
+- breakout and breakdown event marking
+- VWAP-related context
+- ATR and volatility state
+- candle-body and wick metrics
+- momentum and pressure-style diagnostics
+
+The system prefers event-based information where timing matters. For example,
+breakout behavior is treated as a transition event, not just a condition of
+remaining above a level. That design reduces late, noisy, or repeated entries.
+
+## Context Layer
+
+The context layer answers a different question from the entry layer. It asks
+what kind of environment the market is currently in, rather than whether a
+single setup exists.
+
+### Main context jobs
+
+| Context type | Purpose |
+| --- | --- |
+| Bias | Directional backdrop and side-aware orientation |
+| Regime | Higher-timeframe environment strength and quality |
+| HTF structure | Structural trend and rotation alignment |
+
+The project has progressively moved away from using context only as a binary
+permission switch. In several places, context is now closer to a weighting,
+gating, or capital-shaping influence. That reflects how the research evolved:
+the most useful role for context is often to improve trade quality and routing,
+not merely to say yes or no.
+
+## Entry Layer
+
+The entry layer is where the system turns prepared state into candidate trades.
+It is deliberately separated from allocator logic so that "candidate quality"
+and "deserves capital right now" remain distinct questions.
+
+### Entry responsibilities
+
+| Component idea | Role |
+| --- | --- |
+| Breakout logic | Detect event-based transitions |
+| Scoring logic | Convert setup structure into comparable strength |
+| Sleeve-specific policy | Decide how each sleeve expresses its opportunity set |
+| Candidate formation | Produce a trade candidate the allocator can rank |
+
+This is also why different sleeves are allowed to use different behavior. The
+project is no longer trying to make every timeframe share one identical entry
+personality.
+
+## Risk And Trade Management
+
+The project’s edge is not only about entry logic. Risk and trade management are
+explicit parts of the architecture.
+
+### Core responsibilities
+
+| Component | Purpose |
+| --- | --- |
+| Position sizing | Normalize exposure to account risk |
+| Pyramiding | Add to proven winners rather than averaging hope |
+| Trend sniffer | Decide whether the trade is still behaviorally healthy |
+| Exit engine | Enforce hard risk control and final exit behavior |
+
+The convexity idea in the system is important: a trade does not automatically
+deserve full exposure at birth. It can begin as a probe, earn validation, and
+only then justify expansion or an add. This keeps the project aligned with a
+"proof first, size later" philosophy.
+
+## Simulation Core
+
+The simulation core is where all of the above layers are orchestrated.
+
+The important architectural choice is that historical replay and live paper
+execution use the same decision machinery once the current market state has been
+assembled. That means the engine is not maintaining one hidden strategy for
+backtests and another for live paper. Differences between the two should come
+primarily from data timing and market reality, not divergent logic branches.
+
+### Simulation sequence
+
+1. Assemble market state.
+2. Build aligned HTFs.
+3. Compute features and context.
+4. Generate candidates by sleeve.
+5. Run allocator routing and suppression.
+6. Open, manage, or close trades.
+7. Persist outputs and telemetry.
+
+## Trade Lifecycle Refactor Layer
+
+The repo now includes a first structural refactor layer that moves trade state
+beyond plain open/closed behavior.
+
+| Refactor element | Purpose |
+| --- | --- |
+| `candidate -> allocated -> probe -> validated -> expanded -> decaying -> exited` | Explicit trade lifecycle vocabulary |
+| `request_type` | Makes capital demand classifiable |
+| `capital_lane` | Makes routing origin inspectable |
+| `lineage_id` | Enables future re-entry/recycle logic |
+| allocator decision logs | Allows forensic review of why capital was deployed or denied |
+| persisted runtime state | Supports continuity and restart logic |
+
+This layer exists because the next phase of the project is less about "new
+entry tricks" and more about cleaner routing, lifecycle awareness, and
+observability.
+
+## What Happens Each Engine Cycle
+
+For each actionable step, the engine conceptually does the following:
+
+1. Read the current local `1m` state and append fresh Binance `1m` candles.
+2. Deduplicate and order the unified `1m` timeline.
+3. Rebuild all required higher timeframes from that base series.
+4. Compute features and context using only candles that would already be known.
+5. Generate sleeve-specific candidates rather than one monolithic signal.
+6. Apply side policies, quality filters, regime gates, and symbol restrictions.
+7. Run allocator selection under shared-cap and suppression logic.
+8. Either open a new lifecycle state or leave capital idle.
+9. Manage open trades through convexity, adds, trail-state logic, and exits.
+10. Persist portfolio state, signals, decisions, heartbeat rows, and trade data.
+11. Expose those artifacts to the telemetry API and cockpit.
+
+The system should therefore look alive even when no trade is firing, because
+the work is broader than entry execution alone.
+
+## Live Continuity And Catch-Up Model
+
+The intended live/paper operating model is:
+
+1. remember the last durable point processed by the engine
+2. on restart, backfill missing `1m` candles from that point to "now"
+3. rebuild all higher timeframes from the unified `1m` base
+4. recompute context, candidates, allocator state, and open-position logic
+5. only then continue real-time operation
+
+### Continuity architecture target
+
+```mermaid
+flowchart TD
+    A[Previous stop point] --> B[Load persisted runtime state]
+    B --> C[Find last durable 1m timestamp]
+    C --> D[Fetch missing 1m candles]
+    D --> E[Merge into local history]
+    E --> F[Rebuild 15m / 1H / 12H / other HTFs]
+    F --> G[Recompute features and context]
+    G --> H[Restore open position / allocator state]
+    H --> I[Resume live paper loop]
+    I --> J[Persist new state continuously]
+```
+
+The repo has foundations for continuity, but this remains an active area of
+hardening. The README intentionally states the target model clearly because the
+dashboard and engine should eventually reflect this behavior explicitly.
+
+## Operational Workflow
+
+| Step | Command | Purpose |
+| --- | --- | --- |
+| `1` | `python main_download.py` | Download or extend local `1m` history |
+| `2` | `python main_resample.py` | Optional manual HTF rebuild for inspection |
+| `3` | `python main_backtest.py` | Run historical replay |
+| `4` | `python main_walkforward.py` | Run walk-forward validation |
+| `5` | `python main_monte_carlo.py` | Stress completed trade paths |
+| `6` | `python main_calibrate.py` | Build opportunity and execution calibration reports |
+| `7` | `python main_edge_lab.py` | Run isolated edge-family diagnostics |
+| `8` | `python main_live.py` | Run the paper/live runtime loop directly |
+| `9` | `python run_backtest_cockpit.py` | Launch backtest cockpit stack |
+| `10` | `python run_live_cockpit.py` | Launch live paper cockpit stack |
+
+### One-command cockpit launch
 
 ```powershell
 python run_live_cockpit.py
@@ -105,86 +576,263 @@ The launcher is intended to:
 - monitor child-process health
 - shut services down cleanly
 
-## Core Commands
+## Current Research Conclusions
 
-Install Python dependencies:
+The current research state is materially different from the older "more
+symbols must be better" assumption.
+
+| Topic | Current conclusion |
+| --- | --- |
+| Naive broad breadth | Harmful as a production universe |
+| Selective breadth | Useful when symbols earn inclusion |
+| `1H` design | Best treated as a short-specialist execution sleeve |
+| `1H` long reintroduction | Not justified by current evidence |
+| `12H` role | Must remain a real execution sleeve, not just a context filter |
+| `6H` role | Valuable as research, not yet as routed production exposure |
+| Allocator interaction | Cross-sleeve capital competition matters more than adding raw signals |
+| System architecture | Specialization + coordination is better than forcing symmetry across layers |
+
+The broad 26-symbol expansion was not wasted. It established a durable local
+research base and demonstrated that selective breadth is superior to naive
+breadth.
+
+## Outputs And Telemetry
+
+The system writes artifacts that the cockpit consumes and that research can
+audit later.
+
+| Artifact type | Typical examples |
+| --- | --- |
+| Portfolio state | `portfolio_status.json` |
+| Trades | `trades.csv` |
+| Signals | `signals.csv` |
+| Daily summaries | `daily_summary.csv` |
+| Score-bucket summaries | `score_bucket_summary.csv` |
+| Allocator audit | `allocator_decisions.csv` |
+| Runtime policy | runtime policy rows |
+| Engine heartbeat | cycle count, status, completed-at fields |
+| Symbol pipeline | per-symbol processing state |
+
+The important design principle is that the engine should remain observable even
+when no trade exists. That means ingestion, evaluation, filtering, routing, and
+heartbeat state are first-class telemetry, not hidden implementation details.
+
+## Backtest / Paper / Runtime Artifacts
+
+| Surface | Main artifacts |
+| --- | --- |
+| Backtest | `backtest/output/...` trade logs, equity, summaries, calibration inputs |
+| Paper runtime | `live_sim/output/...` trades, signals, portfolio state, heartbeats |
+| Cockpit backend | API snapshots + websocket payloads derived from those artifacts |
+| Command center | Multi-mode views over the same underlying state |
+
+### Typical live-paper outputs
+
+```text
+live_sim/output/trades.csv
+live_sim/output/signals.csv
+live_sim/output/score_bucket_summary.csv
+live_sim/output/portfolio_status.json
+```
+
+## Backtest Mode
+
+Backtesting is not just a convenience wrapper in this repo. It is the primary
+research surface used to decide which sleeves and policies deserve promotion.
+
+### What backtest mode does
+
+- rebuilds higher timeframes from local `1m` history
+- computes features and context using closed-candle logic
+- runs the same routed decision machinery used by paper execution
+- writes trade logs, state logs, and summaries that can be audited later
+
+The reason this matters is that the system is explicitly trying to prevent the
+common split where "research code" and "runtime code" silently diverge. The
+more these paths share logic, the more trustworthy the promotion workflow
+becomes.
+
+## Live Simulation Mode
+
+Live simulation exists to answer a different question from backtesting. The
+question is not only "did the logic work historically?" but also "can the
+system stay operationally coherent while processing live-ish data over time?"
+
+### Live loop responsibilities
+
+- bootstrap from local `1m` history
+- fetch recent Binance `1m` candles
+- merge and rebuild all required HTFs
+- detect whether a new actionable candle is available
+- run the decision engine
+- persist telemetry continuously so the cockpit can display internal state
+
+This is why the dashboard must eventually show more than candles and PnL. The
+runtime loop is doing real work even when it is not trading: ingestion,
+rebuilding, context evaluation, candidate rejection, allocator suppression, and
+heartbeat progression all matter operationally.
+
+## Testing And Verification
+
+The repository includes a large `unittest` suite under [`tests/`](tests/).
+
+### What is covered
+
+| Test area | Purpose |
+| --- | --- |
+| Breakout logic | Event-based timing verification |
+| Bias and regime logic | Context correctness and side-aware behavior |
+| Feature pipeline | Transition logic and cleanup |
+| Trend sniffer | Trail-state and decay behavior |
+| Pyramiding | Event-based add logic and gating |
+| Position sizing | Risk floors and caps |
+| Trade metrics | `R` accounting and lifecycle bookkeeping |
+| Simulator management | Candidate routing, exits, and open-position flow |
+| Backtest resume | Checkpoint restoration behavior |
+| Downloader continuity | Resumable history coverage logic |
+| Live simulation | Runtime merge/bootstrap behavior |
+| Dashboard telemetry | Snapshot loading and API-facing state |
+| Validation helpers | Research workflow correctness |
+
+### Main test command
+
+```powershell
+python -m unittest discover -s tests -v
+```
+
+## Design Invariants
+
+| Invariant | Why it matters |
+| --- | --- |
+| Decisions use closed candles only | Prevents lookahead leakage |
+| HTF slices stop at the current actionable timestamp | Preserves historical realism |
+| `1m` is the canonical base series | Keeps every HTF rebuild consistent |
+| Trade routing is allocator-aware | Prevents sleeves from behaving as isolated silos |
+| Lifecycle state is explicit | Supports auditability and future recycle logic |
+| Telemetry is not optional | Makes no-trade periods interpretable instead of opaque |
+| Research sleeves do not become production sleeves without validation | Prevents hidden scope creep |
+| The dashboard visualizes state; it does not create state | Preserves truthfulness of operations |
+
+## Known Constraints And Current Boundaries
+
+### Strategy boundaries
+
+- `6H` sleeves remain research-only.
+- `1H` is intentionally asymmetric and specialized.
+- Capital competition is only partially solved; it is visible and managed, but
+  still an active optimization frontier.
+- The system is still in paper/research maturation, not brokerage-connected
+  production deployment.
+
+### Execution realism boundaries
+
+- No full fee/slippage/partial-fill realism stack is implemented yet.
+- Equity is still primarily realized-PnL based rather than a full mark-to-market
+  portfolio accounting engine.
+- The current priority is state correctness and observability before micro-fill
+  realism.
+
+### Operational boundaries
+
+- Live continuity and restart catch-up are active work, not a finished chapter.
+- The cockpit UX is materially improved, but still under refinement toward the
+  denser institutional-grade experience intended for the project.
+- The dashboard currently depends on telemetry artifacts; if the engine is not
+  writing them correctly, the UI cannot invent missing truth.
+
+## Extension Guide
+
+The safest way to extend the system is to preserve its current separation of
+concerns.
+
+| Goal | Best extension point |
+| --- | --- |
+| Adjust sleeve or allocator policy | `config/` |
+| Add or refine features | `features/` |
+| Change context logic | `bias/` or `regime/` |
+| Extend entry behavior | `entry/` |
+| Modify sizing or capital behavior | `position/` and allocator logic |
+| Refine convexity or adds | `pyramiding/` |
+| Refine trail/hold logic | `sniffing/` |
+| Improve hard exits | `exit/` |
+| Expand telemetry | `common/`, `dashboard_api/`, and `dashboard/` |
+
+The main practical rule is this: if a change affects market observation, keep
+it in data/features/context; if it affects opportunity formation, keep it in
+entry; if it affects capital competition, keep it in allocator/risk logic; if
+it affects visibility, keep it in telemetry and cockpit layers. Do not hide a
+capital decision inside a signal module or a signal decision inside the UI.
+
+## Quick Start
+
+### 1. Install Python dependencies
 
 ```powershell
 pip install -r requirements.txt
 ```
 
-Install dashboard dependencies:
+### 2. Install dashboard dependencies
 
 ```powershell
 cd dashboard
 npm install
 ```
 
-Start only the dashboard frontend:
+### 3. Create a local environment file
 
 ```powershell
-cd dashboard
-npm run dev
+Copy-Item .env.example .env
 ```
 
-Start only the telemetry backend:
+### 4. Download or extend local `1m` history
 
 ```powershell
-python -m uvicorn dashboard_api.main:app --host 127.0.0.1 --port 8000
+python main_download.py
 ```
 
-Run the test suite:
+### 5. Run a backtest
 
 ```powershell
-python -m unittest discover -s tests -v
+python main_backtest.py
 ```
 
-Build the dashboard for production:
+### 6. Launch the live paper cockpit
 
 ```powershell
-cd dashboard
-npm run build
+python run_live_cockpit.py
 ```
 
-## Current Research Conclusions
+### 7. Open the main command center
 
-- Naive broad multi-asset expansion hurt performance.
-- Selective breadth is useful, but only when symbols earn inclusion.
-- `6H` showed standalone edge but did not earn promotion into the routed stack.
-- `1H` did earn promotion, but as a specialized short sleeve, not as a
-  symmetric execution layer.
-- The best `1H` branch is:
-  - short-only by default
-  - mildly boosted when `12H` is bearish
-  - protected by a reversible runtime fallback policy
-- Allocator lane pressure mattered more than over-engineering the signal logic.
+```text
+http://127.0.0.1:3000/
+```
 
-## Outputs And Telemetry
+From there, use:
 
-The live-paper path writes audit artifacts that the dashboard consumes,
-including:
+- `/paper`
+- `/backtest`
+- `/live`
 
-- portfolio status
-- open-position lifecycle rows
-- runtime policy rows
-- trade and signal logs
-- allocator decision audit rows
-- engine heartbeat
-- cycle history
-- symbol pipeline status
+## Dependencies
 
-This makes it possible to monitor the system even when no trade is active.
+| Package | Role |
+| --- | --- |
+| `pandas` | Time-series handling, joins, resampling, rolling operations |
+| `numpy` | Numerical helpers |
+| `requests` | Binance HTTP access |
+| `fastapi` | Telemetry API layer |
+| `uvicorn` | API runtime |
+| `next` / `react` | Dashboard frontend |
+| `framer-motion` | Dashboard motion and transitions |
+| `tailwindcss` | Cockpit styling and layout primitives |
+| `rich` | Terminal dashboards and progress reporting |
 
-## Guardrails
+## Closing Note
 
-- Do not treat research-only sleeves as promoted sleeves without validation.
-- Do not assume more symbols or more timeframes automatically improve the
-  portfolio.
-- Do not optimize individual sleeves in isolation and ignore shared risk.
-- Do not use the dashboard as proof of execution; use it as proof of system
-  state.
-
-## Status
-
-The current priority is operational polish and controlled live-paper
-verification, not adding new strategy complexity.
+The correct way to think about this project is not "a single strategy that
+must catch everything." It is a coordinated multi-layer system where each
+timeframe and sleeve has a job, the allocator arbitrates scarce capital, and
+the cockpit exposes what the machine is doing. The long-term edge comes from
+specialization, coordination, continuity, and observability together, not from
+forcing every module to trade every move.
