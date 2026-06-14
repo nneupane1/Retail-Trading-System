@@ -413,6 +413,7 @@ class LivePaperPortfolio:
         self.current_threshold_floor = self.base_threshold
         self.current_threshold_source = "base"
         self.last_top_symbols = []
+        self.runtime_context = {}
 
     @staticmethod
     def _selection_reason_cap_pressure_reasons():
@@ -2458,6 +2459,10 @@ class LivePaperPortfolio:
             write_runtime_policy_summary(runtime_policy_rows)
         lifecycle_rows = self._open_position_lifecycle_rows()
         self.state_logger.write_json(
+            "portfolio_runtime_state.json",
+            self.snapshot_state(),
+        )
+        self.state_logger.write_json(
             "portfolio_status.json",
             {
                 "equity": self.account.equity,
@@ -2515,6 +2520,7 @@ class LivePaperPortfolio:
                 "open_position_lifecycle_rows": lifecycle_rows,
                 "runtime_policy_states": runtime_policy_states,
                 "top_symbols": list(self.last_top_symbols),
+                "runtime_context": dict(self.runtime_context),
             },
         )
 
@@ -2627,11 +2633,16 @@ class LivePaperPortfolio:
                 for record in self.selection_reason_history
             ],
             "last_top_symbols": list(self.last_top_symbols),
+            "runtime_context": dict(self.runtime_context),
             "open_positions": [
                 trade.snapshot()
                 for trade in self.open_positions
             ],
         }
+
+    def set_runtime_context(self, **values):
+        for key, value in values.items():
+            self.runtime_context[str(key)] = value
 
     def restore_state(self, snapshot):
         if not snapshot:
@@ -2803,6 +2814,7 @@ class LivePaperPortfolio:
         ]
         self._trim_selection_reason_history()
         self.last_top_symbols = list(snapshot.get("last_top_symbols") or [])
+        self.runtime_context = dict(snapshot.get("runtime_context") or {})
         self.open_positions = [
             Trade.from_snapshot(trade_snapshot, config=self.config)
             for trade_snapshot in (snapshot.get("open_positions") or [])

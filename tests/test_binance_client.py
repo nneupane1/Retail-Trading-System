@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+import os
 from pathlib import Path
 from unittest.mock import patch
 
@@ -61,6 +62,20 @@ def make_config(**binance_overrides):
 
 
 class BinanceClientTlsTests(unittest.TestCase):
+    def setUp(self):
+        self._env_patcher = patch.dict(
+            os.environ,
+            {
+                "BINANCE_CA_BUNDLE_PATH": "",
+                "REQUESTS_CA_BUNDLE": "",
+                "SSL_CERT_FILE": "",
+            },
+        )
+        self._env_patcher.start()
+
+    def tearDown(self):
+        self._env_patcher.stop()
+
     @patch("data.binance_client.requests.get")
     def test_requests_use_boolean_ssl_verify_setting(self, mock_get):
         mock_get.return_value = DummyResponse([])

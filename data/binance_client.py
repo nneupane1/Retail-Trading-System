@@ -6,8 +6,6 @@ import os
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urljoin
-from urllib3 import disable_warnings
-from urllib3.exceptions import InsecureRequestWarning
 
 from common.debug import debug_print as print
 from config import AppConfig, EnvLoader
@@ -67,12 +65,17 @@ class BinanceClient:
             "ca_bundle_path",
             default=None
         )
-        self._warnings_configured = False
         self.retry_callback = retry_callback
 
     def _verify_setting(self):
-        if self.ca_bundle_path:
-            bundle_path = Path(self.ca_bundle_path)
+        bundle_override = (
+            os.getenv("BINANCE_CA_BUNDLE_PATH")
+            or os.getenv("REQUESTS_CA_BUNDLE")
+            or os.getenv("SSL_CERT_FILE")
+            or self.ca_bundle_path
+        )
+        if bundle_override:
+            bundle_path = Path(bundle_override)
             if not bundle_path.is_absolute():
                 bundle_path = self.config.root_dir / bundle_path
 
@@ -84,15 +87,6 @@ class BinanceClient:
             return str(bundle_path)
 
         return bool(self.ssl_verify)
-
-    def _configure_tls_warning_behavior(self, verify_setting):
-        if self._warnings_configured:
-            return
-
-        if verify_setting is False:
-            disable_warnings(InsecureRequestWarning)
-
-        self._warnings_configured = True
 
     def describe_verify_mode(self):
         verify_setting = self._verify_setting()
@@ -135,7 +129,6 @@ class BinanceClient:
     def _request_json(self, url, *, params=None, headers=None, verbose=False, request_name="request"):
         start_clock = time.time()
         verify_setting = self._verify_setting()
-        self._configure_tls_warning_behavior(verify_setting)
         request_headers = dict(headers or {})
 
         if verbose:

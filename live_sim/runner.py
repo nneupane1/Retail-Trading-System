@@ -1,5 +1,8 @@
 """Runs the near-live simulation loop using recent Binance data and shared strategy components."""
 
+import json
+import hashlib
+import subprocess
 import shutil
 import time
 from collections import defaultdict
@@ -13,6 +16,7 @@ from data.binance_client import BinanceClient
 from common.debug import configure_debug, debug_print as print
 from common.universe import resolve_symbols_from_config
 from config import AppConfig
+from capital import write_scaffold_inventory
 from data.downloader import MarketDataDownloader, fetch_recent, load_from_csv
 from data.resampler import TimeframeBuilder
 from entry.edge_buckets import build_signal_bucket
@@ -37,6 +41,31 @@ from live_sim.logger import (
 )
 from live_sim.paper_portfolio import LivePaperPortfolio
 from simulation.simulator import Simulator
+from common.runtime_readiness import build_runtime_readiness
+
+PAPER_SOAK_STRATEGY_ORDER = [
+    "core",
+    "swing_moonshot",
+    "h1_execution",
+    "htf_12h_standard",
+    "htf_12h_moonshot",
+    "htf_12h_rotation",
+]
+
+ALLOCATOR_DECISION_KEYS = [
+    "opened",
+    "score_bucket_filtered",
+    "score_below_threshold",
+    "shared_risk_cap",
+    "strategy_sleeve_cap",
+    "asset_cap",
+    "direction_cap",
+    "same_symbol_same_side_cap",
+    "allocator_rank_filtered",
+    "strategy_health_filtered",
+]
+
+PAPER_SOAK_MIN_DAYS = 14
 
 
 def _parse_storage_timestamp(value):
@@ -239,6 +268,1237 @@ def _runtime_state_path(symbol, interval, config):
     return folder / f"{symbol}_{interval}_live_runtime.csv"
 
 
+def _portfolio_runtime_state_path(config):
+    output_dir = Path(config.require("live_sim", "output_dir"))
+    return output_dir / "portfolio_runtime_state.json"
+
+
+def _paper_runtime_startup_report_path(config):
+    output_dir = Path(config.require("live_sim", "output_dir"))
+    return output_dir / "paper_runtime_startup_report.json"
+
+
+def _paper_soak_status_path(config):
+    output_dir = Path(config.require("live_sim", "output_dir"))
+    return output_dir / "paper_soak_status.json"
+
+
+def _paper_runtime_events_path(config):
+    output_dir = Path(config.require("live_sim", "output_dir"))
+    return output_dir / "paper_runtime_events.jsonl"
+
+
+def _paper_soak_daily_report_path(config):
+    output_dir = Path(config.require("live_sim", "output_dir"))
+    return output_dir / "paper_soak_daily_report.json"
+
+
+def _paper_soak_review_path(config):
+    output_dir = Path(config.require("live_sim", "output_dir"))
+    return output_dir / "paper_soak_review.json"
+
+
+def _paper_soak_review_history_path(config):
+    output_dir = Path(config.require("live_sim", "output_dir"))
+    return output_dir / "paper_soak_review_history.jsonl"
+
+
+def _baseline_freeze_snapshot_path(config):
+    output_dir = Path(config.require("live_sim", "output_dir"))
+    return output_dir / "baseline_freeze_snapshot.json"
+
+
+def _portfolio_status_path(config):
+    output_dir = Path(config.require("live_sim", "output_dir"))
+    return output_dir / "portfolio_status.json"
+
+
+def _daily_summary_path(config):
+    output_dir = Path(config.require("live_sim", "output_dir"))
+    return output_dir / "daily_summary.csv"
+
+
+def _load_live_portfolio_snapshot(config):
+    snapshot_path = _portfolio_runtime_state_path(config)
+    if not snapshot_path.exists():
+        return None, snapshot_path
+    try:
+        payload = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    except Exception as error:
+        print(
+            f"Live paper portfolio snapshot is malformed and will be ignored: "
+            f"{snapshot_path} | {error}"
+        )
+        return None, snapshot_path
+    if not isinstance(payload, dict):
+        print(
+            f"Live paper portfolio snapshot is not a JSON object and will be ignored: "
+            f"{snapshot_path}"
+        )
+        return None, snapshot_path
+    return payload, snapshot_path
+
+
+def _timestamp_to_utc_iso(value):
+    if value in (None, "", pd.NaT):
+        return None
+    timestamp = pd.Timestamp(value)
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.tz_localize("UTC")
+    else:
+        timestamp = timestamp.tz_convert("UTC")
+    return timestamp.isoformat()
+
+
+def _utc_now_timestamp():
+    return _timestamp_to_utc_iso(pd.Timestamp.now("UTC"))
+
+
+def _utc_now_ts():
+    return pd.Timestamp(_utc_now_timestamp())
+
+
+def _latest_runtime_boundary(states_by_symbol):
+    timestamps = []
+    for frame in dict(states_by_symbol or {}).values():
+        if frame is None or frame.empty:
+            continue
+        timestamps.append(pd.Timestamp(frame.index.max()))
+    if not timestamps:
+        return None
+    return str(max(timestamps))
+
+
+def _restored_state_summary(portfolio):
+    open_positions = list(getattr(portfolio, "open_positions", []) or [])
+    lineage_ids = {
+        str(getattr(trade, "lineage_id", "") or "").strip()
+        for trade in open_positions
+        if str(getattr(trade, "lineage_id", "") or "").strip()
+    }
+    allocator_stats = {
+        "strategy_stats_count": int(len(getattr(portfolio, "strategy_stats", {}) or {})),
+        "recent_strategy_trade_stats_count": int(
+            len(getattr(portfolio, "recent_strategy_trade_stats", {}) or {})
+        ),
+        "recent_strategy_bucket_trade_stats_count": int(
+            len(getattr(portfolio, "recent_strategy_bucket_trade_stats", {}) or {})
+        ),
+        "selection_reason_total": int(
+            sum(int(value or 0) for value in dict(getattr(portfolio, "selection_reason_counts", {}) or {}).values())
+        ),
+    }
+    daily_controls = {
+        "current_trading_day": (
+            str(getattr(portfolio, "current_trading_day", None))
+            if getattr(portfolio, "current_trading_day", None) is not None
+            else None
+        ),
+        "day_start_equity": float(getattr(portfolio, "day_start_equity", 0.0) or 0.0),
+        "daily_entries_taken": int(getattr(portfolio, "daily_entries_taken", 0) or 0),
+        "daily_closed_trades": int(getattr(portfolio, "daily_closed_trades", 0) or 0),
+        "daily_closed_pnl": float(getattr(portfolio, "daily_closed_pnl", 0.0) or 0.0),
+        "daily_loss_streak": int(getattr(portfolio, "daily_loss_streak", 0) or 0),
+    }
+    return {
+        "restored_open_positions_count": int(len(open_positions)),
+        "restored_lineage_count": int(len(lineage_ids)),
+        "restored_allocator_stats": allocator_stats,
+        "restored_daily_controls": daily_controls,
+    }
+
+
+def _snapshot_runtime_last_processed(snapshot_payload):
+    if not snapshot_payload:
+        return None
+    runtime_context = dict(snapshot_payload.get("runtime_context") or {})
+    return runtime_context.get("runtime_last_processed_timestamp")
+
+
+def _resolved_history_end_date(config):
+    getter = getattr(config, "get", None)
+    if callable(getter):
+        return getter("history", "end_date", default=None)
+    return None
+
+
+def _build_paper_runtime_startup_report(
+    *,
+    config,
+    readiness,
+    bootstrap_metadata_by_symbol,
+    catchup_metadata_by_symbol,
+    restored_state_used,
+    restored_state_path,
+    restore_summary,
+    runtime_start_timestamp,
+    runtime_first_processed_candle,
+    runtime_last_processed_candle,
+):
+    runtime_config = dict(readiness.get("runtime_config", {}) or {})
+    latest_canonical = [
+        value.get("canonical_history_last_timestamp")
+        for value in bootstrap_metadata_by_symbol.values()
+        if value.get("canonical_history_last_timestamp")
+    ]
+    latest_canonical_boundary = max(latest_canonical) if latest_canonical else None
+    return {
+        "generated_at_utc": _utc_now_timestamp(),
+        "runtime_mode": "portfolio_paper",
+        "classification": readiness.get("classification"),
+        "paper_runtime_allowed": bool(readiness.get("paper_runtime_allowed")),
+        "real_money_allowed": bool(readiness.get("real_money_allowed")),
+        "blockers": list(readiness.get("blockers") or []),
+        "validated_boundary": readiness.get("validated_boundary"),
+        "runtime_start_timestamp": runtime_start_timestamp,
+        "runtime_first_processed_candle": runtime_first_processed_candle,
+        "runtime_last_processed_candle": runtime_last_processed_candle,
+        "canonical_history_end_date_resolved": _resolved_history_end_date(config),
+        "canonical_bootstrap_boundary": latest_canonical_boundary,
+        "validated_boundary_matches_canonical_bootstrap": (
+            bool(readiness.get("validated_boundary"))
+            and readiness.get("validated_boundary") == latest_canonical_boundary
+        ),
+        "restored_state_used": bool(restored_state_used),
+        "restored_state_path": str(restored_state_path),
+        "restored_positions_count": int(restore_summary.get("restored_open_positions_count", 0)),
+        "restored_lineage_count": int(restore_summary.get("restored_lineage_count", 0)),
+        "restored_allocator_stats": dict(restore_summary.get("restored_allocator_stats") or {}),
+        "restored_daily_controls": dict(restore_summary.get("restored_daily_controls") or {}),
+        "active_sleeves": list(runtime_config.get("active_sleeves", [])),
+        "disabled_sleeves": list(runtime_config.get("disabled_sleeves", [])),
+        "allowed_sides": list(runtime_config.get("allowed_sides", [])),
+        "strategy_allowed_sides": dict(runtime_config.get("strategy_allowed_sides", {}) or {}),
+        "ssl_verify": bool(readiness.get("tls", {}).get("ssl_verify")),
+        "official_gate_root": readiness.get("gate_root"),
+        "official_gate_summary_path": readiness.get("summary_path"),
+        "official_gate_report_path": readiness.get("promotion_readiness_report_path"),
+        "scenario_manifest_paths": dict(readiness.get("scenario_manifest_paths") or {}),
+        "bootstrap_metadata_by_symbol": bootstrap_metadata_by_symbol,
+        "catchup_metadata_by_symbol": catchup_metadata_by_symbol,
+    }
+
+
+def _write_paper_runtime_startup_report(config, payload):
+    report_path = _paper_runtime_startup_report_path(config)
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+    return report_path
+
+
+def _append_paper_runtime_event(config, payload):
+    event_path = _paper_runtime_events_path(config)
+    event_path.parent.mkdir(parents=True, exist_ok=True)
+    with event_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload, default=str) + "\n")
+    return event_path
+
+
+def _latest_price_by_symbol(states_by_symbol):
+    prices = {}
+    for symbol, frame in dict(states_by_symbol or {}).items():
+        if frame is None or frame.empty:
+            continue
+        try:
+            prices[str(symbol).upper()] = float(frame["close"].iloc[-1])
+        except Exception:
+            continue
+    return prices
+
+
+def _trade_unrealized_pnl(trade, latest_price):
+    if latest_price in (None, ""):
+        return 0.0
+    total = 0.0
+    for entry_price, size in list(getattr(trade, "entries", []) or []):
+        if getattr(trade, "side", "long") == "short":
+            move = float(entry_price) - float(latest_price)
+        else:
+            move = float(latest_price) - float(entry_price)
+        total += move * float(size)
+    return float(total)
+
+
+def _portfolio_unrealized_pnl(portfolio, latest_prices):
+    total = 0.0
+    for trade in list(getattr(portfolio, "open_positions", []) or []):
+        symbol = str(getattr(trade, "symbol", "") or "").upper()
+        total += _trade_unrealized_pnl(trade, latest_prices.get(symbol))
+    return float(total)
+
+
+def _strategy_trade_counts(portfolio):
+    rows = {}
+    for strategy_type, values in dict(getattr(portfolio, "strategy_stats", {}) or {}).items():
+        rows[str(strategy_type)] = int(values.get("count", 0) or 0)
+    return rows
+
+
+def _strategy_trade_pnl(portfolio):
+    rows = {}
+    for strategy_type, values in dict(getattr(portfolio, "strategy_stats", {}) or {}).items():
+        rows[str(strategy_type)] = float(values.get("total_pnl", 0.0) or 0.0)
+    return rows
+
+
+def _strategy_open_positions_by_type(portfolio):
+    rows = defaultdict(int)
+    for trade in list(getattr(portfolio, "open_positions", []) or []):
+        rows[str(getattr(trade, "strategy_type", "core") or "core")] += 1
+    return {key: int(value) for key, value in rows.items()}
+
+
+def _latest_allocator_rejection_counts(selection_summary):
+    counts = {}
+    for reason, count in dict(selection_summary.get("final_reason_counts", {}) or {}).items():
+        if str(reason) == "opened":
+            continue
+        counts[str(reason)] = int(count or 0)
+    return counts
+
+
+def _allocator_decision_counts(selection_summary):
+    final_reason_counts = dict(selection_summary.get("final_reason_counts", {}) or {})
+    return {
+        key: int(final_reason_counts.get(key, 0) or 0)
+        for key in ALLOCATOR_DECISION_KEYS
+    }
+
+
+def _strategy_unrealized_pnl_by_type(portfolio, latest_prices):
+    rows = defaultdict(float)
+    for trade in list(getattr(portfolio, "open_positions", []) or []):
+        strategy_type = str(getattr(trade, "strategy_type", "core") or "core")
+        symbol = str(getattr(trade, "symbol", "") or "").upper()
+        rows[strategy_type] += _trade_unrealized_pnl(trade, latest_prices.get(symbol))
+    return {key: float(value) for key, value in rows.items()}
+
+
+def _strategy_daily_evidence(portfolio, latest_prices):
+    strategy_stats = dict(getattr(portfolio, "strategy_stats", {}) or {})
+    open_positions_by_type = _strategy_open_positions_by_type(portfolio)
+    unrealized_by_type = _strategy_unrealized_pnl_by_type(portfolio, latest_prices)
+    selection_reasons_by_strategy = dict(
+        getattr(portfolio, "selection_reason_counts_by_strategy", {}) or {}
+    )
+    recent_rejections_by_strategy = dict(
+        getattr(portfolio, "recent_selection_reason_counts_by_strategy", {}) or {}
+    )
+    rows = {}
+    all_strategy_names = list(
+        dict.fromkeys(
+            PAPER_SOAK_STRATEGY_ORDER
+            + list(strategy_stats.keys())
+            + list(open_positions_by_type.keys())
+            + list(selection_reasons_by_strategy.keys())
+        )
+    )
+    for strategy_name in all_strategy_names:
+        stats = dict(strategy_stats.get(strategy_name) or {})
+        count = int(stats.get("count", 0) or 0)
+        wins = int(stats.get("wins", 0) or 0)
+        realized_pnl = float(stats.get("total_pnl", 0.0) or 0.0)
+        open_positions = int(open_positions_by_type.get(strategy_name, 0) or 0)
+        latest_reason_counts = {
+            str(key): int(value or 0)
+            for key, value in dict(selection_reasons_by_strategy.get(strategy_name, {}) or {}).items()
+        }
+        latest_rejection_reasons = {
+            str(key): int(value or 0)
+            for key, value in latest_reason_counts.items()
+            if str(key) != "opened"
+        }
+        rows[strategy_name] = {
+            "trades_opened": int(count + open_positions),
+            "trades_closed": count,
+            "realized_pnl": realized_pnl,
+            "unrealized_pnl": float(unrealized_by_type.get(strategy_name, 0.0) or 0.0),
+            "win_count": wins,
+            "loss_count": max(0, count - wins),
+            "open_positions_count": open_positions,
+            "latest_signal_count": int(sum(latest_reason_counts.values())),
+            "latest_opened_count": int(latest_reason_counts.get("opened", 0) or 0),
+            "latest_rejection_reasons": latest_rejection_reasons,
+            "recent_rejection_reasons": {
+                str(key): int(value or 0)
+                for key, value in dict(recent_rejections_by_strategy.get(strategy_name, {}) or {}).items()
+                if str(key) != "opened"
+            },
+        }
+    return rows
+
+
+def _read_latest_jsonl_event(path):
+    if not path.exists():
+        return {}
+    try:
+        lines = [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    except Exception:
+        return {}
+    if not lines:
+        return {}
+    try:
+        payload = json.loads(lines[-1])
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _read_json_file(path):
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _read_jsonl_records(path):
+    if not path.exists():
+        return []
+    try:
+        lines = [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    except Exception:
+        return []
+    records = []
+    for line in lines:
+        try:
+            payload = json.loads(line)
+        except Exception:
+            continue
+        if isinstance(payload, dict):
+            records.append(payload)
+    return records
+
+
+def _paper_soak_minimum_days(config):
+    getter = getattr(config, "get", None)
+    if not callable(getter):
+        return PAPER_SOAK_MIN_DAYS
+    value = getter("paper_soak", "minimum_days_before_review", default=PAPER_SOAK_MIN_DAYS)
+    try:
+        return max(1, int(value))
+    except (TypeError, ValueError):
+        return PAPER_SOAK_MIN_DAYS
+
+
+def _config_manifest_metadata(config):
+    config_path = getattr(config, "config_path", None)
+    resolved = Path(config_path) if config_path else Path("config/settings.json")
+    if not resolved.exists():
+        return {
+            "config_path": str(resolved),
+            "config_sha256": None,
+        }
+    content = resolved.read_bytes()
+    return {
+        "config_path": str(resolved),
+        "config_sha256": hashlib.sha256(content).hexdigest(),
+    }
+
+
+def _git_commit_or_none():
+    try:
+        output = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+    except Exception:
+        return None
+    return output or None
+    value = getter("paper_soak", "minimum_days_before_review", default=PAPER_SOAK_MIN_DAYS)
+    try:
+        return max(1, int(value))
+    except (TypeError, ValueError):
+        return PAPER_SOAK_MIN_DAYS
+
+
+def _artifact_health_status(path, *, stale_after_seconds):
+    if not path.exists():
+        return {
+            "path": str(path),
+            "exists": False,
+            "status": "missing",
+            "last_modified_timestamp": None,
+            "age_seconds": None,
+            "stale_after_seconds": float(stale_after_seconds),
+        }
+    try:
+        age_seconds = max(
+            0.0,
+            float(pd.Timestamp.now("UTC").timestamp() - path.stat().st_mtime),
+        )
+    except Exception:
+        age_seconds = None
+    status = "healthy"
+    if age_seconds is None or age_seconds > float(stale_after_seconds):
+        status = "stale"
+    return {
+        "path": str(path),
+        "exists": True,
+        "status": status,
+        "last_modified_timestamp": _timestamp_to_utc_iso(pd.Timestamp(path.stat().st_mtime, unit="s", tz="UTC")),
+        "age_seconds": age_seconds,
+        "stale_after_seconds": float(stale_after_seconds),
+    }
+
+
+def _paper_soak_artifact_health(config):
+    return {
+        "paper_soak_daily_report": _artifact_health_status(
+            _paper_soak_daily_report_path(config),
+            stale_after_seconds=24 * 3600.0,
+        ),
+        "paper_soak_status": _artifact_health_status(
+            _paper_soak_status_path(config),
+            stale_after_seconds=300.0,
+        ),
+        "paper_runtime_events": _artifact_health_status(
+            _paper_runtime_events_path(config),
+            stale_after_seconds=24 * 3600.0,
+        ),
+        "portfolio_status": _artifact_health_status(
+            _portfolio_status_path(config),
+            stale_after_seconds=300.0,
+        ),
+        "portfolio_runtime_state": _artifact_health_status(
+            _portfolio_runtime_state_path(config),
+            stale_after_seconds=900.0,
+        ),
+    }
+
+
+def _daily_summary_frame(config):
+    path = _daily_summary_path(config)
+    if not path.exists():
+        return pd.DataFrame()
+    try:
+        return pd.read_csv(path)
+    except Exception:
+        return pd.DataFrame()
+
+
+def _daily_summary_value_summary(frame, column, *, latest_value=None):
+    if frame.empty or column not in frame.columns:
+        return {
+            "days": 0,
+            "avg": None,
+            "median": None,
+            "min": None,
+            "max": None,
+            "latest": latest_value,
+        }
+    series = pd.to_numeric(frame[column], errors="coerce").dropna()
+    if series.empty:
+        return {
+            "days": 0,
+            "avg": None,
+            "median": None,
+            "min": None,
+            "max": None,
+            "latest": latest_value,
+        }
+    latest = latest_value if latest_value is not None else float(series.iloc[-1])
+    return {
+        "days": int(series.shape[0]),
+        "avg": float(series.mean()),
+        "median": float(series.median()),
+        "min": float(series.min()),
+        "max": float(series.max()),
+        "latest": float(latest) if latest is not None else None,
+    }
+
+
+def _max_paper_drawdown_from_daily_summary(frame, *, current_equity=None):
+    if frame.empty or "equity_end" not in frame.columns:
+        return None
+    series = pd.to_numeric(frame["equity_end"], errors="coerce").dropna()
+    if current_equity is not None:
+        series = pd.concat([series, pd.Series([float(current_equity)])], ignore_index=True)
+    if series.empty:
+        return None
+    running_max = series.cummax().replace(0.0, pd.NA)
+    drawdowns = ((series - running_max) / running_max).dropna()
+    if drawdowns.empty:
+        return None
+    return float(abs(drawdowns.min()))
+
+
+def _state_contamination_check(*, startup_report, runtime_state_path, portfolio_state):
+    restored_state_path = str(startup_report.get("restored_state_path") or "")
+    runtime_state_file = str(runtime_state_path)
+    payload_source = str(portfolio_state.get("runtime_context", {}).get("restored_state_path") or "")
+    inspected_paths = [value for value in [restored_state_path, runtime_state_file, payload_source] if value]
+    contaminated_paths = [
+        value for value in inspected_paths if any(token in value.lower() for token in ["backtest", "holdout"])
+    ]
+    uses_live_runtime_state = (
+        not restored_state_path
+        or "portfolio_runtime_state.json" in restored_state_path
+    )
+    return {
+        "passed": bool(uses_live_runtime_state and not contaminated_paths),
+        "restored_state_path": restored_state_path or None,
+        "runtime_state_path": runtime_state_file,
+        "payload_source": payload_source or None,
+        "contaminated_paths": contaminated_paths,
+    }
+
+
+def _active_sleeve_match(readiness, soak_status):
+    runtime_config = dict(readiness.get("runtime_config", {}) or {})
+    expected_active = list(runtime_config.get("active_sleeves", []) or [])
+    expected_disabled = list(runtime_config.get("disabled_sleeves", []) or [])
+    observed_active = list(soak_status.get("active_sleeves", []) or [])
+    observed_disabled = list(soak_status.get("disabled_sleeves", []) or [])
+    return {
+        "passed": set(observed_active) == set(expected_active) and set(observed_disabled) == set(expected_disabled),
+        "expected_active": expected_active,
+        "observed_active": observed_active,
+        "expected_disabled": expected_disabled,
+        "observed_disabled": observed_disabled,
+    }
+
+
+def _paper_soak_review_status(*, criteria, soak_days_completed, required_days):
+    if float(soak_days_completed) < float(required_days):
+        return "insufficient_forward_paper_duration"
+    statuses = [str((value or {}).get("status", "unknown")).lower() for value in criteria.values()]
+    if any(status == "fail" for status in statuses):
+        return "review_blocked"
+    if any(status == "warn" for status in statuses):
+        return "manual_review_required"
+    if all(status == "pass" for status in statuses):
+        return "manual_promotion_review_ready"
+    return "manual_review_required"
+
+
+def _manual_review_outcome_from_soak_review(soak_review):
+    allowed_outcomes = [
+        "continue_paper_soak",
+        "paper_soak_failed",
+        "eligible_for_capital_refactor_research",
+        "eligible_for_tiny_live_pilot_later",
+    ]
+    criteria = dict(soak_review.get("soak_review_criteria") or {})
+    failed_criteria = sorted(
+        key for key, value in criteria.items() if str((value or {}).get("status", "unknown")).lower() == "fail"
+    )
+    warned_criteria = sorted(
+        key for key, value in criteria.items() if str((value or {}).get("status", "unknown")).lower() == "warn"
+    )
+    missing_or_stale_artifacts = sorted(
+        key
+        for key, value in dict(soak_review.get("artifact_health") or {}).items()
+        if str((value or {}).get("status", "missing")).lower() != "healthy"
+    )
+    no_go = bool(
+        failed_criteria
+        or missing_or_stale_artifacts
+        or bool(soak_review.get("real_money_allowed"))
+        or not bool(soak_review.get("ssl_verify"))
+        or not bool(soak_review.get("paper_runtime_allowed"))
+    )
+    review_status = str(soak_review.get("soak_review_status") or "")
+    if no_go:
+        outcome = "paper_soak_failed"
+        rationale = "One or more no-go conditions failed or required artifacts are missing/stale."
+    elif review_status == "insufficient_forward_paper_duration":
+        outcome = "continue_paper_soak"
+        rationale = "Minimum forward-paper duration has not been reached."
+    elif warned_criteria:
+        outcome = "eligible_for_capital_refactor_research"
+        rationale = "Forward-paper evidence is present but still requires non-live research follow-up."
+    else:
+        outcome = "eligible_for_tiny_live_pilot_later"
+        rationale = "All current governance checks pass, but any live pilot still requires a separate explicit task and human approval."
+    return {
+        "manual_review_outcome": outcome,
+        "allowed_manual_review_outcomes": allowed_outcomes,
+        "manual_review_no_go": no_go,
+        "failed_criteria": failed_criteria,
+        "warned_criteria": warned_criteria,
+        "missing_or_stale_artifacts": missing_or_stale_artifacts,
+        "rationale": rationale,
+        "automatic_real_money_promotion": False,
+    }
+
+
+def _build_baseline_freeze_snapshot(
+    *,
+    config,
+    readiness,
+    startup_report,
+    daily_report,
+    soak_review,
+):
+    manifest_metadata = _config_manifest_metadata(config)
+    manual_review = _manual_review_outcome_from_soak_review(soak_review)
+    return {
+        "generated_at_utc": _utc_now_timestamp(),
+        "classification": readiness.get("classification"),
+        "validated_boundary": readiness.get("validated_boundary"),
+        "paper_runtime_allowed": bool(readiness.get("paper_runtime_allowed")),
+        "real_money_allowed": False,
+        "ssl_verify": bool(readiness.get("tls", {}).get("ssl_verify")),
+        "minimum_soak_days": int(_paper_soak_minimum_days(config)),
+        "current_soak_days": float(soak_review.get("soak_days_completed", 0.0) or 0.0),
+        "active_sleeves": list((readiness.get("runtime_config", {}) or {}).get("active_sleeves", [])),
+        "disabled_sleeves": list((readiness.get("runtime_config", {}) or {}).get("disabled_sleeves", [])),
+        "config_manifest": manifest_metadata,
+        "scenario_manifest_paths": dict(readiness.get("scenario_manifest_paths") or {}),
+        "validation_artifact_paths": {
+            "summary_path": readiness.get("summary_path"),
+            "promotion_readiness_report_path": readiness.get("promotion_readiness_report_path"),
+            "gate_root": readiness.get("gate_root"),
+        },
+        "paper_artifact_paths": {
+            "paper_runtime_startup_report": str(_paper_runtime_startup_report_path(config)),
+            "paper_runtime_events": str(_paper_runtime_events_path(config)),
+            "paper_soak_status": str(_paper_soak_status_path(config)),
+            "paper_soak_daily_report": str(_paper_soak_daily_report_path(config)),
+            "paper_soak_review": str(_paper_soak_review_path(config)),
+            "paper_soak_review_history": str(_paper_soak_review_history_path(config)),
+            "portfolio_runtime_state": str(_portfolio_runtime_state_path(config)),
+            "portfolio_status": str(_portfolio_status_path(config)),
+        },
+        "current_soak_review_status": soak_review.get("soak_review_status"),
+        "current_promotion_status": (daily_report.get("promotion_criteria") or {}).get("promotion_status"),
+        "manual_review": manual_review,
+        "manual_review_status": "no_go" if manual_review.get("manual_review_no_go") else "governance_only",
+        "startup_report_runtime_mode": startup_report.get("runtime_mode"),
+        "startup_report_generated_at": startup_report.get("generated_at_utc"),
+        "git_commit": _git_commit_or_none(),
+        "window_policy": "governance_freeze_only",
+    }
+
+
+def _write_baseline_freeze_snapshot(config, payload):
+    snapshot_path = _baseline_freeze_snapshot_path(config)
+    snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+    snapshot_path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+    return snapshot_path
+
+
+def _build_paper_soak_review(
+    *,
+    config,
+    readiness,
+    soak_status,
+    daily_report,
+    startup_report,
+    event_log_path,
+):
+    minimum_days = _paper_soak_minimum_days(config)
+    uptime_seconds = float(soak_status.get("runtime_uptime_seconds", 0.0) or 0.0)
+    soak_days_completed = uptime_seconds / 86400.0
+    event_records = _read_jsonl_records(event_log_path)
+    successful_restore_count = sum(1 for row in event_records if bool(row.get("restore_happened")))
+    portfolio_status = _read_json_file(_portfolio_status_path(config))
+    runtime_state = _read_json_file(_portfolio_runtime_state_path(config))
+    daily_summary = _daily_summary_frame(config)
+    artifact_health = _paper_soak_artifact_health(config)
+    stale_artifacts = [
+        key for key, value in artifact_health.items() if str(value.get("status")) != "healthy"
+    ]
+    contamination = _state_contamination_check(
+        startup_report=startup_report,
+        runtime_state_path=_portfolio_runtime_state_path(config),
+        portfolio_state=runtime_state,
+    )
+    sleeve_match = _active_sleeve_match(readiness, soak_status)
+    heartbeat_health = str(daily_report.get("heartbeat_status") or "unknown").lower()
+    current_equity = float(daily_report.get("current_paper_equity", 0.0) or 0.0)
+    realized_pnl = float(daily_report.get("realized_pnl_since_paper_start", 0.0) or 0.0)
+    unrealized_pnl = float(daily_report.get("unrealized_pnl", 0.0) or 0.0)
+    max_drawdown = _max_paper_drawdown_from_daily_summary(
+        daily_summary,
+        current_equity=current_equity,
+    )
+    daily_pnl_summary = _daily_summary_value_summary(
+        daily_summary,
+        "realized_pnl",
+        latest_value=daily_report.get("daily_pnl"),
+    )
+    daily_trade_count_summary = {
+        "closed_trades": _daily_summary_value_summary(
+            daily_summary,
+            "closed_trades",
+            latest_value=daily_report.get("daily_closed_trades"),
+        ),
+        "entries_taken": _daily_summary_value_summary(
+            daily_summary,
+            "entries_taken",
+            latest_value=daily_report.get("daily_entries"),
+        ),
+    }
+    h6_route_counts = dict(daily_report.get("h6_route_counts") or {})
+    h6_zero = all(int(h6_route_counts.get(key, 0) or 0) == 0 for key in ["h6_standard", "h6_moonshot"])
+    drawdown_acceptable = max_drawdown is None or float(max_drawdown) <= 0.10
+    pnl_proxy_ok = current_equity >= (float(soak_status.get("paper_start_equity", current_equity) or current_equity) * 0.98)
+    criteria = {
+        "minimum_soak_duration_reached": {
+            "status": "pass" if soak_days_completed >= minimum_days else "warn",
+            "completed_days": float(round(soak_days_completed, 4)),
+            "required_days": int(minimum_days),
+        },
+        "no_operational_blockers": {
+            "status": "pass" if not list(daily_report.get("blocker_list") or []) else "fail",
+            "blocker_count": int(len(list(daily_report.get("blocker_list") or []))),
+        },
+        "real_money_allowed_remains_false": {
+            "status": "pass" if not bool(daily_report.get("real_money_allowed")) else "fail",
+        },
+        "paper_runtime_allowed_remains_true": {
+            "status": "pass" if bool(daily_report.get("paper_runtime_allowed")) else "fail",
+        },
+        "ssl_verify_remains_true": {
+            "status": "pass" if bool(daily_report.get("ssl_verify")) else "fail",
+        },
+        "heartbeat_healthy": {
+            "status": "pass" if heartbeat_health == "healthy" else "warn",
+            "heartbeat_status": heartbeat_health,
+        },
+        "no_stale_artifacts": {
+            "status": "pass" if not stale_artifacts else "warn",
+            "stale_or_missing_artifacts": stale_artifacts,
+        },
+        "no_state_contamination": {
+            "status": "pass" if contamination.get("passed") else "fail",
+            **contamination,
+        },
+        "restarts_are_safe": {
+            "status": "pass" if event_records else "unknown",
+            "restart_count": int(len(event_records)),
+            "successful_restore_count": int(successful_restore_count),
+        },
+        "no_backtest_holdout_trades_imported": {
+            "status": "pass" if contamination.get("passed") else "fail",
+            "restored_state_path": contamination.get("restored_state_path"),
+        },
+        "h6_routes_zero_trades": {
+            "status": "pass" if h6_zero else "fail",
+            "route_counts": h6_route_counts,
+        },
+        "h1_short_override_active": {
+            "status": "pass" if bool(daily_report.get("h1_short_override_active")) else "fail",
+        },
+        "active_sleeves_match_validated_stack": {
+            "status": "pass" if sleeve_match.get("passed") else "fail",
+            **sleeve_match,
+        },
+        "paper_drawdown_acceptable": {
+            "status": "pass" if drawdown_acceptable else "warn",
+            "max_paper_drawdown_fraction": max_drawdown,
+            "acceptable_threshold_fraction": 0.10,
+        },
+        "paper_pnl_not_materially_worse_than_expectation": {
+            "status": "pass" if pnl_proxy_ok else "warn",
+            "current_equity": current_equity,
+            "paper_start_equity": float(soak_status.get("paper_start_equity", current_equity) or current_equity),
+            "proxy_floor_fraction": -0.02,
+        },
+        "holdout_thin_warning_acknowledged": {
+            "status": "warn" if bool(readiness.get("holdout_is_thin", True)) else "pass",
+        },
+    }
+    soak_review_status = _paper_soak_review_status(
+        criteria=criteria,
+        soak_days_completed=soak_days_completed,
+        required_days=minimum_days,
+    )
+    return {
+        "review_generated_at_utc": _utc_now_timestamp(),
+        "classification": soak_status.get("classification"),
+        "paper_runtime_allowed": bool(soak_status.get("paper_runtime_allowed")),
+        "real_money_allowed": False,
+        "ssl_verify": bool(soak_status.get("ssl_verify")),
+        "validated_boundary": soak_status.get("validated_boundary"),
+        "runtime_started_at": soak_status.get("runtime_started_at") or startup_report.get("runtime_start_timestamp"),
+        "runtime_last_processed_timestamp": soak_status.get("runtime_last_processed_timestamp"),
+        "soak_days_completed": float(round(soak_days_completed, 4)),
+        "required_soak_days": int(minimum_days),
+        "runtime_uptime_seconds": uptime_seconds,
+        "heartbeat_health": heartbeat_health,
+        "stale_warning_count": int(len(list(daily_report.get("stale_warnings") or []))),
+        "blocker_count": int(len(list(daily_report.get("blocker_list") or []))),
+        "restart_count": int(len(event_records)),
+        "successful_restore_count": int(successful_restore_count),
+        "state_contamination_check": contamination,
+        "open_positions_count": int(daily_report.get("open_positions", 0) or 0),
+        "active_sleeves": list(daily_report.get("active_sleeves") or []),
+        "disabled_sleeves": list(daily_report.get("disabled_sleeves") or []),
+        "h1_short_override_status": bool(daily_report.get("h1_short_override_active")),
+        "h6_disabled_status": bool(daily_report.get("h6_disabled_status")) and h6_zero,
+        "current_paper_equity": current_equity,
+        "realized_pnl_since_paper_start": realized_pnl,
+        "unrealized_pnl": unrealized_pnl,
+        "max_paper_drawdown_fraction": max_drawdown,
+        "daily_pnl_summary": daily_pnl_summary,
+        "daily_trade_count_summary": daily_trade_count_summary,
+        "strategy_level_evidence": dict(daily_report.get("strategy_daily_evidence") or {}),
+        "allocator_rejection_evidence": {
+            "latest_allocator_rejection_counts": dict(daily_report.get("allocator_rejection_counts") or {}),
+            "allocator_decision_counts": dict(daily_report.get("allocator_decision_counts") or {}),
+        },
+        "warning_list": list(daily_report.get("warning_list") or []),
+        "blocker_list": list(daily_report.get("blocker_list") or []),
+        "restored_state_used": bool(daily_report.get("restored_state_used")),
+        "restored_positions_count": int(daily_report.get("restored_positions_count", 0) or 0),
+        "portfolio_status_snapshot": {
+            "equity": portfolio_status.get("equity"),
+            "open_positions": portfolio_status.get("open_positions"),
+            "top_symbols": portfolio_status.get("top_symbols"),
+        },
+        "runtime_state_snapshot": {
+            "open_positions_count": int(len(list(runtime_state.get("open_positions") or []))),
+            "runtime_last_processed_timestamp": (
+                runtime_state.get("runtime_context", {}) or {}
+            ).get("runtime_last_processed_timestamp"),
+        },
+        "artifact_health": artifact_health,
+        "soak_review_criteria": criteria,
+        "soak_review_status": soak_review_status,
+        "window_policy": "forward_paper_evidence_only",
+    }
+
+
+def _write_paper_soak_review(config, payload):
+    report_path = _paper_soak_review_path(config)
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+    return report_path
+
+
+def _append_paper_soak_review_history(config, payload):
+    history_path = _paper_soak_review_history_path(config)
+    history_path.parent.mkdir(parents=True, exist_ok=True)
+    compact_payload = {
+        "timestamp": payload.get("review_generated_at_utc"),
+        "soak_days_completed": payload.get("soak_days_completed"),
+        "current_equity": payload.get("current_paper_equity"),
+        "realized_pnl": payload.get("realized_pnl_since_paper_start"),
+        "drawdown_fraction": payload.get("max_paper_drawdown_fraction"),
+        "blockers": payload.get("blocker_list"),
+        "warnings": payload.get("warning_list"),
+        "soak_review_status": payload.get("soak_review_status"),
+    }
+    with history_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(compact_payload, default=str) + "\n")
+    return history_path
+
+
+def _promotion_criteria_report(
+    *,
+    readiness,
+    startup_report,
+    soak_status,
+    daily_report,
+    event_log_path,
+):
+    uptime_seconds = float(soak_status.get("runtime_uptime_seconds", 0.0) or 0.0)
+    completed_days = uptime_seconds / 86400.0
+    warning_list = list(soak_status.get("warning_list") or [])
+    blocker_list = list(soak_status.get("blocker_list") or [])
+    current_equity = float(soak_status.get("current_paper_equity", 0.0) or 0.0)
+    start_equity = float(soak_status.get("paper_start_equity", 0.0) or 0.0)
+    equity_floor = start_equity * 0.95 if start_equity > 0.0 else 0.0
+    restored_state_path = str(startup_report.get("restored_state_path") or "")
+    latest_event = _read_latest_jsonl_event(event_log_path)
+    no_state_contamination = (
+        not restored_state_path
+        or (
+            "portfolio_runtime_state.json" in restored_state_path
+            and "backtest" not in restored_state_path.lower()
+            and "holdout" not in restored_state_path.lower()
+        )
+    )
+    criteria = {
+        "minimum_soak_days_completed": {
+            "status": "pass" if completed_days >= PAPER_SOAK_MIN_DAYS else "pending",
+            "required_days": PAPER_SOAK_MIN_DAYS,
+            "completed_days": float(round(completed_days, 4)),
+        },
+        "no_operational_blockers": {
+            "status": "pass" if not blocker_list else "warn",
+            "blocker_count": len(blocker_list),
+        },
+        "no_stale_heartbeat": {
+            "status": "pass" if not any("stale" in str(item).lower() for item in warning_list) else "warn",
+            "warnings": [item for item in warning_list if "stale" in str(item).lower()],
+        },
+        "successful_restart_evidence": {
+            "status": "pass" if latest_event else "pending",
+            "event_log_path": str(event_log_path),
+            "latest_startup_time": latest_event.get("startup_time"),
+        },
+        "no_state_contamination": {
+            "status": "pass" if no_state_contamination else "warn",
+            "restored_state_path": restored_state_path or None,
+        },
+        "paper_runtime_stable": {
+            "status": "pass" if not blocker_list and not any("stale" in str(item).lower() for item in warning_list) else "warn",
+        },
+        "h6_disabled_as_expected": {
+            "status": "pass" if bool(soak_status.get("h6_routes_zero_trades_expected")) else "warn",
+        },
+        "h1_short_override_active_as_expected": {
+            "status": "pass" if bool(soak_status.get("h1_short_override_active")) else "warn",
+        },
+        "paper_pnl_and_drawdown_acceptable": {
+            "status": (
+                "pass"
+                if current_equity >= equity_floor and int(daily_report.get("daily_loss_streak", 0) or 0) < 5
+                else "warn"
+            ),
+            "current_equity": current_equity,
+            "equity_floor_proxy": float(equity_floor),
+            "daily_loss_streak": int(daily_report.get("daily_loss_streak", 0) or 0),
+            "note": "Runtime does not publish a full drawdown series here; equity-vs-start proxy is used for operator reporting only.",
+        },
+        "holdout_thin_warning_acknowledged": {
+            "status": "warn" if bool(readiness.get("holdout_is_thin", True)) else "pass",
+        },
+    }
+    return {
+        "promotion_status": "paper_soak_in_progress",
+        "real_money_allowed": False,
+        "criteria": criteria,
+    }
+
+
+def _build_paper_soak_daily_report(
+    *,
+    readiness,
+    portfolio,
+    soak_status,
+    startup_report,
+    latest_prices,
+    selection_summary,
+    event_log_path,
+):
+    current_equity = float(soak_status.get("current_paper_equity", 0.0) or 0.0)
+    start_equity = float(soak_status.get("paper_start_equity", 0.0) or 0.0)
+    total_return = ((current_equity / start_equity) - 1.0) if start_equity > 0.0 else 0.0
+    strategy_daily_evidence = _strategy_daily_evidence(portfolio, latest_prices)
+    report = {
+        "report_generated_at_utc": _utc_now_timestamp(),
+        "classification": soak_status.get("classification"),
+        "paper_runtime_allowed": bool(soak_status.get("paper_runtime_allowed")),
+        "real_money_allowed": False,
+        "ssl_verify": bool(soak_status.get("ssl_verify")),
+        "validated_boundary": soak_status.get("validated_boundary"),
+        "paper_runtime_started_at": soak_status.get("runtime_started_at"),
+        "runtime_last_processed_timestamp": soak_status.get("runtime_last_processed_timestamp"),
+        "uptime_seconds": float(soak_status.get("runtime_uptime_seconds", 0.0) or 0.0),
+        "heartbeat_status": "stale" if any("stale" in str(item).lower() for item in list(soak_status.get("warning_list") or [])) else "healthy",
+        "stale_warnings": [item for item in list(soak_status.get("warning_list") or []) if "stale" in str(item).lower()],
+        "current_paper_equity": current_equity,
+        "realized_pnl_since_paper_start": float(soak_status.get("realized_paper_pnl_since_runtime_start", 0.0) or 0.0),
+        "unrealized_pnl": float(soak_status.get("unrealized_paper_pnl", 0.0) or 0.0),
+        "total_paper_return": float(total_return),
+        "daily_pnl": float(soak_status.get("daily_closed_pnl", 0.0) or 0.0),
+        "daily_entries": int(soak_status.get("daily_entries", 0) or 0),
+        "daily_closed_trades": int(soak_status.get("daily_closed_trades", 0) or 0),
+        "daily_loss_streak": int(getattr(portfolio, "daily_loss_streak", 0) or 0),
+        "open_positions": int(soak_status.get("open_positions_count", 0) or 0),
+        "restored_state_used": bool(soak_status.get("restored_state_used")),
+        "restored_positions_count": int(soak_status.get("restored_positions_count", 0) or 0),
+        "active_sleeves": list(soak_status.get("active_sleeves") or []),
+        "disabled_sleeves": list(soak_status.get("disabled_sleeves") or []),
+        "h1_short_override_active": bool(soak_status.get("h1_short_override_active")),
+        "h6_disabled_status": bool(soak_status.get("h6_routes_zero_trades_expected")),
+        "h6_route_counts": {
+            "h6_standard": int(dict(getattr(portfolio, "strategy_stats", {}) or {}).get("h6_standard", {}).get("count", 0) or 0),
+            "h6_moonshot": int(dict(getattr(portfolio, "strategy_stats", {}) or {}).get("h6_moonshot", {}).get("count", 0) or 0),
+        },
+        "blocker_list": list(soak_status.get("blocker_list") or []),
+        "warning_list": list(soak_status.get("warning_list") or []),
+        "allocator_decision_counts": _allocator_decision_counts(selection_summary),
+        "allocator_rejection_counts": dict(soak_status.get("latest_allocator_rejection_counts") or {}),
+        "strategy_daily_evidence": strategy_daily_evidence,
+        "recent_rejection_counts_by_strategy": {
+            strategy_type: dict(values or {})
+            for strategy_type, values in dict(
+                getattr(portfolio, "recent_selection_reason_counts_by_strategy", {}) or {}
+            ).items()
+        },
+        "startup_report_summary": {
+            "runtime_mode": startup_report.get("runtime_mode"),
+            "runtime_start_timestamp": startup_report.get("runtime_start_timestamp"),
+            "restored_state_path": startup_report.get("restored_state_path"),
+            "restored_positions_count": startup_report.get("restored_positions_count"),
+        },
+        "last_runtime_event": _read_latest_jsonl_event(event_log_path),
+    }
+    report["promotion_criteria"] = _promotion_criteria_report(
+        readiness=readiness,
+        startup_report=startup_report,
+        soak_status=soak_status,
+        daily_report=report,
+        event_log_path=event_log_path,
+    )
+    return report
+
+
+def _write_paper_soak_daily_report(config, payload):
+    report_path = _paper_soak_daily_report_path(config)
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+    return report_path
+
+
+def _runtime_lag_warning_seconds(poll_seconds):
+    return max(300.0, (float(poll_seconds) * 4.0) + 120.0)
+
+
+def _build_paper_soak_warnings(
+    *,
+    readiness,
+    runtime_last_processed_timestamp,
+    heartbeat_timestamp,
+    poll_seconds,
+    runtime_boundary_lag_seconds,
+):
+    warnings = list(readiness.get("warnings") or [])
+    threshold = _runtime_lag_warning_seconds(poll_seconds)
+    if runtime_last_processed_timestamp:
+        now_closed = pd.Timestamp.now("UTC").floor("min") - pd.Timedelta(minutes=1)
+        runtime_ts = pd.Timestamp(runtime_last_processed_timestamp)
+        if runtime_ts.tzinfo is None:
+            runtime_ts = runtime_ts.tz_localize("UTC")
+        else:
+            runtime_ts = runtime_ts.tz_convert("UTC")
+        lag_seconds = max(0.0, float((now_closed - runtime_ts).total_seconds()))
+        if lag_seconds > threshold:
+            warnings.append(
+                "runtime_last_processed_timestamp_stale:"
+                f"{int(lag_seconds)}s>{int(threshold)}s"
+            )
+    if heartbeat_timestamp:
+        heartbeat_ts = pd.Timestamp(heartbeat_timestamp)
+        if heartbeat_ts.tzinfo is None:
+            heartbeat_ts = heartbeat_ts.tz_localize("UTC")
+        else:
+            heartbeat_ts = heartbeat_ts.tz_convert("UTC")
+        heartbeat_lag = max(
+            0.0,
+            float((_utc_now_ts() - heartbeat_ts).total_seconds()),
+        )
+        if heartbeat_lag > threshold:
+            warnings.append(
+                "engine_heartbeat_stale:"
+                f"{int(heartbeat_lag)}s>{int(threshold)}s"
+            )
+    if runtime_boundary_lag_seconds is not None and float(runtime_boundary_lag_seconds) > threshold:
+        warnings.append(
+            "runtime_boundary_behind_expected_closed_candle:"
+            f"{int(float(runtime_boundary_lag_seconds))}s>{int(threshold)}s"
+        )
+    return list(dict.fromkeys(warnings))
+
+
+def _runtime_boundary_lag_seconds(runtime_last_processed_timestamp):
+    if not runtime_last_processed_timestamp:
+        return None
+    now_closed = pd.Timestamp.now("UTC").floor("min") - pd.Timedelta(minutes=1)
+    runtime_ts = pd.Timestamp(runtime_last_processed_timestamp)
+    if runtime_ts.tzinfo is None:
+        runtime_ts = runtime_ts.tz_localize("UTC")
+    else:
+        runtime_ts = runtime_ts.tz_convert("UTC")
+    return max(0.0, float((now_closed - runtime_ts).total_seconds()))
+
+
+def _build_paper_soak_status(
+    *,
+    readiness,
+    portfolio,
+    runtime_started_at,
+    runtime_last_processed_timestamp,
+    restored_state_used,
+    restored_positions_count,
+    latest_prices,
+    selection_summary,
+    heartbeat_payload,
+    runtime_start_equity,
+):
+    runtime_config = dict(readiness.get("runtime_config", {}) or {})
+    current_equity = float(getattr(getattr(portfolio, "account", None), "equity", 0.0) or 0.0)
+    unrealized_pnl = _portfolio_unrealized_pnl(portfolio, latest_prices)
+    runtime_uptime_seconds = max(
+        0.0,
+        float(
+            (
+                _utc_now_ts()
+                - pd.Timestamp(runtime_started_at)
+            ).total_seconds()
+        ),
+    )
+    heartbeat_timestamp = (
+        heartbeat_payload.get("last_heartbeat_timestamp")
+        or heartbeat_payload.get("cycle_completed_at")
+    )
+    boundary_lag = _runtime_boundary_lag_seconds(runtime_last_processed_timestamp)
+    warnings = _build_paper_soak_warnings(
+        readiness=readiness,
+        runtime_last_processed_timestamp=runtime_last_processed_timestamp,
+        heartbeat_timestamp=heartbeat_timestamp,
+        poll_seconds=float(heartbeat_payload.get("poll_seconds", 0.0) or 0.0),
+        runtime_boundary_lag_seconds=boundary_lag,
+    )
+    return {
+        "classification": readiness.get("classification"),
+        "paper_runtime_allowed": bool(readiness.get("paper_runtime_allowed")),
+        "real_money_allowed": bool(readiness.get("real_money_allowed")),
+        "ssl_verify": bool(readiness.get("tls", {}).get("ssl_verify")),
+        "validated_boundary": readiness.get("validated_boundary"),
+        "runtime_started_at": runtime_started_at,
+        "runtime_last_processed_timestamp": runtime_last_processed_timestamp,
+        "runtime_uptime_seconds": float(runtime_uptime_seconds),
+        "restored_state_used": bool(restored_state_used),
+        "restored_positions_count": int(restored_positions_count),
+        "open_positions_count": int(len(getattr(portfolio, "open_positions", []) or [])),
+        "active_sleeves": list(runtime_config.get("active_sleeves", [])),
+        "disabled_sleeves": list(runtime_config.get("disabled_sleeves", [])),
+        "allowed_sides": list(runtime_config.get("allowed_sides", [])),
+        "strategy_allowed_sides": dict(runtime_config.get("strategy_allowed_sides", {}) or {}),
+        "current_paper_equity": current_equity,
+        "paper_start_equity": float(runtime_start_equity),
+        "realized_paper_pnl_since_runtime_start": float(current_equity - float(runtime_start_equity)),
+        "unrealized_paper_pnl": float(unrealized_pnl),
+        "daily_entries": int(getattr(portfolio, "daily_entries_taken", 0) or 0),
+        "daily_closed_trades": int(getattr(portfolio, "daily_closed_trades", 0) or 0),
+        "daily_closed_pnl": float(getattr(portfolio, "daily_closed_pnl", 0.0) or 0.0),
+        "latest_allocator_rejection_counts": _latest_allocator_rejection_counts(selection_summary),
+        "latest_strategy_level_trade_counts": _strategy_trade_counts(portfolio),
+        "latest_strategy_level_pnl": _strategy_trade_pnl(portfolio),
+        "strategy_open_positions_by_type": _strategy_open_positions_by_type(portfolio),
+        "last_heartbeat_timestamp": heartbeat_timestamp,
+        "runtime_boundary_lag_seconds": boundary_lag,
+        "warning_list": warnings,
+        "blocker_list": list(readiness.get("blockers") or []),
+        "h1_short_override_active": (
+            list(runtime_config.get("strategy_allowed_sides", {}).get("h1_execution", [])) == ["short"]
+        ),
+        "h6_routes_zero_trades_expected": (
+            "h6_standard" in list(runtime_config.get("disabled_sleeves", []))
+            and "h6_moonshot" in list(runtime_config.get("disabled_sleeves", []))
+        ),
+        "heartbeat": dict(heartbeat_payload or {}),
+        "generated_at_utc": _utc_now_timestamp(),
+    }
+
+
+def _write_paper_soak_status(config, payload):
+    status_path = _paper_soak_status_path(config)
+    status_path.parent.mkdir(parents=True, exist_ok=True)
+    status_path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+    return status_path
+
+
 def _recover_runtime_state_csv(runtime_path, config):
     try:
         return load_from_csv(runtime_path)
@@ -342,6 +1602,16 @@ def _resolve_live_history_file(folder, symbol, interval, start_date, end_date):
 
 
 def _load_live_bootstrap_history(symbol, interval, warmup_minutes, config):
+    df_1m, source_path, _ = _load_live_bootstrap_history_with_metadata(
+        symbol=symbol,
+        interval=interval,
+        warmup_minutes=warmup_minutes,
+        config=config,
+    )
+    return df_1m, source_path
+
+
+def _load_live_bootstrap_history_with_metadata(symbol, interval, warmup_minutes, config):
     final_path, partial_path = _bootstrap_history_paths(symbol, interval, config)
     start_date = config.require("history", "start_date")
     end_date = config.require("history", "end_date")
@@ -360,15 +1630,36 @@ def _load_live_bootstrap_history(symbol, interval, warmup_minutes, config):
             "Run `python main_download.py` first."
         )
 
-    df_1m = load_from_csv(source_path)
-    df_1m = _trim_live_window(df_1m, warmup_minutes)
+    canonical_df = load_from_csv(source_path)
+    canonical_last_timestamp = None if canonical_df.empty else canonical_df.index.max()
+    df_1m = _trim_live_window(canonical_df, warmup_minutes)
     runtime_path = _runtime_state_path(symbol, interval, config)
+    metadata = {
+        "symbol": str(symbol).upper(),
+        "interval": interval,
+        "canonical_history_path": str(source_path),
+        "canonical_history_last_timestamp": _timestamp_to_utc_iso(canonical_last_timestamp),
+        "bootstrap_source_path": str(source_path),
+        "runtime_state_used": False,
+        "runtime_state_path": str(runtime_path),
+        "runtime_state_last_timestamp": None,
+        "state_rows_after_bootstrap": int(len(df_1m)),
+    }
     if runtime_path.exists():
         runtime_df = _recover_runtime_state_csv(runtime_path, config)
         if runtime_df is not None:
+            runtime_last_timestamp = None if runtime_df.empty else runtime_df.index.max()
             df_1m = _merge_recent_into_state(df_1m, runtime_df, warmup_minutes)
-            return df_1m, runtime_path
-    return df_1m, source_path
+            metadata.update(
+                {
+                    "bootstrap_source_path": str(runtime_path),
+                    "runtime_state_used": True,
+                    "runtime_state_last_timestamp": _timestamp_to_utc_iso(runtime_last_timestamp),
+                    "state_rows_after_bootstrap": int(len(df_1m)),
+                }
+            )
+            return df_1m, runtime_path, metadata
+    return df_1m, source_path, metadata
 
 
 def _persist_runtime_state(symbol, interval, df_1m, config):
@@ -435,14 +1726,47 @@ def _fetch_closed_range(symbol, interval, start_ts, end_ts, config, *, client=No
 
 
 def _catch_up_live_state(symbol, interval, df_1m_state, warmup_minutes, config, *, client=None):
+    df_1m_state, _ = _catch_up_live_state_with_metadata(
+        symbol=symbol,
+        interval=interval,
+        df_1m_state=df_1m_state,
+        warmup_minutes=warmup_minutes,
+        config=config,
+        client=client,
+    )
+    return df_1m_state
+
+
+def _catch_up_live_state_with_metadata(
+    symbol,
+    interval,
+    df_1m_state,
+    warmup_minutes,
+    config,
+    *,
+    client=None,
+):
     latest_ms = _frame_end_utc_ms(df_1m_state)
     if latest_ms is None:
-        return df_1m_state
+        return df_1m_state, {
+            "symbol": str(symbol).upper(),
+            "catchup_applied": False,
+            "fresh_closed_rows_added": 0,
+            "runtime_first_processed_candle": None,
+            "runtime_last_processed_candle": None,
+        }
 
-    catchup_end = pd.Timestamp.utcnow().floor("min") - pd.Timedelta(minutes=1)
+    catchup_end = pd.Timestamp.now("UTC").floor("min") - pd.Timedelta(minutes=1)
     catchup_end_ms = int(catchup_end.timestamp() * 1000)
     if latest_ms >= catchup_end_ms:
-        return df_1m_state
+        latest_timestamp = _timestamp_to_utc_iso(pd.Timestamp(latest_ms, unit="ms", tz="UTC"))
+        return df_1m_state, {
+            "symbol": str(symbol).upper(),
+            "catchup_applied": False,
+            "fresh_closed_rows_added": 0,
+            "runtime_first_processed_candle": latest_timestamp,
+            "runtime_last_processed_candle": latest_timestamp,
+        }
 
     catchup_end_label = catchup_end if catchup_end.tzinfo is not None else catchup_end.tz_localize("UTC")
     print(
@@ -458,9 +1782,23 @@ def _catch_up_live_state(symbol, interval, df_1m_state, warmup_minutes, config, 
         client=client,
     )
     if catchup.empty:
-        return df_1m_state
+        latest_timestamp = _timestamp_to_utc_iso(pd.Timestamp(latest_ms, unit="ms", tz="UTC"))
+        return df_1m_state, {
+            "symbol": str(symbol).upper(),
+            "catchup_applied": False,
+            "fresh_closed_rows_added": 0,
+            "runtime_first_processed_candle": latest_timestamp,
+            "runtime_last_processed_candle": latest_timestamp,
+        }
 
-    return _merge_recent_into_state(df_1m_state, catchup, warmup_minutes)
+    merged = _merge_recent_into_state(df_1m_state, catchup, warmup_minutes)
+    return merged, {
+        "symbol": str(symbol).upper(),
+        "catchup_applied": True,
+        "fresh_closed_rows_added": int(len(catchup)),
+        "runtime_first_processed_candle": _timestamp_to_utc_iso(catchup.index.min()),
+        "runtime_last_processed_candle": _timestamp_to_utc_iso(catchup.index.max()),
+    }
 
 
 def _discover_live_symbols(config):
@@ -612,6 +1950,7 @@ def _build_engine_heartbeat(
         "status": str(status),
         "cycle_started_at": str(pd.Timestamp(cycle_started_at)),
         "cycle_completed_at": str(pd.Timestamp(cycle_completed_at)),
+        "last_heartbeat_timestamp": _timestamp_to_utc_iso(cycle_completed_at),
         "cycle_duration_seconds": float(cycle_duration_seconds),
         "poll_seconds": float(poll_seconds),
         "symbol_count": int(len(symbols)),
@@ -619,6 +1958,7 @@ def _build_engine_heartbeat(
         "total_recent_1m_rows": int(sum(recent_row_counts.values())),
         "total_state_1m_rows": int(sum(len(frame) for frame in states.values())),
         "latest_recent_1m_timestamp": latest_recent_timestamp,
+        "runtime_last_processed_timestamp": _latest_runtime_boundary(states),
         "new_15m_symbol_count": int(len(new_symbols)),
         "new_15m_symbols": [item["symbol"] for item in new_symbols],
         "candidates_built": int(len(candidates)),
@@ -854,6 +2194,8 @@ def _build_live_candidate(
 def _run_portfolio_live_paper_sim(config=None):
     config = config or AppConfig.load()
     configure_debug(config=config)
+    readiness = build_runtime_readiness(config, mode="portfolio_paper")
+    runtime_start_timestamp = _utc_now_timestamp()
     interval = config.require("binance", "default_interval")
     recent_limit = config.require("binance", "recent_limit")
     poll_seconds = config.require("live_sim", "poll_seconds")
@@ -882,18 +2224,27 @@ def _run_portfolio_live_paper_sim(config=None):
         "Bootstrapping live state from local 1m history "
         f"with ~{warmup_minutes / (60 * 24):.1f} days of warmup"
     )
+    print(
+        "Validation boundary: "
+        f"{readiness.get('validated_boundary') or 'unknown'} | "
+        f"classification: {readiness.get('classification')}"
+    )
+    for warning in list(readiness.get("warnings") or []):
+        print(f"Readiness warning: {warning}")
 
     states = {}
     binance_client = BinanceClient(config=config)
     persisted_state_timestamps = {}
+    bootstrap_metadata_by_symbol = {}
+    catchup_metadata_by_symbol = {}
     for symbol in symbols:
-        df_1m_state, source_path = _load_live_bootstrap_history(
+        df_1m_state, source_path, bootstrap_metadata = _load_live_bootstrap_history_with_metadata(
             symbol=symbol,
             interval=interval,
             warmup_minutes=warmup_minutes,
             config=config,
         )
-        df_1m_state = _catch_up_live_state(
+        df_1m_state, catchup_metadata = _catch_up_live_state_with_metadata(
             symbol=symbol,
             interval=interval,
             df_1m_state=df_1m_state,
@@ -902,6 +2253,8 @@ def _run_portfolio_live_paper_sim(config=None):
             client=binance_client,
         )
         states[symbol] = df_1m_state
+        bootstrap_metadata_by_symbol[symbol] = bootstrap_metadata
+        catchup_metadata_by_symbol[symbol] = catchup_metadata
         runtime_path = _persist_runtime_state(symbol, interval, df_1m_state, config)
         persisted_state_timestamps[symbol] = _frame_end_utc_ms(df_1m_state)
         print(f"Loaded {symbol} bootstrap source: {source_path}")
@@ -921,13 +2274,146 @@ def _run_portfolio_live_paper_sim(config=None):
         state_logger=LivePortfolioStateLogger(config=config),
         config=config,
     )
+    snapshot_payload, snapshot_path = _load_live_portfolio_snapshot(config)
+    restored_positions = 0
+    restored_from_state = False
+    restored_runtime_boundary = _snapshot_runtime_last_processed(snapshot_payload)
+    if snapshot_payload:
+        portfolio.restore_state(snapshot_payload)
+        restored_positions = int(len(portfolio.open_positions))
+        restored_from_state = restored_positions > 0 or bool(snapshot_payload)
+    restore_summary = _restored_state_summary(portfolio)
+    runtime_boundary = _latest_runtime_boundary(states)
+    fresh_runtime_timestamps = [
+        value.get("runtime_first_processed_candle")
+        for value in catchup_metadata_by_symbol.values()
+        if value.get("runtime_first_processed_candle")
+    ]
+    runtime_first_processed_candle = min(fresh_runtime_timestamps) if fresh_runtime_timestamps else None
+    runtime_start_equity = float(getattr(portfolio.account, "equity", 0.0) or 0.0)
+    portfolio.set_runtime_context(
+        mode="portfolio_paper",
+        readiness=dict(readiness),
+        validation_boundary=readiness.get("validated_boundary"),
+        runtime_start_timestamp=runtime_start_timestamp,
+        runtime_first_processed_candle=runtime_first_processed_candle,
+        runtime_last_processed_timestamp=runtime_boundary,
+        restored_from_live_state=restored_from_state,
+        restored_position_count=restored_positions,
+        restored_lineage_count=int(restore_summary.get("restored_lineage_count", 0)),
+        restored_allocator_stats=dict(restore_summary.get("restored_allocator_stats") or {}),
+        restored_daily_controls=dict(restore_summary.get("restored_daily_controls") or {}),
+        restored_state_path=str(snapshot_path),
+        paper_runtime_allowed=bool(readiness.get("paper_runtime_allowed")),
+        real_money_allowed=bool(readiness.get("real_money_allowed")),
+        active_sleeves=list(readiness.get("runtime_config", {}).get("active_sleeves", [])),
+        disabled_sleeves=list(readiness.get("runtime_config", {}).get("disabled_sleeves", [])),
+        ssl_verify=bool(readiness.get("tls", {}).get("ssl_verify")),
+    )
+    print(
+        "Live-paper portfolio restore: "
+        f"restored={restored_from_state} | positions={restored_positions} | "
+        f"state_path={snapshot_path}"
+    )
+    print(
+        "Restore detail: "
+        f"lineage={restore_summary.get('restored_lineage_count', 0)} | "
+        f"allocator_stats={restore_summary.get('restored_allocator_stats')} | "
+        f"daily_controls={restore_summary.get('restored_daily_controls')}"
+    )
+    print(f"Runtime last processed timestamp: {runtime_boundary or 'unknown'}")
+    portfolio.flush_state()
+    startup_report = _build_paper_runtime_startup_report(
+        config=config,
+        readiness=readiness,
+        bootstrap_metadata_by_symbol=bootstrap_metadata_by_symbol,
+        catchup_metadata_by_symbol=catchup_metadata_by_symbol,
+        restored_state_used=restored_from_state,
+        restored_state_path=snapshot_path,
+        restore_summary=restore_summary,
+        runtime_start_timestamp=runtime_start_timestamp,
+        runtime_first_processed_candle=runtime_first_processed_candle,
+        runtime_last_processed_candle=runtime_boundary,
+    )
+    startup_report_path = _write_paper_runtime_startup_report(config, startup_report)
+    event_payload = {
+        "startup_time": runtime_start_timestamp,
+        "restore_happened": bool(restored_from_state),
+        "restored_positions_count": int(restored_positions),
+        "last_processed_timestamp_before_restore": restored_runtime_boundary,
+        "first_processed_timestamp_after_restore": runtime_first_processed_candle,
+        "validation_boundary": readiness.get("validated_boundary"),
+        "scenario_manifest_paths": dict(readiness.get("scenario_manifest_paths") or {}),
+        "startup_report_path": str(startup_report_path),
+        "readiness_summary_path": readiness.get("summary_path"),
+        "classification": readiness.get("classification"),
+        "real_money_allowed": bool(readiness.get("real_money_allowed")),
+    }
+    event_log_path = _append_paper_runtime_event(config, event_payload)
+    print(f"Paper runtime startup report: {startup_report_path}")
+    print(f"Paper runtime event log: {event_log_path}")
+    initial_soak_status = _build_paper_soak_status(
+        readiness=readiness,
+        portfolio=portfolio,
+        runtime_started_at=runtime_start_timestamp,
+        runtime_last_processed_timestamp=runtime_boundary,
+        restored_state_used=restored_from_state,
+        restored_positions_count=restored_positions,
+        latest_prices=_latest_price_by_symbol(states),
+        selection_summary={"final_reason_counts": {}},
+        heartbeat_payload={
+            "poll_seconds": float(poll_seconds),
+            "last_heartbeat_timestamp": runtime_start_timestamp,
+            "runtime_last_processed_timestamp": runtime_boundary,
+        },
+        runtime_start_equity=runtime_start_equity,
+    )
+    initial_soak_status_path = _write_paper_soak_status(config, initial_soak_status)
+    initial_daily_report = _build_paper_soak_daily_report(
+        readiness=readiness,
+        portfolio=portfolio,
+        soak_status=initial_soak_status,
+        startup_report=startup_report,
+        latest_prices=_latest_price_by_symbol(states),
+        selection_summary={"final_reason_counts": {}},
+        event_log_path=event_log_path,
+    )
+    initial_daily_report_path = _write_paper_soak_daily_report(config, initial_daily_report)
+    initial_soak_review = _build_paper_soak_review(
+        config=config,
+        readiness=readiness,
+        soak_status=initial_soak_status,
+        daily_report=initial_daily_report,
+        startup_report=startup_report,
+        event_log_path=event_log_path,
+    )
+    initial_soak_review_path = _write_paper_soak_review(config, initial_soak_review)
+    initial_soak_review_history_path = _append_paper_soak_review_history(config, initial_soak_review)
+    initial_baseline_freeze_snapshot = _build_baseline_freeze_snapshot(
+        config=config,
+        readiness=readiness,
+        startup_report=startup_report,
+        daily_report=initial_daily_report,
+        soak_review=initial_soak_review,
+    )
+    initial_baseline_freeze_snapshot_path = _write_baseline_freeze_snapshot(
+        config,
+        initial_baseline_freeze_snapshot,
+    )
+    initial_scaffold_inventory_path = write_scaffold_inventory(config, readiness=readiness)
+    print(f"Paper soak status: {initial_soak_status_path}")
+    print(f"Paper soak daily report: {initial_daily_report_path}")
+    print(f"Paper soak review: {initial_soak_review_path}")
+    print(f"Paper soak review history: {initial_soak_review_history_path}")
+    print(f"Baseline freeze snapshot: {initial_baseline_freeze_snapshot_path}")
+    print(f"Capital refactor scaffold inventory: {initial_scaffold_inventory_path}")
     last_candle_times = {symbol: None for symbol in symbols}
     cycle_count = 0
 
     while True:
         cycle_count += 1
         cycle_start = time.time()
-        cycle_started_at = pd.Timestamp.utcnow()
+        cycle_started_at = pd.Timestamp.now("UTC")
         execution_frames = {}
         direction_frames = {}
         trend_frames = {}
@@ -1121,7 +2607,30 @@ def _run_portfolio_live_paper_sim(config=None):
             candidate_strategies_by_symbol=candidate_strategies_by_symbol,
         )
         cycle_time = time.time() - cycle_start
-        cycle_completed_at = pd.Timestamp.utcnow()
+        cycle_completed_at = pd.Timestamp.now("UTC")
+        runtime_boundary = _latest_runtime_boundary(states)
+        portfolio.set_runtime_context(
+            mode="portfolio_paper",
+            readiness=dict(readiness),
+            validation_boundary=readiness.get("validated_boundary"),
+            runtime_start_timestamp=runtime_start_timestamp,
+            runtime_first_processed_candle=runtime_first_processed_candle,
+            runtime_last_processed_timestamp=runtime_boundary,
+            restored_from_live_state=restored_from_state,
+            restored_position_count=restored_positions,
+            restored_lineage_count=int(restore_summary.get("restored_lineage_count", 0)),
+            restored_allocator_stats=dict(restore_summary.get("restored_allocator_stats") or {}),
+            restored_daily_controls=dict(restore_summary.get("restored_daily_controls") or {}),
+            restored_state_path=str(snapshot_path),
+            paper_runtime_allowed=bool(readiness.get("paper_runtime_allowed")),
+            real_money_allowed=bool(readiness.get("real_money_allowed")),
+            active_sleeves=list(readiness.get("runtime_config", {}).get("active_sleeves", [])),
+            disabled_sleeves=list(readiness.get("runtime_config", {}).get("disabled_sleeves", [])),
+            ssl_verify=bool(readiness.get("tls", {}).get("ssl_verify")),
+        )
+        startup_report["runtime_last_processed_candle"] = runtime_boundary
+        startup_report["generated_at_utc"] = _utc_now_timestamp()
+        _write_paper_runtime_startup_report(config, startup_report)
         engine_heartbeat = _build_engine_heartbeat(
             cycle_count=cycle_count,
             cycle_started_at=cycle_started_at,
@@ -1139,10 +2648,62 @@ def _run_portfolio_live_paper_sim(config=None):
             portfolio=portfolio,
             status=status,
         )
+        latest_prices = _latest_price_by_symbol(states)
+        soak_status = _build_paper_soak_status(
+            readiness=readiness,
+            portfolio=portfolio,
+            runtime_started_at=runtime_start_timestamp,
+            runtime_last_processed_timestamp=runtime_boundary,
+            restored_state_used=restored_from_state,
+            restored_positions_count=restored_positions,
+            latest_prices=latest_prices,
+            selection_summary=selection_summary,
+            heartbeat_payload=engine_heartbeat,
+            runtime_start_equity=runtime_start_equity,
+        )
+        soak_status_path = _write_paper_soak_status(config, soak_status)
+        daily_report = _build_paper_soak_daily_report(
+            readiness=readiness,
+            portfolio=portfolio,
+            soak_status=soak_status,
+            startup_report=startup_report,
+            latest_prices=latest_prices,
+            selection_summary=selection_summary,
+            event_log_path=event_log_path,
+        )
+        daily_report_path = _write_paper_soak_daily_report(config, daily_report)
+        soak_review = _build_paper_soak_review(
+            config=config,
+            readiness=readiness,
+            soak_status=soak_status,
+            daily_report=daily_report,
+            startup_report=startup_report,
+            event_log_path=event_log_path,
+        )
+        soak_review_path = _write_paper_soak_review(config, soak_review)
+        soak_review_history_path = _append_paper_soak_review_history(config, soak_review)
+        baseline_freeze_snapshot = _build_baseline_freeze_snapshot(
+            config=config,
+            readiness=readiness,
+            startup_report=startup_report,
+            daily_report=daily_report,
+            soak_review=soak_review,
+        )
+        baseline_freeze_snapshot_path = _write_baseline_freeze_snapshot(
+            config,
+            baseline_freeze_snapshot,
+        )
+        scaffold_inventory_path = write_scaffold_inventory(config, readiness=readiness)
         portfolio.state_logger.write_engine_heartbeat(engine_heartbeat)
         portfolio.state_logger.append_engine_cycle(engine_heartbeat)
         portfolio.state_logger.write_symbol_pipeline_status(symbol_pipeline_rows)
+        portfolio.flush_state()
         print(f"\nPortfolio cycle completed in {cycle_time:.2f}s")
+        print(f"Paper soak daily report: {daily_report_path}")
+        print(f"Paper soak review: {soak_review_path}")
+        print(f"Paper soak review history: {soak_review_history_path}")
+        print(f"Baseline freeze snapshot: {baseline_freeze_snapshot_path}")
+        print(f"Capital refactor scaffold inventory: {scaffold_inventory_path}")
         if max_cycles is not None and cycle_count >= int(max_cycles):
             break
         time.sleep(poll_seconds)
@@ -1156,7 +2717,13 @@ def run_live_sim(symbol=None, config=None):
         if callable(getter)
         else "single_symbol"
     )
-    if str(mode).lower() == "portfolio_paper":
+    normalized_mode = str(mode).lower()
+    if normalized_mode in {"portfolio_live", "live_capital", "real_money"}:
+        build_runtime_readiness(config, mode=normalized_mode)
+        raise RuntimeError(
+            "Real-money execution mode is intentionally disabled in this repository."
+        )
+    if normalized_mode == "portfolio_paper":
         return _run_portfolio_live_paper_sim(config=config)
     return _run_single_symbol_live_sim(symbol=symbol, config=config)
 

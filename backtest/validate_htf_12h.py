@@ -17,6 +17,7 @@ from backtest.portfolio_runner import (
     _load_full_history,
     run_portfolio_backtest,
 )
+from backtest.window_policy import write_validation_window_artifact
 from config import AppConfig
 from entry.htf_moonshot import build_htf_12h_snapshots
 
@@ -316,6 +317,7 @@ def _run_scenario(
     root_output: Path,
     *,
     reset_output: bool = False,
+    validation_window: dict | None = None,
     **flags,
 ) -> dict:
     output_dir = root_output / name
@@ -325,6 +327,8 @@ def _run_scenario(
 
     cfg = _clone_config(base_config)
     _configure_scenario(cfg, output_dir=output_dir, **flags)
+    if validation_window:
+        write_validation_window_artifact(output_dir, validation_window)
     portfolio = run_portfolio_backtest(config=cfg)
     trades, equity, daily, signals = _load_run_artifacts(output_dir)
     metrics = _trade_metrics(trades, equity, daily)
@@ -343,6 +347,7 @@ def _run_scenario(
         "equity": equity,
         "daily": daily,
         "signals": signals,
+        "validation_window": dict(validation_window or {}),
     }
 
 
@@ -353,11 +358,14 @@ def _run_or_resume_scenario(
     progress: dict,
     *,
     reset_output: bool = False,
+    validation_window: dict | None = None,
     **flags,
 ) -> dict:
     output_dir = root_output / name
     cfg = _clone_config(base_config)
     _configure_scenario(cfg, output_dir=output_dir, **flags)
+    if validation_window:
+        write_validation_window_artifact(output_dir, validation_window)
     if not reset_output and _scenario_artifacts_complete(output_dir, cfg):
         trades, equity, daily, signals = _load_run_artifacts(output_dir)
         metrics = _trade_metrics(trades, equity, daily)
@@ -377,6 +385,7 @@ def _run_or_resume_scenario(
             "daily": daily,
             "signals": signals,
             "resumed_from_artifacts": True,
+            "validation_window": dict(validation_window or {}),
         }
     else:
         result = _run_scenario(
@@ -384,6 +393,7 @@ def _run_or_resume_scenario(
             base_config,
             root_output,
             reset_output=reset_output,
+            validation_window=validation_window,
             **flags,
         )
         result["resumed_from_artifacts"] = False

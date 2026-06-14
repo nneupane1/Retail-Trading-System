@@ -30,10 +30,21 @@ type DashboardMode = "paper" | "backtest" | "live";
 type Snapshot = {
   run?: { run_id: string; path: string; last_write_time?: number } | null;
   portfolio_status: Record<string, any>;
+  readiness?: Record<string, any>;
+  paper_soak_status?: Record<string, any>;
+  paper_soak_daily_report?: Record<string, any>;
+  paper_soak_review?: Record<string, any>;
+  baseline_freeze_snapshot?: Record<string, any>;
+  capital_refactor_scaffold_inventory?: Record<string, any>;
+  validation_truth?: Record<string, any>;
+  artifact_freshness?: Record<string, Record<string, any>>;
+  last_runtime_event?: Record<string, any>;
+  operator_warning_list?: string[];
   runtime_policy_rows: Row[];
   selection_reason_rows: Row[];
   recent_selection_reason_rows: Row[];
   selection_reason_by_strategy_rows: Row[];
+  allocator_decision_rows: Row[];
   daily_summary_rows: Row[];
   trade_rows: Row[];
   signal_rows: Row[];
@@ -229,6 +240,21 @@ function formatFlexibleTime(value: unknown) {
     minute: "2-digit",
     second: "2-digit",
   }).format(date);
+}
+
+function truthy(value: unknown) {
+  return String(value).toLowerCase() === "true";
+}
+
+function verdictTone(value: unknown): "neutral" | "good" | "warning" {
+  const normalized = String(value ?? "").toLowerCase();
+  if (normalized === "pass" || normalized === "healthy") {
+    return "good";
+  }
+  if (normalized === "fail" || normalized === "stale" || normalized === "missing" || normalized === "blocker") {
+    return "warning";
+  }
+  return "neutral";
 }
 
 function parseRunTimestamp(value: unknown) {
@@ -579,10 +605,21 @@ export function DashboardShell({
   const [timeframe, setTimeframe] = useState("15m");
 
   const portfolio = snapshot?.portfolio_status ?? {};
+  const readiness = snapshot?.readiness ?? {};
+  const soakStatus = snapshot?.paper_soak_status ?? {};
+  const dailySoakReport = snapshot?.paper_soak_daily_report ?? {};
+  const soakReview = snapshot?.paper_soak_review ?? {};
+  const baselineFreezeSnapshot = snapshot?.baseline_freeze_snapshot ?? {};
+  const capitalRefactorScaffold = snapshot?.capital_refactor_scaffold_inventory ?? {};
+  const validationTruth = snapshot?.validation_truth ?? {};
+  const artifactFreshness = snapshot?.artifact_freshness ?? {};
+  const lastRuntimeEvent = snapshot?.last_runtime_event ?? {};
+  const runtimeContext = portfolio.runtime_context ?? {};
   const strategyStats = portfolio.strategy_stats ?? {};
   const selectionRows = snapshot?.selection_reason_rows ?? [];
   const recentSelectionRows = snapshot?.recent_selection_reason_rows ?? [];
   const strategySelectionRows = snapshot?.selection_reason_by_strategy_rows ?? [];
+  const allocatorDecisionRows = snapshot?.allocator_decision_rows ?? [];
   const runtimeRows = snapshot?.runtime_policy_rows ?? [];
   const trades = snapshot?.trade_rows ?? [];
   const signals = snapshot?.signal_rows ?? [];
@@ -654,6 +691,8 @@ export function DashboardShell({
 
   const topTradeRows = useMemo(() => trades.slice(-12).reverse(), [trades]);
   const topSignalRows = useMemo(() => signals.slice(-18).reverse(), [signals]);
+  const recentCycleTapeRows = useMemo(() => engineCycleRows.slice(-8).reverse(), [engineCycleRows]);
+  const recentAllocatorTapeRows = useMemo(() => allocatorDecisionRows.slice(-10).reverse(), [allocatorDecisionRows]);
   const runtimeRow = runtimeRows[0];
   const topSymbols = Array.isArray(portfolio.top_symbols) ? portfolio.top_symbols : [];
   const topSymbolSet = useMemo(() => new Set(topSymbols.map((item: string) => String(item))), [topSymbols]);
@@ -661,6 +700,67 @@ export function DashboardShell({
   const cumulativeCapPressure = portfolio.cap_pressure_summary?.cumulative ?? {};
   const livePnl = Number(portfolio.equity ?? 0) - Number(portfolio.initial_equity ?? 0);
   const latestTradePnl = Number(snapshot?.latest_trade?.pnl ?? 0);
+  const readinessBlockers = Array.isArray(readiness.blockers) ? readiness.blockers : [];
+  const readinessWarnings = Array.isArray(readiness.warnings) ? readiness.warnings : [];
+  const operatorWarnings = Array.isArray(snapshot?.operator_warning_list) ? snapshot.operator_warning_list : [];
+  const soakWarnings = Array.isArray(soakStatus.display_warning_list)
+    ? soakStatus.display_warning_list
+    : Array.isArray(soakStatus.warning_list)
+      ? soakStatus.warning_list
+      : [];
+  const activeSleeves = Array.isArray(runtimeContext.active_sleeves) ? runtimeContext.active_sleeves : [];
+  const disabledSleeves = Array.isArray(runtimeContext.disabled_sleeves) ? runtimeContext.disabled_sleeves : [];
+  const artifactRows = useMemo<Array<Record<string, any>>>(
+    () =>
+      Object.entries(artifactFreshness).map((entry) => {
+        const [key, value] = entry;
+        return {
+          key,
+          ...((value ?? {}) as Record<string, any>),
+        };
+      }),
+    [artifactFreshness],
+  );
+  const latestAllocatorRejections = soakStatus.latest_allocator_rejection_counts ?? {};
+  const strategyTradeCounts = soakStatus.latest_strategy_level_trade_counts ?? {};
+  const strategyLevelPnl = soakStatus.latest_strategy_level_pnl ?? {};
+  const promotionCriteria = dailySoakReport.promotion_criteria ?? {};
+  const promotionStatus = String(promotionCriteria.promotion_status ?? "paper_soak_in_progress");
+  const soakReviewCriteria = soakReview.soak_review_criteria ?? {};
+  const soakReviewRows = useMemo<Row[]>(
+    () =>
+      Object.entries(soakReviewCriteria).map(([key, value]) => ({
+        key,
+        ...((value ?? {}) as Record<string, any>),
+      })),
+    [soakReviewCriteria],
+  );
+  const currentMode = String(runtimeContext.mode ?? readiness.requested_mode ?? "unknown");
+  const baselineManualReview = baselineFreezeSnapshot.manual_review ?? {};
+  const capitalRefactorLayerStatuses = capitalRefactorScaffold.layer_statuses ?? {};
+  const capitalRefactorLayers = useMemo<Row[]>(
+    () =>
+      Object.entries(capitalRefactorLayerStatuses).map(([key, value]) => ({
+        key,
+        ...((value ?? {}) as Row),
+      })),
+    [capitalRefactorLayerStatuses],
+  );
+  const capitalRefactorModulesPresent = Object.values(capitalRefactorScaffold.modules_present ?? {}).filter(Boolean).length;
+  const latestDataTimestamp = validationTruth.latest_data_timestamp ?? readiness.latest_common_data_timestamp;
+  const runtimeLastProcessedTimestamp =
+    soakStatus.runtime_last_processed_timestamp ?? runtimeContext.runtime_last_processed_timestamp;
+  const staleRuntimeDetected =
+    soakWarnings.some((item: string) => String(item).includes("stale")) ||
+    Number(soakStatus.runtime_boundary_lag_seconds ?? 0) > 300;
+  const h1ShortOverrideActive =
+    truthy(soakStatus.h1_short_override_active) ||
+    Array.isArray(runtimeContext.readiness?.runtime_config?.strategy_allowed_sides?.h1_execution) &&
+      runtimeContext.readiness.runtime_config.strategy_allowed_sides.h1_execution.includes("short");
+  const h6StandardDisabled = disabledSleeves.includes("h6_standard");
+  const h6MoonshotDisabled = disabledSleeves.includes("h6_moonshot");
+  const gateArtifactBlockers = Array.isArray(validationTruth.gate_report_blockers) ? validationTruth.gate_report_blockers : [];
+  const gateStatusBlockers = Array.isArray(validationTruth.gate_status_blockers) ? validationTruth.gate_status_blockers : [];
   const replayTimestamp = useMemo(() => getReplayTimestamp(snapshot, symbol), [snapshot, symbol]);
   const liveFeedTimestamp = useMemo(
     () => parseRunTimestamp(engineHeartbeat.latest_recent_1m_timestamp ?? snapshot?.run?.last_write_time),
@@ -1405,6 +1505,58 @@ export function DashboardShell({
         </SectionCard>
       </div>
 
+      <SectionCard title="Allocator Decision Tape" eyebrow="Raw recent route decisions" accent="cyan">
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-left text-sm">
+            <thead className="text-white/45">
+              <tr>
+                <th className="pb-3 pr-4 font-medium">Time</th>
+                <th className="pb-3 pr-4 font-medium">Symbol</th>
+                <th className="pb-3 pr-4 font-medium">Sleeve</th>
+                <th className="pb-3 pr-4 font-medium">Side</th>
+                <th className="pb-3 pr-4 font-medium">Score</th>
+                <th className="pb-3 pr-4 font-medium">Threshold</th>
+                <th className="pb-3 pr-4 font-medium">Verdict</th>
+                <th className="pb-3 pr-4 font-medium">Opened</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recentAllocatorTapeRows.length ? (
+                recentAllocatorTapeRows.map((row, index) => (
+                  <tr key={`${row.timestamp}-${row.symbol}-${row.strategy_type}-${index}`} className="border-t border-white/6">
+                    <td className="py-3 pr-4 text-white/60">{formatFlexibleTime(row.timestamp)}</td>
+                    <td className="py-3 pr-4 font-semibold text-white">{row.symbol}</td>
+                    <td className="py-3 pr-4 text-white/65">{row.strategy_type}</td>
+                    <td className="py-3 pr-4 text-white/65">{row.side}</td>
+                    <td className="py-3 pr-4 text-cyan-200">{number(row.selection_score ?? row.score ?? 0, 3)}</td>
+                    <td className="py-3 pr-4 text-white/55">{number(row.threshold, 2)}</td>
+                    <td className="py-3 pr-4 text-white/70">{row.final_reason ?? row.initial_reason ?? "n/a"}</td>
+                    <td className="py-3 pr-4">
+                      <span
+                        className={clsx(
+                          "rounded-full border px-2 py-1 text-[10px] uppercase tracking-[0.18em]",
+                          String(row.opened).toLowerCase() === "true"
+                            ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-200"
+                            : "border-white/10 bg-white/5 text-white/50",
+                        )}
+                      >
+                        {String(row.opened).toLowerCase() === "true" ? "yes" : "no"}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={8} className="py-6 text-center text-sm text-white/50">
+                    No allocator decision tape rows yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </SectionCard>
+
       <SectionCard title="Allocator Context" eyebrow="Shared versus sleeve pressure" accent="cyan">
         <div className="grid gap-4 md:grid-cols-3">
           <StatPill label="Shared cap count" value={String(cumulativeCapPressure.shared_risk_cap_count ?? 0)} />
@@ -1488,12 +1640,569 @@ export function DashboardShell({
           </div>
         </SectionCard>
 
-        <SectionCard title="Runtime Freshness" eyebrow="Connection and timestamps" accent="green">
-          <div className="grid gap-3 sm:grid-cols-2">
+        <SectionCard title="Validation Readiness" eyebrow="Authoritative gate and readiness truth" accent="green">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <StatPill
+              label="Classification"
+              value={String(readiness.classification ?? "unknown")}
+              tone={truthy(readiness.real_money_allowed) ? "good" : "warning"}
+            />
+            <StatPill
+              label="Validation status"
+              value={String(validationTruth.validation_status ?? "unknown")}
+              tone={String(validationTruth.validation_status ?? "").toLowerCase() === "complete" ? "good" : "warning"}
+            />
+            <StatPill
+              label="Paper allowed"
+              value={String(readiness.paper_runtime_allowed ?? "unknown")}
+              tone={truthy(readiness.paper_runtime_allowed) ? "good" : "warning"}
+            />
+            <StatPill
+              label="Real-money allowed"
+              value={String(readiness.real_money_allowed ?? "unknown")}
+              tone={truthy(readiness.real_money_allowed) ? "good" : "warning"}
+            />
+            <StatPill
+              label="SSL verify"
+              value={String(readiness?.tls?.ssl_verify ?? "unknown")}
+              tone={truthy(readiness?.tls?.ssl_verify) ? "good" : "warning"}
+            />
+            <StatPill
+              label="Full-history verdict"
+              value={String(validationTruth.full_history_verdict ?? "unknown")}
+              tone={verdictTone(validationTruth.full_history_verdict)}
+            />
+            <StatPill
+              label="Holdout verdict"
+              value={String(validationTruth.trailing_holdout_verdict ?? "unknown")}
+              tone={verdictTone(validationTruth.trailing_holdout_verdict)}
+            />
+            <StatPill
+              label="Holdout edge"
+              value={truthy(validationTruth.holdout_is_thin) ? "thin" : "healthy"}
+              tone={truthy(validationTruth.holdout_is_thin) ? "warning" : "good"}
+            />
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">Current runtime blockers</div>
+              <div className="mt-2 text-sm text-white/75">
+                {readinessBlockers.length ? readinessBlockers.join(" / ") : "none"}
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">Current runtime warnings</div>
+              <div className="mt-2 text-sm text-white/75">
+                {readinessWarnings.length ? readinessWarnings.join(" / ") : "none"}
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">Gate artifact blockers</div>
+              <div className="mt-2 text-sm text-white/75">
+                {gateArtifactBlockers.length ? gateArtifactBlockers.join(" / ") : "none"}
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">Operator-safe warnings</div>
+              <div className="mt-2 text-sm text-white/75">
+                {operatorWarnings.length ? operatorWarnings.join(" / ") : "none"}
+              </div>
+            </div>
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Boundary Truth" eyebrow="Validated boundary, runtime boundary, and heartbeat state" accent="cyan">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <StatPill
+              label="Validated boundary"
+              value={formatFlexibleTime(runtimeContext.validation_boundary ?? readiness.validated_boundary)}
+            />
+            <StatPill label="Gate latest data" value={formatFlexibleTime(latestDataTimestamp)} />
+            <StatPill label="Runtime started" value={formatFlexibleTime(soakStatus.runtime_started_at ?? runtimeContext.runtime_start_timestamp)} />
+            <StatPill label="Last processed" value={formatFlexibleTime(runtimeLastProcessedTimestamp)} />
+            <StatPill
+              label="Heartbeat"
+              value={formatFlexibleTime(soakStatus.last_heartbeat_timestamp ?? engineHeartbeat.last_heartbeat_timestamp)}
+              tone={staleRuntimeDetected ? "warning" : "good"}
+            />
+            <StatPill
+              label="Stale runtime"
+              value={staleRuntimeDetected ? "true" : "false"}
+              tone={staleRuntimeDetected ? "warning" : "good"}
+            />
             <StatPill label="Stream status" value={connectionLabel} tone={socketConnected ? "good" : "warning"} />
-            <StatPill label="Last packet" value={lastPacketTimestamp ? formatRunTime(lastPacketTimestamp / 1000) : "waiting"} />
             <StatPill label="Run last write" value={formatRunTime(snapshot?.run?.last_write_time)} />
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Runtime Mode" eyebrow="Paper-only runtime state and restore truth" accent="orange">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <StatPill label="Current mode" value={currentMode} />
+            <StatPill
+              label="Paper-only"
+              value={String(readiness.classification === "paper-only")}
+              tone={readiness.classification === "paper-only" ? "good" : "warning"}
+            />
+            <StatPill
+              label="Real-money blocked"
+              value={String(!(soakStatus.real_money_allowed ?? readiness.real_money_allowed))}
+              tone={truthy(soakStatus.real_money_allowed ?? readiness.real_money_allowed) ? "warning" : "good"}
+            />
+            <StatPill
+              label="Restored state"
+              value={truthy(soakStatus.restored_state_used ?? runtimeContext.restored_from_live_state) ? "true" : "false"}
+              tone={truthy(soakStatus.restored_state_used ?? runtimeContext.restored_from_live_state) ? "good" : "neutral"}
+            />
+            <StatPill label="Restored positions" value={String(soakStatus.restored_positions_count ?? runtimeContext.restored_position_count ?? 0)} />
+            <StatPill label="Open positions" value={String(soakStatus.open_positions_count ?? portfolio.open_positions ?? 0)} />
+            <StatPill
+              label="Last packet"
+              value={lastPacketTimestamp ? formatRunTime(lastPacketTimestamp / 1000) : "waiting"}
+            />
             <StatPill label="Latest trade PnL" value={formatMoney(latestTradePnl)} tone={latestTradePnl >= 0 ? "good" : "warning"} />
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Sleeve Truth" eyebrow="Active and disabled sleeves, overrides, and route guards" accent="green">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <StatPill label="Active sleeves" value={String(activeSleeves.length)} tone={activeSleeves.length ? "good" : "warning"} />
+            <StatPill label="Disabled sleeves" value={String(disabledSleeves.length)} tone={disabledSleeves.length ? "good" : "warning"} />
+            <StatPill
+              label="1H short override"
+              value={String(h1ShortOverrideActive)}
+              tone={h1ShortOverrideActive ? "good" : "warning"}
+            />
+            <StatPill
+              label="6H routes disabled"
+              value={String(h6StandardDisabled && h6MoonshotDisabled)}
+              tone={h6StandardDisabled && h6MoonshotDisabled ? "good" : "warning"}
+            />
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">Active sleeves</div>
+              <div className="mt-2 text-sm text-white/75">
+                {activeSleeves.length ? activeSleeves.join(" / ") : "none"}
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">Disabled sleeves</div>
+              <div className="mt-2 text-sm text-white/75">
+                {disabledSleeves.length ? disabledSleeves.join(" / ") : "none"}
+              </div>
+            </div>
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Paper Performance" eyebrow="Forward-paper soak metrics and runtime economics" accent="cyan">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <StatPill
+              label="Soak status"
+              value={String(soakStatus.classification ?? readiness.classification ?? "unknown")}
+              tone={truthy(soakStatus.paper_runtime_allowed ?? readiness.paper_runtime_allowed) ? "good" : "warning"}
+            />
+            <StatPill label="Started at" value={formatFlexibleTime(soakStatus.runtime_started_at)} />
+            <StatPill label="Uptime" value={`${number(soakStatus.runtime_uptime_seconds ?? 0, 0)}s`} />
+            <StatPill
+              label="Paper equity"
+              value={formatMoney(Number(soakStatus.current_paper_equity ?? portfolio.equity ?? 0))}
+              tone="good"
+            />
+            <StatPill
+              label="Realized since start"
+              value={formatMoney(Number(soakStatus.realized_paper_pnl_since_runtime_start ?? 0))}
+              tone={Number(soakStatus.realized_paper_pnl_since_runtime_start ?? 0) >= 0 ? "good" : "warning"}
+            />
+            <StatPill
+              label="Unrealized PnL"
+              value={formatMoney(Number(soakStatus.unrealized_paper_pnl ?? 0))}
+              tone={Number(soakStatus.unrealized_paper_pnl ?? 0) >= 0 ? "good" : "warning"}
+            />
+            <StatPill label="Daily entries" value={String(soakStatus.daily_entries ?? portfolio.daily_entries_taken ?? 0)} />
+            <StatPill label="Daily closed trades" value={String(soakStatus.daily_closed_trades ?? portfolio.daily_closed_trades ?? 0)} />
+            <StatPill
+              label="Daily closed PnL"
+              value={formatMoney(Number(soakStatus.daily_closed_pnl ?? portfolio.daily_closed_pnl ?? 0))}
+              tone={Number(soakStatus.daily_closed_pnl ?? portfolio.daily_closed_pnl ?? 0) >= 0 ? "good" : "warning"}
+            />
+          </div>
+          <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+            <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">Soak warnings</div>
+            <div className="mt-2 text-sm text-white/75">
+              {soakWarnings.length ? soakWarnings.join(" / ") : "none"}
+            </div>
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Daily Paper Soak Report" eyebrow="Operator evidence summary from the current soak period" accent="green">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <StatPill label="Soak status" value={String(dailySoakReport.classification ?? readiness.classification ?? "unknown")} tone={truthy(dailySoakReport.paper_runtime_allowed ?? readiness.paper_runtime_allowed) ? "good" : "warning"} />
+            <StatPill label="Report timestamp" value={formatFlexibleTime(dailySoakReport.report_generated_at_utc)} />
+            <StatPill label="Paper equity" value={formatMoney(Number(dailySoakReport.current_paper_equity ?? soakStatus.current_paper_equity ?? portfolio.equity ?? 0))} tone="good" />
+            <StatPill label="Daily PnL" value={formatMoney(Number(dailySoakReport.daily_pnl ?? soakStatus.daily_closed_pnl ?? 0))} tone={Number(dailySoakReport.daily_pnl ?? soakStatus.daily_closed_pnl ?? 0) >= 0 ? "good" : "warning"} />
+            <StatPill label="Open positions" value={String(dailySoakReport.open_positions ?? soakStatus.open_positions_count ?? portfolio.open_positions ?? 0)} />
+            <StatPill label="Heartbeat" value={String(dailySoakReport.heartbeat_status ?? "unknown")} tone={String(dailySoakReport.heartbeat_status ?? "").toLowerCase() === "healthy" ? "good" : "warning"} />
+            <StatPill label="Promotion status" value={promotionStatus} tone="warning" />
+            <StatPill label="Real-money allowed" value={String(dailySoakReport.real_money_allowed ?? readiness.real_money_allowed ?? false)} tone={truthy(dailySoakReport.real_money_allowed ?? readiness.real_money_allowed) ? "warning" : "good"} />
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">Active sleeves</div>
+              <div className="mt-2 text-sm text-white/75">
+                {Array.isArray(dailySoakReport.active_sleeves) && dailySoakReport.active_sleeves.length
+                  ? dailySoakReport.active_sleeves.join(" / ")
+                  : "none"}
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">Disabled sleeves</div>
+              <div className="mt-2 text-sm text-white/75">
+                {Array.isArray(dailySoakReport.disabled_sleeves) && dailySoakReport.disabled_sleeves.length
+                  ? dailySoakReport.disabled_sleeves.join(" / ")
+                  : "none"}
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4 md:col-span-2">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">Warnings</div>
+              <div className="mt-2 text-sm text-white/75">
+                {Array.isArray(dailySoakReport.warning_list) && dailySoakReport.warning_list.length
+                  ? dailySoakReport.warning_list.join(" / ")
+                  : "none"}
+              </div>
+            </div>
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Paper Soak Review" eyebrow="Multi-day forward-paper evidence evaluator" accent="cyan">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <StatPill label="Review status" value={String(soakReview.soak_review_status ?? "missing")} tone={String(soakReview.soak_review_status ?? "").includes("insufficient") ? "warning" : "good"} />
+            <StatPill label="Soak days" value={`${number(soakReview.soak_days_completed ?? 0, 2)} / ${String(soakReview.required_soak_days ?? "n/a")}`} />
+            <StatPill label="Heartbeat" value={String(soakReview.heartbeat_health ?? "unknown")} tone={String(soakReview.heartbeat_health ?? "").toLowerCase() === "healthy" ? "good" : "warning"} />
+            <StatPill label="Restart count" value={String(soakReview.restart_count ?? 0)} />
+            <StatPill label="Successful restores" value={String(soakReview.successful_restore_count ?? 0)} />
+            <StatPill label="Real-money allowed" value={String(soakReview.real_money_allowed ?? readiness.real_money_allowed ?? false)} tone={truthy(soakReview.real_money_allowed ?? readiness.real_money_allowed) ? "warning" : "good"} />
+            <StatPill label="Paper equity" value={formatMoney(Number(soakReview.current_paper_equity ?? 0))} tone="good" />
+            <StatPill label="Max drawdown" value={soakReview.max_paper_drawdown_fraction != null ? formatPct(soakReview.max_paper_drawdown_fraction, 2) : "n/a"} tone={Number(soakReview.max_paper_drawdown_fraction ?? 0) > 0.1 ? "warning" : "good"} />
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">Contamination check</div>
+              <div className="mt-2 text-sm text-white/75">
+                {soakReview.state_contamination_check?.passed ? "clean live-paper restore path only" : "review required"}
+              </div>
+              <div className="mt-2 break-all text-xs text-white/45">
+                {String(soakReview.state_contamination_check?.restored_state_path ?? "no restored state path")}
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">Active / disabled sleeves</div>
+              <div className="mt-2 text-sm text-white/75">
+                active {Array.isArray(soakReview.active_sleeves) && soakReview.active_sleeves.length ? soakReview.active_sleeves.join(" / ") : "none"}
+              </div>
+              <div className="mt-1 text-sm text-white/55">
+                disabled {Array.isArray(soakReview.disabled_sleeves) && soakReview.disabled_sleeves.length ? soakReview.disabled_sleeves.join(" / ") : "none"}
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">PnL evidence</div>
+              <div className="mt-2 text-sm text-white/75">
+                realized {formatMoney(Number(soakReview.realized_pnl_since_paper_start ?? 0))} / unrealized {formatMoney(Number(soakReview.unrealized_pnl ?? 0))}
+              </div>
+              <div className="mt-1 text-sm text-white/55">
+                daily avg {soakReview.daily_pnl_summary?.avg != null ? formatMoney(Number(soakReview.daily_pnl_summary.avg)) : "n/a"} / median {soakReview.daily_pnl_summary?.median != null ? formatMoney(Number(soakReview.daily_pnl_summary.median)) : "n/a"}
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">Warnings</div>
+              <div className="mt-2 text-sm text-white/75">
+                {Array.isArray(soakReview.warning_list) && soakReview.warning_list.length ? soakReview.warning_list.join(" / ") : "none"}
+              </div>
+            </div>
+          </div>
+          <div className="mt-4 space-y-2">
+            {soakReviewRows.length ? (
+              soakReviewRows.map((row) => (
+                <div key={row.key} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div className="min-w-0">
+                      <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">{row.key}</div>
+                      <div className="mt-1 text-sm text-white/75">
+                        {Object.entries(row)
+                          .filter(([key]) => !["key", "status"].includes(key))
+                          .slice(0, 3)
+                          .map(([key, value]) => `${key}:${typeof value === "object" ? JSON.stringify(value) : String(value)}`)
+                          .join(" / ") || "criterion evidence available"}
+                      </div>
+                    </div>
+                    <div
+                      className={clsx(
+                        "inline-flex rounded-full border px-3 py-1 text-[10px] uppercase tracking-[0.18em]",
+                        verdictTone(row.status) === "good"
+                          ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-200"
+                          : verdictTone(row.status) === "warning"
+                            ? "border-orange-400/20 bg-orange-400/10 text-orange-200"
+                            : "border-white/15 bg-white/5 text-white/55",
+                      )}
+                    >
+                      {String(row.status ?? "unknown")}
+                    </div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/55">
+                No paper soak review artifact has been published yet.
+              </div>
+            )}
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Baseline Freeze" eyebrow="Governance-only baseline snapshot for manual promotion review" accent="orange">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <StatPill label="Freeze timestamp" value={formatFlexibleTime(baselineFreezeSnapshot.generated_at_utc)} />
+            <StatPill label="Manual review status" value={String(baselineFreezeSnapshot.manual_review_status ?? "missing")} tone={String(baselineFreezeSnapshot.manual_review_status ?? "").toLowerCase() === "no_go" ? "warning" : "good"} />
+            <StatPill label="Current outcome" value={String(baselineManualReview.manual_review_outcome ?? "continue_paper_soak")} tone={String(baselineManualReview.manual_review_outcome ?? "").includes("failed") ? "warning" : "neutral"} />
+            <StatPill label="Min soak days" value={String(baselineFreezeSnapshot.minimum_soak_days ?? soakReview.required_soak_days ?? "n/a")} />
+            <StatPill label="Current soak days" value={number(baselineFreezeSnapshot.current_soak_days ?? soakReview.soak_days_completed ?? 0, 2)} />
+            <StatPill label="Real-money allowed" value={String(baselineFreezeSnapshot.real_money_allowed ?? readiness.real_money_allowed ?? false)} tone={truthy(baselineFreezeSnapshot.real_money_allowed ?? readiness.real_money_allowed) ? "warning" : "good"} />
+            <StatPill label="SSL verify" value={String(baselineFreezeSnapshot.ssl_verify ?? readiness.tls?.ssl_verify ?? false)} tone={truthy(baselineFreezeSnapshot.ssl_verify ?? readiness.tls?.ssl_verify) ? "good" : "warning"} />
+            <StatPill label="Git commit" value={String(baselineFreezeSnapshot.git_commit ?? "unknown")} />
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">Allowed review outcomes</div>
+              <div className="mt-2 text-sm text-white/75">
+                {Array.isArray(baselineManualReview.allowed_manual_review_outcomes) && baselineManualReview.allowed_manual_review_outcomes.length
+                  ? baselineManualReview.allowed_manual_review_outcomes.join(" / ")
+                  : "continue_paper_soak / paper_soak_failed / eligible_for_capital_refactor_research / eligible_for_tiny_live_pilot_later"}
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">Manual review rationale</div>
+              <div className="mt-2 text-sm text-white/75">
+                {String(baselineManualReview.rationale ?? "No baseline freeze snapshot published yet.")}
+              </div>
+            </div>
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Capital Refactor Scaffold" eyebrow="Dormant research inventory only, with zero execution authority" accent="green">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <StatPill
+              label="Root enabled"
+              value={String(capitalRefactorScaffold.capital_refactor_enabled ?? false)}
+              tone={truthy(capitalRefactorScaffold.capital_refactor_enabled) ? "warning" : "good"}
+            />
+            <StatPill
+              label="Behavior change allowed"
+              value={String(capitalRefactorScaffold.behavior_change_allowed ?? false)}
+              tone={truthy(capitalRefactorScaffold.behavior_change_allowed) ? "warning" : "good"}
+            />
+            <StatPill
+              label="Real-money allowed"
+              value={String(capitalRefactorScaffold.real_money_allowed ?? false)}
+              tone={truthy(capitalRefactorScaffold.real_money_allowed) ? "warning" : "good"}
+            />
+            <StatPill
+              label="Promotion review"
+              value={String(capitalRefactorScaffold.promotion_review?.status ?? "missing")}
+              tone={String(capitalRefactorScaffold.promotion_review?.status ?? "").toLowerCase() === "scaffold_only" ? "good" : "warning"}
+            />
+            <StatPill label="Validated boundary" value={formatFlexibleTime(capitalRefactorScaffold.validated_boundary)} />
+            <StatPill
+              label="SSL verify"
+              value={String(capitalRefactorScaffold.ssl_verify ?? readiness?.tls?.ssl_verify ?? false)}
+              tone={truthy(capitalRefactorScaffold.ssl_verify ?? readiness?.tls?.ssl_verify) ? "good" : "warning"}
+            />
+            <StatPill label="Modules present" value={String(capitalRefactorModulesPresent)} tone={capitalRefactorModulesPresent ? "good" : "warning"} />
+            <StatPill label="Generated at" value={formatFlexibleTime(capitalRefactorScaffold.generated_at_utc)} />
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">Scaffold warning</div>
+              <div className="mt-2 text-sm text-white/75">
+                {String(capitalRefactorScaffold.warning ?? "no scaffold artifact published")}
+              </div>
+              <div className="mt-2 break-all text-xs text-white/45">
+                {String(capitalRefactorScaffold.config_path ?? "no config path")}
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">Default capital lanes</div>
+              <div className="mt-2 text-sm text-white/75">
+                {Array.isArray(capitalRefactorScaffold.default_capital_lanes) && capitalRefactorScaffold.default_capital_lanes.length
+                  ? capitalRefactorScaffold.default_capital_lanes
+                      .map((lane: Row) => `${lane.name}:${lane.priority ?? "n/a"}`)
+                      .join(" / ")
+                  : "none"}
+              </div>
+            </div>
+          </div>
+          <div className="mt-4 space-y-2">
+            {capitalRefactorLayers.length ? (
+              capitalRefactorLayers.map((row) => (
+                <div key={row.key} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">{row.key}</div>
+                      <div className="mt-1 text-sm text-white/75">
+                        present {String(row.present)} / enabled {String(row.enabled)} / behavior change {String(row.behavior_change_allowed)}
+                      </div>
+                    </div>
+                    <div
+                      className={clsx(
+                        "inline-flex rounded-full border px-3 py-1 text-[10px] uppercase tracking-[0.18em]",
+                        truthy(row.enabled) || truthy(row.behavior_change_allowed)
+                          ? "border-orange-400/20 bg-orange-400/10 text-orange-200"
+                          : "border-emerald-400/20 bg-emerald-400/10 text-emerald-200",
+                      )}
+                    >
+                      {truthy(row.enabled) || truthy(row.behavior_change_allowed) ? "guard review required" : "dormant"}
+                    </div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/55">
+                No capital scaffold inventory artifact has been published yet.
+              </div>
+            )}
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Artifact Freshness" eyebrow="Source-of-truth file health and modification state" accent="orange">
+          <div className="space-y-3">
+            {artifactRows.length ? (
+              artifactRows.map((artifact) => (
+                <div key={artifact.key} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div className="min-w-0">
+                      <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">{artifact.key}</div>
+                      <div className="mt-2 break-all text-sm text-white/75">{artifact.path ?? "unknown path"}</div>
+                    </div>
+                    <div
+                      className={clsx(
+                        "inline-flex rounded-full border px-3 py-1 text-[10px] uppercase tracking-[0.18em]",
+                        artifact.status === "healthy"
+                          ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-200"
+                          : "border-orange-400/20 bg-orange-400/10 text-orange-200",
+                      )}
+                    >
+                      {artifact.status ?? "unknown"}
+                    </div>
+                  </div>
+                  <div className="mt-3 grid gap-2 md:grid-cols-3 text-sm text-white/65">
+                    <div>exists {String(artifact.exists)}</div>
+                    <div>last modified {formatFlexibleTime(artifact.last_modified_timestamp)}</div>
+                    <div>age {artifact.age_seconds != null ? `${number(artifact.age_seconds, 0)}s` : "n/a"}</div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/55">
+                No artifact freshness rows available.
+              </div>
+            )}
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Diagnostics" eyebrow="Allocator, strategy, and last runtime event summary" accent="green">
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">Allocator rejection counts</div>
+              <div className="mt-2 text-sm text-white/75">
+                {Object.keys(latestAllocatorRejections).length
+                  ? Object.entries(latestAllocatorRejections).map(([key, value]) => `${key}:${value}`).join(" / ")
+                  : "none"}
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">Strategy trade counts</div>
+              <div className="mt-2 text-sm text-white/75">
+                {Object.keys(strategyTradeCounts).length
+                  ? Object.entries(strategyTradeCounts).map(([key, value]) => `${key}:${value}`).join(" / ")
+                  : "none"}
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">Strategy paper PnL</div>
+              <div className="mt-2 text-sm text-white/75">
+                {Object.keys(strategyLevelPnl).length
+                  ? Object.entries(strategyLevelPnl)
+                      .map(([key, value]) => `${key}:${formatMoney(value)}`)
+                      .join(" / ")
+                  : "none"}
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">Last runtime event</div>
+              <div className="mt-2 text-sm text-white/75">
+                {Object.keys(lastRuntimeEvent).length
+                  ? [
+                      `startup ${formatFlexibleTime(lastRuntimeEvent.startup_time)}`,
+                      `restore ${String(lastRuntimeEvent.restore_happened)}`,
+                      `positions ${String(lastRuntimeEvent.restored_positions_count ?? 0)}`,
+                      `boundary ${formatFlexibleTime(lastRuntimeEvent.validation_boundary)}`,
+                    ].join(" / ")
+                  : "none"}
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4 md:col-span-2">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">Gate metrics</div>
+              <div className="mt-2 text-sm text-white/75">
+                full-history PF {number(validationTruth.full_history_metrics?.profit_factor ?? 0, 2)} / net {formatMoney(validationTruth.full_history_metrics?.net_pnl ?? 0)} / holdout PF {number(validationTruth.trailing_holdout_metrics?.profit_factor ?? 0, 2)} / holdout net {formatMoney(validationTruth.trailing_holdout_metrics?.net_pnl ?? 0)}
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4 md:col-span-2">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">Gate status blockers</div>
+              <div className="mt-2 text-sm text-white/75">
+                {gateStatusBlockers.length ? gateStatusBlockers.join(" / ") : "none"}
+              </div>
+            </div>
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Cycle Tape" eyebrow="Latest engine loop states" accent="orange">
+          <div className="space-y-2">
+            {recentCycleTapeRows.length ? (
+              recentCycleTapeRows.map((row, index) => (
+                <div
+                  key={`${row.cycle_count ?? index}-${row.cycle_completed_at ?? row.cycle_started_at ?? "cycle"}`}
+                  className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-xs uppercase tracking-[0.18em] text-white/45">
+                        cycle {row.cycle_count}
+                      </div>
+                      <div className="mt-1 font-medium text-white">{row.status}</div>
+                    </div>
+                    <div className="text-right text-sm text-white/55">
+                      <div>{number(row.cycle_duration_seconds, 2)}s</div>
+                      <div>{formatFlexibleTime(row.cycle_completed_at)}</div>
+                    </div>
+                  </div>
+                  <div className="mt-3 grid gap-2 md:grid-cols-4 text-[11px] uppercase tracking-[0.16em] text-white/55">
+                    <div className="rounded-2xl border border-white/8 bg-black/10 px-3 py-2">
+                      new 15m {row.new_15m_symbol_count ?? 0}
+                    </div>
+                    <div className="rounded-2xl border border-white/8 bg-black/10 px-3 py-2">
+                      candidates {row.candidates_built ?? 0}
+                    </div>
+                    <div className="rounded-2xl border border-white/8 bg-black/10 px-3 py-2">
+                      opened {row.opened_count ?? 0}
+                    </div>
+                    <div className="rounded-2xl border border-white/8 bg-black/10 px-3 py-2">
+                      latest 1m {formatFlexibleTime(row.latest_recent_1m_timestamp)}
+                    </div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/55">
+                No cycle tape rows yet.
+              </div>
+            )}
           </div>
         </SectionCard>
       </div>

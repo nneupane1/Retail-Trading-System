@@ -31,6 +31,7 @@ The codebase now has two equally important surfaces:
 - [Current Production-Like Stack](#current-production-like-stack)
 - [System Roles At A Glance](#system-roles-at-a-glance)
 - [Validation Ladder](#validation-ladder)
+- [Promotion Status](#promotion-status)
 - [Command Center Modes](#command-center-modes)
 - [Cockpit Surface Map](#cockpit-surface-map)
 - [Repository Map](#repository-map)
@@ -73,8 +74,9 @@ priority is making the existing routed stack more operationally complete:
 | `6H` sleeves | Research only | Useful for future study, not production routing | Keep separate |
 | Shared-cap allocator | Active | Capital competition is real | Improve observability and coordination |
 | Live paper cockpit | Active foundation | Needed to see what the engine is doing in real time | Expand visibility and polish |
-| Live continuity | Partially scaffolded | Engine must resume from prior state cleanly | Strengthen catch-up and persistence |
-| Dashboard UX | Functional but still evolving | Must show activity even when no trade fires | Improve clarity, density, and elegance |
+| Live continuity | Operationally hardened for paper | Engine must resume from prior state cleanly | Keep proving restart safety through soak evidence |
+| Dashboard UX | Multi-mode and telemetry-backed | Must show activity even when no trade fires | Keep improving density and elegance |
+| Capital-expression refactor | Scaffolded only | Future allocator/capital research needs structure | Stay dormant until explicitly promoted |
 
 ## Current Production-Like Stack
 
@@ -115,9 +117,32 @@ same job.
 | `1H` specialization work | Is `1H` better as a short-specialist sleeve? | Completed |
 | `6H` research | Does `6H` show standalone edge worth future study? | Completed as research |
 | Routed portfolio stack validation | Do active sleeves work better together than alone? | Completed enough for continued paper work |
-| Live-paper observability | Can the operator see the engine state clearly? | In progress |
-| Continuity/catch-up hardening | Can runtime resume and backfill from prior state reliably? | In progress |
-| Full paper-runtime maturation | Is the system ready for prolonged 24/7 paper ops? | Next major gate |
+| Production validation gate | Does the exact routed stack survive refreshed full-history and trailing unseen holdout? | Completed |
+| Operational hardening | Are SSL, readiness, and real-money blockers enforced correctly? | Completed |
+| Clean paper startup proof | Does paper start only from the validated boundary without importing backtest trades? | Completed |
+| Forward-paper soak monitoring | Are runtime evidence, heartbeats, and restart logs being collected? | Completed |
+| Cockpit truth alignment | Does the dashboard show artifact truth without mutating state? | Completed |
+| Capital-expression scaffold | Is the next capital refactor represented structurally without changing behavior? | Completed as dormant scaffold |
+| Full paper-runtime maturation | Is the system ready for prolonged 24/7 paper ops? | Current active gate |
+
+## Promotion Status
+
+The current operational truth is intentionally conservative.
+
+| Field | Current value | Meaning |
+| --- | --- | --- |
+| Classification | `paper-only` | Runtime is allowed for paper execution and observation only |
+| `paper_runtime_allowed` | `true` | Forward paper runtime may continue |
+| `real_money_allowed` | `false` | Real-money startup must refuse |
+| `ssl_verify` | `true` | Binance TLS verification is enforced |
+| Validated boundary | `2026-06-13T00:00:00+00:00` | Clean paper restarts must bootstrap from this validated point and only process fresh closed candles after it |
+| `6H` sleeves | disabled for routing | Preserved for research, not active capital deployment |
+| `1H` side policy | short override active | `1H` remains a specialized short engine even while the global paper default is long-only |
+
+This means the repo is in a serious paper-readiness phase, not a real-money
+promotion phase. The system is expected to keep collecting forward-paper
+evidence while preserving restart cleanliness, operator truth, and policy
+discipline.
 
 ## Command Center Modes
 
@@ -185,6 +210,7 @@ layer are actually writing.
 | --- | --- |
 | `backtest/` | Historical runner, validation helpers, reporting, checkpoints |
 | `bias/` | Directional context logic |
+| `capital/` | Dormant capital-expression scaffold for future allocation research |
 | `common/` | Shared runtime helpers, telemetry loading, audit utilities |
 | `config/` | Configuration loader, settings, branch and baseline definitions |
 | `dashboard/` | Next.js command-center frontend |
@@ -622,7 +648,7 @@ heartbeat state are first-class telemetry, not hidden implementation details.
 | Surface | Main artifacts |
 | --- | --- |
 | Backtest | `backtest/output/...` trade logs, equity, summaries, calibration inputs |
-| Paper runtime | `live_sim/output/...` trades, signals, portfolio state, heartbeats |
+| Paper runtime | `live_sim/output/...` trades, signals, portfolio state, heartbeats, startup reports, soak evidence |
 | Cockpit backend | API snapshots + websocket payloads derived from those artifacts |
 | Command center | Multi-mode views over the same underlying state |
 
@@ -633,7 +659,26 @@ live_sim/output/trades.csv
 live_sim/output/signals.csv
 live_sim/output/score_bucket_summary.csv
 live_sim/output/portfolio_status.json
+live_sim/output/paper_runtime_startup_report.json
+live_sim/output/paper_soak_status.json
+live_sim/output/paper_soak_daily_report.json
+live_sim/output/paper_soak_review.json
+live_sim/output/paper_runtime_events.jsonl
+live_sim/output/baseline_freeze_snapshot.json
+live_sim/output/capital_refactor/scaffold_inventory.json
 ```
+
+### Production-gate and readiness artifacts
+
+```text
+backtest/output/production_validation_gate_current/status.json
+backtest/output/production_validation_gate_current/summary.json
+backtest/output/production_validation_gate_current/promotion_readiness_report.json
+backtest/output/production_validation_gate_current/...scenario_manifest.json
+```
+
+These files are the authority for the current paper-only classification. The
+runtime and cockpit should read them, not invent a better answer.
 
 ## Backtest Mode
 
@@ -734,11 +779,17 @@ python -m unittest discover -s tests -v
 
 ### Operational boundaries
 
-- Live continuity and restart catch-up are active work, not a finished chapter.
+- Real money is intentionally blocked. The current classification is
+  `paper-only`, even though the routed stack passed the refreshed gate well
+  enough for continued paper execution.
+- Live continuity and restart catch-up are now implemented for the paper path,
+  but they still need continued soak evidence rather than blind trust.
 - The cockpit UX is materially improved, but still under refinement toward the
   denser institutional-grade experience intended for the project.
 - The dashboard currently depends on telemetry artifacts; if the engine is not
   writing them correctly, the UI cannot invent missing truth.
+- The capital-expression refactor exists only as dormant scaffolding. It does
+  not yet change allocator behavior, sizing, lane budgets, or promotion rules.
 
 ## Extension Guide
 

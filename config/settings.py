@@ -2,7 +2,12 @@
 
 import json
 import os
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+
+def _utc_now():
+    return datetime.now(timezone.utc)
 
 
 class EnvLoader:
@@ -73,7 +78,7 @@ class AppConfig:
                 return default
             value = value[key]
 
-        return value
+        return self._resolve_special_value(keys, value)
 
     def require(self, *keys):
         value = self.get(*keys)
@@ -92,3 +97,25 @@ class AppConfig:
             return path
 
         return self.root_dir / path
+
+    @staticmethod
+    def _resolve_special_value(keys, value):
+        if not isinstance(value, str):
+            return value
+
+        normalized_keys = tuple(str(key) for key in keys)
+        token = value.strip().lower()
+
+        if normalized_keys == ("history", "end_date"):
+            if token in {
+                "auto",
+                "latest_closed_day",
+                "latest_closed_day_utc",
+                "yesterday",
+                "utc_yesterday",
+            }:
+                return (_utc_now().date() - timedelta(days=1)).isoformat()
+            if token in {"today", "utc_today"}:
+                return _utc_now().date().isoformat()
+
+        return value

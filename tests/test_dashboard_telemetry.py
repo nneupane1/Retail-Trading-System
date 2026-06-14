@@ -9,19 +9,67 @@ from common.dashboard_telemetry import build_trade_markers, list_live_runs, load
 class DummyConfig:
     def __init__(self, root_dir):
         self.root_dir = Path(root_dir)
+        self.config_path = self.root_dir / "config" / "settings.json"
+        self.config_path.parent.mkdir(parents=True, exist_ok=True)
+        if not self.config_path.exists():
+            self.config_path.write_text("{}", encoding="utf-8")
         self.data = {
             "live_sim": {
                 "output_dir": str(self.root_dir / "live_output"),
+            },
+            "backtest": {
+                "output_dir": str(self.root_dir / "backtest" / "output"),
             },
             "storage": {
                 "base_path": str(self.root_dir / "data_storage"),
             },
             "binance": {
                 "default_interval": "1m",
+                "ssl_verify": True,
+                "ca_bundle_path": None,
             },
             "history": {
                 "start_date": "2018-01-01",
                 "end_date": "2026-05-12",
+            },
+            "account": {"initial_equity": 20000, "risk_per_trade": 0.01},
+            "strategy": {
+                "moonshots": {"swing": {"enabled": True}},
+                "h1_execution": {"enabled": True},
+                "htf_12h_standard": {"enabled": True},
+                "htf_12h_moonshot": {"enabled": True},
+                "htf_12h_rotation": {"enabled": True},
+                "h6_standard": {"enabled": False},
+                "h6_moonshot": {"enabled": False},
+                "daily_controls": {"enabled": True},
+            },
+            "universe": {
+                "symbol_sets": {
+                    "current_9": [
+                        "AAVEUSDT",
+                        "AVAXUSDT",
+                        "BNBUSDT",
+                        "BTCUSDT",
+                        "ETHUSDT",
+                        "LINKUSDT",
+                        "SOLUSDT",
+                        "TRXUSDT",
+                        "XRPUSDT",
+                    ]
+                }
+            },
+        }
+        self.data["live_sim"]["mode"] = "portfolio_paper"
+        self.data["live_sim"]["paper_portfolio"] = {
+            "allowed_sides": ["long"],
+            "allowed_edge_types": ["impulse_breakout"],
+            "allocator_v2": {"enabled": True},
+            "strategy_allowed_sides": {
+                "h1_execution": ["short"],
+                "htf_12h_standard": ["long"],
+                "htf_12h_moonshot": ["long"],
+                "htf_12h_rotation": ["long"],
+                "h6_standard": ["long"],
             },
         }
 
@@ -46,12 +94,199 @@ class DummyConfig:
         return Path(value)
 
 
+def _write_gate_artifacts(root: Path) -> None:
+    gate_root = root / "backtest" / "output" / "production_validation_gate_current"
+    gate_root.mkdir(parents=True, exist_ok=True)
+    status = {
+        "stage": "complete",
+        "summary_path": str(gate_root / "summary.json"),
+        "promotion_readiness_report_path": str(gate_root / "promotion_readiness_report.json"),
+        "real_money_ready": False,
+        "blockers": ["binance_ssl_verify_enabled"],
+    }
+    summary = {
+        "latest_common_data_timestamp": "2026-06-13T00:00:00+00:00",
+        "scenarios": {
+            "full_history_latest_closed_day": {
+                "name": "scenario_current_routed_stack_full_history_latest_closed_day",
+                "output_dir": str(gate_root / "scenario_current_routed_stack_full_history_latest_closed_day"),
+                "metrics": {"profit_factor": 1.26, "net_pnl": 36365.2},
+            },
+            "trailing_12m_holdout": {
+                "name": "scenario_current_routed_stack_trailing_12m_holdout",
+                "output_dir": str(gate_root / "scenario_current_routed_stack_trailing_12m_holdout"),
+                "metrics": {"profit_factor": 1.02, "net_pnl": 188.53},
+            },
+        },
+    }
+    report = {
+        "real_money_ready": False,
+        "blockers": ["binance_ssl_verify_enabled"],
+        "checks": [
+            {"name": "full_history_artifacts_complete", "status": "pass", "passed": True},
+            {"name": "full_history_positive_expectancy", "status": "pass", "passed": True},
+            {"name": "holdout_artifacts_complete", "status": "pass", "passed": True},
+            {"name": "holdout_positive_expectancy", "status": "pass", "passed": True},
+            {"name": "restart_restore_guarantees_present", "status": "pass", "passed": True},
+        ],
+    }
+    (gate_root / "summary.json").write_text(json.dumps(summary), encoding="utf-8")
+    (gate_root / "promotion_readiness_report.json").write_text(json.dumps(report), encoding="utf-8")
+    (gate_root / "status.json").write_text(json.dumps(status), encoding="utf-8")
+
+
 class DashboardTelemetryTests(unittest.TestCase):
     def test_load_live_dashboard_snapshot_reads_status_and_csvs(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
+            config = DummyConfig(tmpdir)
+            _write_gate_artifacts(root)
             (root / "portfolio_status.json").write_text(
                 json.dumps({"equity": 12345, "runtime_policy_states": {"h1_execution": {"label": "boost_active"}}}),
+                encoding="utf-8",
+            )
+            (root / "paper_soak_status.json").write_text(
+                json.dumps(
+                    {
+                        "classification": "paper-only",
+                        "paper_runtime_allowed": True,
+                        "real_money_allowed": False,
+                        "ssl_verify": True,
+                        "validated_boundary": "2026-06-13T00:00:00+00:00",
+                        "runtime_started_at": "2026-06-14T00:00:00+00:00",
+                        "runtime_last_processed_timestamp": "2026-06-14T00:14:00+00:00",
+                        "open_positions_count": 1,
+                        "warning_list": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (root / "paper_soak_daily_report.json").write_text(
+                json.dumps(
+                    {
+                        "report_generated_at_utc": "2026-06-14T00:30:00+00:00",
+                        "classification": "paper-only",
+                        "paper_runtime_allowed": True,
+                        "real_money_allowed": False,
+                        "current_paper_equity": 12345,
+                        "daily_pnl": 50.0,
+                        "open_positions": 1,
+                        "active_sleeves": ["core", "h1_execution"],
+                        "disabled_sleeves": ["h6_standard", "h6_moonshot"],
+                        "warning_list": [],
+                        "promotion_criteria": {
+                            "promotion_status": "paper_soak_in_progress"
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (root / "paper_soak_review.json").write_text(
+                json.dumps(
+                    {
+                        "review_generated_at_utc": "2026-06-14T00:35:00+00:00",
+                        "classification": "paper-only",
+                        "paper_runtime_allowed": True,
+                        "real_money_allowed": False,
+                        "soak_days_completed": 0.5,
+                        "required_soak_days": 14,
+                        "soak_review_status": "insufficient_forward_paper_duration",
+                        "heartbeat_health": "healthy",
+                        "restart_count": 1,
+                        "successful_restore_count": 1,
+                        "h1_short_override_status": True,
+                        "h6_disabled_status": True,
+                        "warning_list": [],
+                        "soak_review_criteria": {
+                            "h6_routes_zero_trades": {"status": "pass"},
+                            "h1_short_override_active": {"status": "pass"},
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (root / "paper_soak_review_history.jsonl").write_text(
+                json.dumps(
+                    {
+                        "timestamp": "2026-06-14T00:35:00+00:00",
+                        "soak_days_completed": 0.5,
+                        "current_equity": 12345,
+                        "realized_pnl": 45.0,
+                        "drawdown_fraction": 0.01,
+                        "blockers": [],
+                        "warnings": [],
+                        "soak_review_status": "insufficient_forward_paper_duration",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (root / "baseline_freeze_snapshot.json").write_text(
+                json.dumps(
+                    {
+                        "generated_at_utc": "2026-06-14T00:40:00+00:00",
+                        "classification": "paper-only",
+                        "paper_runtime_allowed": True,
+                        "real_money_allowed": False,
+                        "ssl_verify": True,
+                        "minimum_soak_days": 14,
+                        "current_soak_days": 0.5,
+                        "manual_review_status": "governance_only",
+                        "manual_review": {
+                            "manual_review_outcome": "continue_paper_soak",
+                            "automatic_real_money_promotion": False,
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (root / "capital_refactor").mkdir(parents=True, exist_ok=True)
+            (root / "capital_refactor" / "scaffold_inventory.json").write_text(
+                json.dumps(
+                    {
+                        "generated_at_utc": "2026-06-14T00:45:00+00:00",
+                        "classification": "paper-only",
+                        "paper_runtime_allowed": True,
+                        "real_money_allowed": False,
+                        "validated_boundary": "2026-06-13T00:00:00+00:00",
+                        "ssl_verify": True,
+                        "capital_refactor_enabled": False,
+                        "behavior_change_allowed": False,
+                        "modules_present": {
+                            "capital_lanes": True,
+                            "risk_bands": True,
+                        },
+                        "layer_statuses": {
+                            "capital_lanes": {
+                                "present": True,
+                                "enabled": False,
+                                "behavior_change_allowed": False,
+                            }
+                        },
+                        "promotion_review": {
+                            "status": "scaffold_only",
+                            "behavior_change_allowed": False,
+                            "real_money_allowed": False,
+                        },
+                        "warning": "scaffold_only_no_trading_behavior_change",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (root / "paper_runtime_events.jsonl").write_text(
+                json.dumps(
+                    {
+                        "startup_time": "2026-06-14T00:00:00+00:00",
+                        "restore_happened": True,
+                        "restored_positions_count": 1,
+                        "validation_boundary": "2026-06-13T00:00:00+00:00",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (root / "portfolio_runtime_state.json").write_text(
+                json.dumps({"open_positions": []}),
                 encoding="utf-8",
             )
             (root / "runtime_policy_summary.csv").write_text(
@@ -69,6 +304,11 @@ class DashboardTelemetryTests(unittest.TestCase):
             )
             (root / "selection_reason_by_strategy_summary.csv").write_text(
                 "strategy_type,selection_reason,count,share_of_strategy_decisions,is_cap_pressure\ncore,opened,10,0.5,False\n",
+                encoding="utf-8",
+            )
+            (root / "allocator_decisions.csv").write_text(
+                "timestamp,candidate_id,symbol,side,strategy_type,final_reason,opened,selection_score,threshold\n"
+                "2026-06-06 00:15:00,0,BTCUSDT,long,core,opened,True,0.91,0.82\n",
                 encoding="utf-8",
             )
             (root / "daily_summary.csv").write_text(
@@ -108,7 +348,8 @@ class DashboardTelemetryTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            payload = load_live_dashboard_snapshot(root)
+            soak_before = (root / "paper_soak_status.json").read_text(encoding="utf-8")
+            payload = load_live_dashboard_snapshot(root, config=config)
 
             self.assertEqual(12345, payload["portfolio_status"]["equity"])
             self.assertEqual("boost_active", payload["runtime_policy_rows"][0]["label"])
@@ -120,6 +361,93 @@ class DashboardTelemetryTests(unittest.TestCase):
             self.assertEqual(7, payload["engine_heartbeat"]["cycle_count"])
             self.assertEqual("routed_candidates", payload["engine_cycle_rows"][0]["status"])
             self.assertEqual("BTCUSDT", payload["symbol_pipeline_rows"][0]["symbol"])
+            self.assertEqual("opened", payload["allocator_decision_rows"][0]["final_reason"])
+            self.assertEqual("paper-only", payload["paper_soak_status"]["classification"])
+            self.assertTrue(payload["paper_soak_status"]["paper_runtime_allowed"])
+            self.assertFalse(payload["paper_soak_status"]["real_money_allowed"])
+            self.assertEqual("paper_soak_in_progress", payload["paper_soak_daily_report"]["promotion_criteria"]["promotion_status"])
+            self.assertFalse(payload["paper_soak_daily_report"]["real_money_allowed"])
+            self.assertEqual("insufficient_forward_paper_duration", payload["paper_soak_review"]["soak_review_status"])
+            self.assertFalse(payload["paper_soak_review"]["real_money_allowed"])
+            self.assertEqual("continue_paper_soak", payload["baseline_freeze_snapshot"]["manual_review"]["manual_review_outcome"])
+            self.assertFalse(payload["baseline_freeze_snapshot"]["real_money_allowed"])
+            self.assertFalse(payload["capital_refactor_scaffold_inventory"]["capital_refactor_enabled"])
+            self.assertFalse(payload["capital_refactor_scaffold_inventory"]["behavior_change_allowed"])
+            self.assertEqual("scaffold_only", payload["capital_refactor_scaffold_inventory"]["promotion_review"]["status"])
+            self.assertEqual("complete", payload["validation_truth"]["validation_status"])
+            self.assertEqual("pass", payload["validation_truth"]["full_history_verdict"])
+            self.assertEqual("pass", payload["validation_truth"]["trailing_holdout_verdict"])
+            self.assertIn("baseline_freeze_snapshot", payload["artifact_freshness"])
+            self.assertEqual("healthy", payload["artifact_freshness"]["baseline_freeze_snapshot"]["status"])
+            self.assertIn("paper_soak_daily_report", payload["artifact_freshness"])
+            self.assertEqual("healthy", payload["artifact_freshness"]["paper_soak_daily_report"]["status"])
+            self.assertIn("paper_soak_review", payload["artifact_freshness"])
+            self.assertEqual("healthy", payload["artifact_freshness"]["paper_soak_review"]["status"])
+            self.assertIn("paper_soak_review_history", payload["artifact_freshness"])
+            self.assertEqual("healthy", payload["artifact_freshness"]["paper_soak_review_history"]["status"])
+            self.assertIn("paper_soak_status", payload["artifact_freshness"])
+            self.assertEqual("healthy", payload["artifact_freshness"]["paper_soak_status"]["status"])
+            self.assertIn("capital_refactor_scaffold_inventory", payload["artifact_freshness"])
+            self.assertEqual("healthy", payload["artifact_freshness"]["capital_refactor_scaffold_inventory"]["status"])
+            self.assertEqual("healthy", payload["artifact_freshness"]["portfolio_status"]["status"])
+            self.assertEqual("2026-06-14T00:00:00+00:00", payload["last_runtime_event"]["startup_time"])
+            self.assertFalse(payload["readiness"]["real_money_allowed"])
+            self.assertIn("h6_standard", payload["readiness"]["runtime_config"]["disabled_sleeves"])
+            self.assertEqual(
+                ["short"],
+                payload["readiness"]["runtime_config"]["strategy_allowed_sides"]["h1_execution"],
+            )
+            self.assertEqual(soak_before, (root / "paper_soak_status.json").read_text(encoding="utf-8"))
+
+    def test_load_live_dashboard_snapshot_reports_missing_artifacts_gracefully(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            config = DummyConfig(tmpdir)
+            _write_gate_artifacts(root)
+            (root / "portfolio_status.json").write_text(json.dumps({"equity": 20000}), encoding="utf-8")
+
+            payload = load_live_dashboard_snapshot(root, config=config)
+
+            self.assertEqual("missing", payload["artifact_freshness"]["baseline_freeze_snapshot"]["status"])
+            self.assertEqual("missing", payload["artifact_freshness"]["paper_soak_daily_report"]["status"])
+            self.assertEqual("missing", payload["artifact_freshness"]["paper_soak_review"]["status"])
+            self.assertEqual("missing", payload["artifact_freshness"]["paper_soak_review_history"]["status"])
+            self.assertIn("missing_artifact:baseline_freeze_snapshot", payload["operator_warning_list"])
+            self.assertEqual("missing", payload["artifact_freshness"]["capital_refactor_scaffold_inventory"]["status"])
+            self.assertEqual("missing", payload["artifact_freshness"]["paper_soak_status"]["status"])
+            self.assertEqual("missing", payload["artifact_freshness"]["paper_runtime_events"]["status"])
+            self.assertIn("missing_artifact:capital_refactor_scaffold_inventory", payload["operator_warning_list"])
+            self.assertIn("missing_artifact:paper_soak_daily_report", payload["operator_warning_list"])
+            self.assertIn("missing_artifact:paper_soak_review", payload["operator_warning_list"])
+            self.assertIn("missing_artifact:paper_soak_review_history", payload["operator_warning_list"])
+            self.assertIn("missing_artifact:paper_soak_status", payload["operator_warning_list"])
+            self.assertIn("missing_artifact:paper_runtime_events", payload["operator_warning_list"])
+
+    def test_stale_heartbeat_warning_surfaces_in_dashboard_telemetry(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            config = DummyConfig(tmpdir)
+            _write_gate_artifacts(root)
+            (root / "portfolio_status.json").write_text(json.dumps({"equity": 20000}), encoding="utf-8")
+            (root / "paper_soak_status.json").write_text(
+                json.dumps(
+                    {
+                        "classification": "paper-only",
+                        "paper_runtime_allowed": True,
+                        "real_money_allowed": False,
+                        "last_heartbeat_timestamp": "2026-06-01T00:00:00+00:00",
+                        "heartbeat": {"last_heartbeat_timestamp": "2026-06-01T00:00:00+00:00"},
+                        "warning_list": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            payload = load_live_dashboard_snapshot(root, config=config)
+
+            warning_blob = " / ".join(payload["paper_soak_status"].get("display_warning_list", []))
+            self.assertIn("dashboard_detected_stale_heartbeat", warning_blob)
+            self.assertIn("dashboard_detected_stale_heartbeat", " / ".join(payload["operator_warning_list"]))
 
     def test_build_trade_markers_creates_entry_and_exit_points(self):
         markers = build_trade_markers(

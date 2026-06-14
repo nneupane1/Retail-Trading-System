@@ -14,6 +14,10 @@ from config import AppConfig
 from .binance_client import BinanceClient
 
 
+def _parse_storage_timestamp(value):
+    return pd.Timestamp(str(value).replace("T", " ").replace(".", ":"))
+
+
 def _fmt(ms):
     return datetime.utcfromtimestamp(ms / 1000).strftime("%Y-%m-%d %H:%M")
 
@@ -206,9 +210,10 @@ class MarketDataDownloader:
         if not folder.exists():
             return None
 
+        requested_start = pd.Timestamp(start_date)
         target_end_ts = pd.Timestamp(end_date)
         partial_suffix = self.config.require("downloads", "history")["partial_suffix"]
-        prefix = f"{symbol}_{interval}_{start_date}_to_"
+        prefix = f"{symbol}_{interval}_"
 
         best_candidate = None
         best_end_ts = None
@@ -217,16 +222,20 @@ class MarketDataDownloader:
             if candidate.name.endswith(partial_suffix):
                 continue
 
-            if not candidate.name.startswith(prefix):
+            stem = candidate.stem
+            if not stem.startswith(prefix) or "_to_" not in stem:
                 continue
-
-            candidate_end_text = candidate.name[len(prefix):-4]
 
             try:
-                candidate_end_ts = pd.Timestamp(candidate_end_text)
-            except ValueError:
+                remainder = stem[len(prefix):]
+                candidate_start_text, candidate_end_text = remainder.split("_to_", 1)
+                candidate_start_ts = _parse_storage_timestamp(candidate_start_text)
+                candidate_end_ts = _parse_storage_timestamp(candidate_end_text)
+            except Exception:
                 continue
 
+            if candidate_start_ts > requested_start:
+                continue
             if candidate_end_ts >= target_end_ts:
                 continue
 

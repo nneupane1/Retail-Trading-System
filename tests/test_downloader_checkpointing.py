@@ -178,6 +178,73 @@ class DownloaderCheckpointTests(unittest.TestCase):
                 (storage_dir / "BTCUSDT_1m_2026-05-12_to_2026-05-13.csv").exists()
             )
 
+    def test_fetch_full_history_bootstraps_from_timestamped_cached_history(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base_path = Path(temp_dir)
+            storage_dir = base_path / "BTCUSDT" / "1m"
+            storage_dir.mkdir(parents=True, exist_ok=True)
+
+            existing_final = storage_dir / "BTCUSDT_1m_2026-05-12T00.00.00_to_2026-05-12T00.00.00.csv"
+            existing_df = pd.DataFrame(
+                [
+                    {
+                        "timestamp": "2026-05-12 23:58:00",
+                        "open": 100.0,
+                        "high": 101.0,
+                        "low": 99.5,
+                        "close": 100.5,
+                        "volume": 10.0,
+                    },
+                    {
+                        "timestamp": "2026-05-12 23:59:00",
+                        "open": 100.5,
+                        "high": 101.5,
+                        "low": 100.0,
+                        "close": 101.0,
+                        "volume": 12.0,
+                    },
+                ]
+            )
+            existing_df.to_csv(existing_final, index=False)
+
+            next_open_time = int(
+                pd.Timestamp("2026-05-13 00:00:00", tz="UTC").timestamp() * 1000
+            )
+            next_close_time = next_open_time + 59999
+            raw_batch = [[
+                next_open_time,
+                "101.0",
+                "102.0",
+                "100.5",
+                "101.5",
+                "9.0",
+                next_close_time,
+                "0",
+                "0",
+                "0",
+                "0",
+                "0",
+            ]]
+
+            client = FetchHistoryClient(raw_batch=raw_batch)
+            downloader = MarketDataDownloader(
+                config=FetchHistoryConfig(str(base_path)),
+                client=client
+            )
+
+            with patch("data.downloader.DownloadProgressDisplay", return_value=NullDisplay()):
+                df = downloader.fetch_full_history()
+
+            expected_resume_start = int(
+                pd.Timestamp("2026-05-12 23:59:00", tz="UTC").timestamp() * 1000
+            ) + 1
+
+            self.assertEqual(client.calls[0]["startTime"], expected_resume_start)
+            self.assertEqual(len(df), 3)
+            self.assertTrue(
+                (storage_dir / "BTCUSDT_1m_2026-05-12_to_2026-05-13.csv").exists()
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

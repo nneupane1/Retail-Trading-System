@@ -2449,6 +2449,72 @@ class LivePaperPortfolioTests(unittest.TestCase):
             self.assertAlmostEqual(threshold, 0.8, places=7)
             self.assertEqual(source, "recent")
 
+    def test_snapshot_restore_preserves_open_positions_and_symbol_lineage_state(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config = DummyConfig(output_dir=temp_dir)
+            portfolio = LivePaperPortfolio(config=config)
+            timestamp = pd.Timestamp("2026-01-01 12:00:00")
+            row = pd.Series(
+                {
+                    "close": 105.0,
+                    "low": 104.0,
+                    "high": 106.0,
+                    "ll2": 100.0,
+                    "ema2": 104.0,
+                    "ema3": 103.0,
+                    "atr": 1.5,
+                },
+                name=timestamp,
+            )
+
+            portfolio.reset_daily_state_if_needed(timestamp)
+            portfolio.select_and_open(
+                [
+                    {
+                        "symbol": "BTCUSDT",
+                        "timestamp": timestamp,
+                        "side": "long",
+                        "row": row,
+                        "bias": "neutral",
+                        "edge_type": "impulse_breakout",
+                        "body_bucket": "strong",
+                        "vwap_bucket": "far",
+                        "bucket_key_text": "impulse_breakout|neutral|strong|far",
+                        "bucket_valid": True,
+                        "bucket_expected_return": 0.000212,
+                        "bucket_risk_mult": 1.1,
+                        "risk_mult": 1.1,
+                        "momentum_rank": 0.95,
+                        "is_top_mover": True,
+                        "score": 0.92,
+                        "score_bucket": "0.9-1.0",
+                        "feature_values": {
+                            "body_strength": 0.9,
+                            "close_position": 0.9,
+                            "vwap_score": 1.0,
+                            "momentum": 0.95,
+                        },
+                    }
+                ],
+                timestamp,
+            )
+            portfolio.last_top_symbols = ["BTCUSDT", "ETHUSDT"]
+
+            restored = LivePaperPortfolio(config=config)
+            restored.restore_state(portfolio.snapshot_state())
+
+            self.assertEqual(len(restored.open_positions), 1)
+            restored_trade = restored.open_positions[0]
+            original_trade = portfolio.open_positions[0]
+            self.assertEqual(restored_trade.symbol, original_trade.symbol)
+            self.assertEqual(restored_trade.strategy_type, original_trade.strategy_type)
+            self.assertEqual(restored_trade.lineage_id, original_trade.lineage_id)
+            self.assertEqual(
+                restored_trade.lineage_reentry_count,
+                original_trade.lineage_reentry_count,
+            )
+            self.assertEqual(restored.last_top_symbols, ["BTCUSDT", "ETHUSDT"])
+
     def test_allocator_v2_concentrates_htf_risk_over_core_flow(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             config = DummyConfig(output_dir=temp_dir)
@@ -2856,6 +2922,62 @@ class LivePaperPortfolioTests(unittest.TestCase):
                     for state in stressed_allocated
                 )
             )
+
+    def test_h1_strategy_side_override_allows_short_despite_global_long_default(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config = DummyConfig(output_dir=temp_dir)
+            config.data["strategy"]["h1_execution"] = {"enabled": True}
+            config.data["live_sim"]["paper_portfolio"]["strategy_allowed_sides"][
+                "h1_execution"
+            ] = ["short"]
+            config.data["live_sim"]["paper_portfolio"]["strategy_sleeves"][
+                "h1_execution"
+            ] = {
+                "enabled": True,
+                "reserved_risk_fraction": 0.0025,
+                "max_new_positions_per_step": 1,
+                "block_if_symbol_has_other_strategy_position": False,
+                "ignore_global_step_cap": False,
+            }
+            portfolio = LivePaperPortfolio(config=config)
+            timestamp = pd.Timestamp("2026-01-01 12:00:00")
+            row = pd.Series({"close": 100.0, "low": 99.0, "high": 101.0}, name=timestamp)
+
+            short_state = portfolio._build_candidate_selection_state(
+                {
+                    "symbol": "BTCUSDT",
+                    "timestamp": timestamp,
+                    "side": "short",
+                    "row": row,
+                    "score": 0.92,
+                    "selection_score": 0.92,
+                    "score_bucket": "0.9-1.0",
+                    "strategy_type": "h1_execution",
+                    "risk_group": "h1_execution",
+                },
+                timestamp,
+                candidate_id=1,
+            )
+            long_state = portfolio._build_candidate_selection_state(
+                {
+                    "symbol": "BTCUSDT",
+                    "timestamp": timestamp,
+                    "side": "long",
+                    "row": row,
+                    "score": 0.92,
+                    "selection_score": 0.92,
+                    "score_bucket": "0.9-1.0",
+                    "strategy_type": "h1_execution",
+                    "risk_group": "h1_execution",
+                },
+                timestamp,
+                candidate_id=2,
+            )
+
+            self.assertEqual({"long"}, portfolio.allowed_sides)
+            self.assertEqual({"short"}, portfolio._allowed_sides_for_strategy("h1_execution"))
+            self.assertIsNone(short_state["reason"])
+            self.assertEqual("side_disabled", long_state["reason"])
 
     def test_snapshot_restore_preserves_allocator_concentration_brake_state(self):
         with tempfile.TemporaryDirectory() as temp_dir:

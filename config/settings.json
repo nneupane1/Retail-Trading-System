@@ -51,7 +51,7 @@
     "retry_backoff_seconds": 1,
     "retry_status_codes": [418, 429, 500, 502, 503, 504],
     "retry_logging_enabled": true,
-    "ssl_verify": false,
+    "ssl_verify": true,
     "ca_bundle_path": null,
     "closed_klines_only": true,
     "throttle_seconds": 0.2
@@ -131,7 +131,7 @@
   },
   "history": {
     "start_date": "2018-01-01",
-    "end_date": "2026-05-22"
+    "end_date": "latest_closed_day_utc"
   },
   "research": {
     "daily_leader_focus": {
@@ -726,6 +726,42 @@
         "add_min_stop_distance_r_multiple": 0.5,
         "hold_extension_bars": 4
       }
+    }
+  },
+  "paper_soak": {
+    "minimum_days_before_review": 14
+  },
+  "capital_refactor": {
+    "enabled": false,
+    "capital_lanes": {
+      "enabled": false
+    },
+    "risk_bands": {
+      "enabled": false
+    },
+    "lifecycle": {
+      "enabled": false
+    },
+    "opportunity_cost": {
+      "enabled": false
+    },
+    "shadow_rejection_book": {
+      "enabled": false
+    },
+    "winner_forensics": {
+      "enabled": false
+    },
+    "capital_recycling": {
+      "enabled": false
+    },
+    "regime_multiplier": {
+      "enabled": false
+    },
+    "portfolio_heat": {
+      "enabled": false
+    },
+    "promotion_review": {
+      "enabled": false
     }
   },
   "position": {
