@@ -76,7 +76,7 @@ priority is making the existing routed stack more operationally complete:
 | Live paper cockpit | Active foundation | Needed to see what the engine is doing in real time | Expand visibility and polish |
 | Live continuity | Operationally hardened for paper | Engine must resume from prior state cleanly | Keep proving restart safety through soak evidence |
 | Dashboard UX | Multi-mode and telemetry-backed | Must show activity even when no trade fires | Keep improving density and elegance |
-| Capital-expression refactor | Scaffolded only | Future allocator/capital research needs structure | Stay dormant until explicitly promoted |
+| Capital-expression refactor | Scaffolded plus Phase 1 diagnostics-only evidence | Future allocator/capital research needs structure without contaminating runtime behavior | Keep passive until an explicit Phase 2 promotion |
 
 ## Current Production-Like Stack
 
@@ -123,6 +123,7 @@ same job.
 | Forward-paper soak monitoring | Are runtime evidence, heartbeats, and restart logs being collected? | Completed |
 | Cockpit truth alignment | Does the dashboard show artifact truth without mutating state? | Completed |
 | Capital-expression scaffold | Is the next capital refactor represented structurally without changing behavior? | Completed as dormant scaffold |
+| Capital Phase 1 diagnostics | Are rejection, winner, bucket, and opportunity-cost reports available without behavior change? | Completed |
 | Full paper-runtime maturation | Is the system ready for prolonged 24/7 paper ops? | Current active gate |
 
 ## Promotion Status
@@ -143,6 +144,31 @@ This means the repo is in a serious paper-readiness phase, not a real-money
 promotion phase. The system is expected to keep collecting forward-paper
 evidence while preserving restart cleanliness, operator truth, and policy
 discipline.
+
+### Capital Refactor Status
+
+The capital refactor is still deliberately non-invasive. Phase 0 remains the
+dormant structural scaffold, and Phase 1 now exists as a passive evidence layer
+only. No allocator, sizing, sleeve, threshold, entry, or exit behavior is
+changed by this work.
+
+Phase 1 diagnostics are written under:
+
+`backtest/output/capital_refactor/diagnostics/`
+
+Current Phase 1 artifacts:
+
+| Artifact | Purpose |
+| --- | --- |
+| `rejection_shadow_book.csv` | Ledger of rejected allocator and signal candidates |
+| `capital_blocked_winners.csv` | Capital/risk-suppressed candidates tracked as research evidence |
+| `top_winner_forensics.csv` | Passive inspection of historical top winners |
+| `strategy_bucket_capital_efficiency.json` | Aggregated performance by strategy, bucket, side, and regime |
+| `opportunity_cost_report.json` | Read-only comparison of blocked candidates versus competing allocations |
+| `diagnostics_summary.json` | Phase 1 truth artifact proving diagnostics-only behavior |
+
+The cockpit reads these files as operator evidence only. They do not grant
+runtime authority, alter routing, or relax the `paper-only` classification.
 
 ## Command Center Modes
 
@@ -788,8 +814,9 @@ python -m unittest discover -s tests -v
   denser institutional-grade experience intended for the project.
 - The dashboard currently depends on telemetry artifacts; if the engine is not
   writing them correctly, the UI cannot invent missing truth.
-- The capital-expression refactor exists only as dormant scaffolding. It does
-  not yet change allocator behavior, sizing, lane budgets, or promotion rules.
+- The capital-expression refactor is still behaviorally dormant. Phase 1
+  diagnostics now exist, but they remain passive evidence only and do not
+  change allocator behavior, sizing, lane budgets, or promotion rules.
 
 ## Extension Guide
 
@@ -847,7 +874,13 @@ python main_download.py
 python main_backtest.py
 ```
 
-### 6. Launch the live paper cockpit
+### 6. Generate passive capital diagnostics
+
+```powershell
+python backtest/run_capital_phase1_diagnostics.py
+```
+
+### 7. Launch the live paper cockpit
 
 ```powershell
 python run_live_cockpit.py

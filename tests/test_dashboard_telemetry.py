@@ -273,6 +273,42 @@ class DashboardTelemetryTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
+            diagnostics_root = root / "backtest" / "output" / "capital_refactor" / "diagnostics"
+            diagnostics_root.mkdir(parents=True, exist_ok=True)
+            (diagnostics_root / "diagnostics_summary.json").write_text(
+                json.dumps(
+                    {
+                        "generated_at_utc": "2026-06-14T00:50:00+00:00",
+                        "phase": "phase_1_diagnostics_only",
+                        "classification": "paper-only",
+                        "paper_runtime_allowed": True,
+                        "real_money_allowed": False,
+                        "behavior_change_allowed": False,
+                        "diagnostics_only": True,
+                        "allocator_behavior_changed": False,
+                        "risk_behavior_changed": False,
+                        "sizing_behavior_changed": False,
+                        "entry_behavior_changed": False,
+                        "exit_behavior_changed": False,
+                        "warnings": ["diagnostics_only_no_trading_behavior_change"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            for name in (
+                "rejection_shadow_book.csv",
+                "capital_blocked_winners.csv",
+                "top_winner_forensics.csv",
+            ):
+                (diagnostics_root / name).write_text("timestamp,symbol\n", encoding="utf-8")
+            (diagnostics_root / "strategy_bucket_capital_efficiency.json").write_text(
+                json.dumps({"generated_at_utc": "2026-06-14T00:50:00+00:00", "groups": []}),
+                encoding="utf-8",
+            )
+            (diagnostics_root / "opportunity_cost_report.json").write_text(
+                json.dumps({"generated_at_utc": "2026-06-14T00:50:00+00:00", "observations": []}),
+                encoding="utf-8",
+            )
             (root / "paper_runtime_events.jsonl").write_text(
                 json.dumps(
                     {
@@ -374,11 +410,15 @@ class DashboardTelemetryTests(unittest.TestCase):
             self.assertFalse(payload["capital_refactor_scaffold_inventory"]["capital_refactor_enabled"])
             self.assertFalse(payload["capital_refactor_scaffold_inventory"]["behavior_change_allowed"])
             self.assertEqual("scaffold_only", payload["capital_refactor_scaffold_inventory"]["promotion_review"]["status"])
+            self.assertEqual("phase_1_diagnostics_only", payload["capital_refactor_phase1_diagnostics"]["phase"])
+            self.assertFalse(payload["capital_refactor_phase1_diagnostics"]["real_money_allowed"])
             self.assertEqual("complete", payload["validation_truth"]["validation_status"])
             self.assertEqual("pass", payload["validation_truth"]["full_history_verdict"])
             self.assertEqual("pass", payload["validation_truth"]["trailing_holdout_verdict"])
             self.assertIn("baseline_freeze_snapshot", payload["artifact_freshness"])
             self.assertEqual("healthy", payload["artifact_freshness"]["baseline_freeze_snapshot"]["status"])
+            self.assertIn("capital_refactor_phase1_diagnostics_summary", payload["artifact_freshness"])
+            self.assertEqual("healthy", payload["artifact_freshness"]["capital_refactor_phase1_diagnostics_summary"]["status"])
             self.assertIn("paper_soak_daily_report", payload["artifact_freshness"])
             self.assertEqual("healthy", payload["artifact_freshness"]["paper_soak_daily_report"]["status"])
             self.assertIn("paper_soak_review", payload["artifact_freshness"])
@@ -409,9 +449,11 @@ class DashboardTelemetryTests(unittest.TestCase):
             payload = load_live_dashboard_snapshot(root, config=config)
 
             self.assertEqual("missing", payload["artifact_freshness"]["baseline_freeze_snapshot"]["status"])
+            self.assertEqual("missing", payload["artifact_freshness"]["capital_refactor_phase1_diagnostics_summary"]["status"])
             self.assertEqual("missing", payload["artifact_freshness"]["paper_soak_daily_report"]["status"])
             self.assertEqual("missing", payload["artifact_freshness"]["paper_soak_review"]["status"])
             self.assertEqual("missing", payload["artifact_freshness"]["paper_soak_review_history"]["status"])
+            self.assertIn("missing_artifact:capital_refactor_phase1_diagnostics_summary", payload["operator_warning_list"])
             self.assertIn("missing_artifact:baseline_freeze_snapshot", payload["operator_warning_list"])
             self.assertEqual("missing", payload["artifact_freshness"]["capital_refactor_scaffold_inventory"]["status"])
             self.assertEqual("missing", payload["artifact_freshness"]["paper_soak_status"]["status"])

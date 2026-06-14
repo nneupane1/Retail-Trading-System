@@ -9,6 +9,7 @@ from typing import Any
 
 import pandas as pd
 
+from capital.phase1_diagnostics import diagnostics_report_paths
 from config import AppConfig
 from data.downloader import load_from_csv
 from data.resampler import TimeframeBuilder
@@ -284,15 +285,44 @@ def _build_validation_truth(readiness: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _build_artifact_freshness(root: Path, readiness: dict[str, Any]) -> dict[str, dict[str, Any]]:
+def _build_artifact_freshness(
+    root: Path,
+    readiness: dict[str, Any],
+    config: AppConfig,
+) -> dict[str, dict[str, Any]]:
     summary_path = Path(readiness["summary_path"]) if readiness.get("summary_path") else root / "missing_summary.json"
     report_path = (
         Path(readiness["promotion_readiness_report_path"])
         if readiness.get("promotion_readiness_report_path")
         else root / "missing_promotion_readiness_report.json"
     )
+    phase1_paths = diagnostics_report_paths(config)
     artifacts = {
         "baseline_freeze_snapshot": _artifact_status(root / "baseline_freeze_snapshot.json", stale_after_seconds=24 * 3600.0),
+        "capital_refactor_phase1_diagnostics_summary": _artifact_status(
+            phase1_paths["diagnostics_summary"],
+            stale_after_seconds=7 * 24 * 3600.0,
+        ),
+        "capital_refactor_phase1_rejection_shadow_book": _artifact_status(
+            phase1_paths["rejection_shadow_book"],
+            stale_after_seconds=7 * 24 * 3600.0,
+        ),
+        "capital_refactor_phase1_capital_blocked_winners": _artifact_status(
+            phase1_paths["capital_blocked_winners"],
+            stale_after_seconds=7 * 24 * 3600.0,
+        ),
+        "capital_refactor_phase1_top_winner_forensics": _artifact_status(
+            phase1_paths["top_winner_forensics"],
+            stale_after_seconds=7 * 24 * 3600.0,
+        ),
+        "capital_refactor_phase1_strategy_bucket_capital_efficiency": _artifact_status(
+            phase1_paths["strategy_bucket_capital_efficiency"],
+            stale_after_seconds=7 * 24 * 3600.0,
+        ),
+        "capital_refactor_phase1_opportunity_cost_report": _artifact_status(
+            phase1_paths["opportunity_cost_report"],
+            stale_after_seconds=7 * 24 * 3600.0,
+        ),
         "capital_refactor_scaffold_inventory": _artifact_status(root / "capital_refactor" / "scaffold_inventory.json", stale_after_seconds=24 * 3600.0),
         "paper_soak_daily_report": _artifact_status(root / "paper_soak_daily_report.json", stale_after_seconds=24 * 3600.0),
         "paper_soak_review": _artifact_status(root / "paper_soak_review.json", stale_after_seconds=24 * 3600.0),
@@ -378,7 +408,7 @@ def load_live_dashboard_snapshot(
     if root is None or not root.exists():
         readiness = build_runtime_readiness(config, mode="portfolio_paper")
         output_root = _resolve_live_output_root(config)
-        artifact_freshness = _build_artifact_freshness(output_root, readiness)
+        artifact_freshness = _build_artifact_freshness(output_root, readiness, config)
         return {
             "run": None,
             "portfolio_status": {},
@@ -388,6 +418,7 @@ def load_live_dashboard_snapshot(
             "paper_soak_review": {},
             "baseline_freeze_snapshot": {},
             "capital_refactor_scaffold_inventory": {},
+            "capital_refactor_phase1_diagnostics": {},
             "validation_truth": _build_validation_truth(readiness),
             "artifact_freshness": artifact_freshness,
             "last_runtime_event": {},
@@ -413,10 +444,14 @@ def load_live_dashboard_snapshot(
     paper_soak_review = _read_json(root / "paper_soak_review.json", {})
     baseline_freeze_snapshot = _read_json(root / "baseline_freeze_snapshot.json", {})
     capital_refactor_scaffold_inventory = _read_json(root / "capital_refactor" / "scaffold_inventory.json", {})
+    capital_refactor_phase1_diagnostics = _read_json(
+        diagnostics_report_paths(config)["diagnostics_summary"],
+        {},
+    )
     if isinstance(paper_soak_status, dict) and paper_soak_status:
         paper_soak_status["display_warning_list"] = _display_soak_warnings(root, paper_soak_status)
     validation_truth = _build_validation_truth(readiness)
-    artifact_freshness = _build_artifact_freshness(root, readiness)
+    artifact_freshness = _build_artifact_freshness(root, readiness, config)
     last_runtime_event = _latest_jsonl_record(root / "paper_runtime_events.jsonl")
     operator_warning_list = _build_operator_warning_list(
         readiness,
@@ -459,6 +494,7 @@ def load_live_dashboard_snapshot(
         "paper_soak_review": paper_soak_review,
         "baseline_freeze_snapshot": baseline_freeze_snapshot,
         "capital_refactor_scaffold_inventory": capital_refactor_scaffold_inventory,
+        "capital_refactor_phase1_diagnostics": capital_refactor_phase1_diagnostics,
         "validation_truth": validation_truth,
         "artifact_freshness": artifact_freshness,
         "last_runtime_event": last_runtime_event,

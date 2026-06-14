@@ -36,6 +36,7 @@ type Snapshot = {
   paper_soak_review?: Record<string, any>;
   baseline_freeze_snapshot?: Record<string, any>;
   capital_refactor_scaffold_inventory?: Record<string, any>;
+  capital_refactor_phase1_diagnostics?: Record<string, any>;
   validation_truth?: Record<string, any>;
   artifact_freshness?: Record<string, Record<string, any>>;
   last_runtime_event?: Record<string, any>;
@@ -611,6 +612,7 @@ export function DashboardShell({
   const soakReview = snapshot?.paper_soak_review ?? {};
   const baselineFreezeSnapshot = snapshot?.baseline_freeze_snapshot ?? {};
   const capitalRefactorScaffold = snapshot?.capital_refactor_scaffold_inventory ?? {};
+  const capitalRefactorDiagnostics = snapshot?.capital_refactor_phase1_diagnostics ?? {};
   const validationTruth = snapshot?.validation_truth ?? {};
   const artifactFreshness = snapshot?.artifact_freshness ?? {};
   const lastRuntimeEvent = snapshot?.last_runtime_event ?? {};
@@ -747,6 +749,24 @@ export function DashboardShell({
     [capitalRefactorLayerStatuses],
   );
   const capitalRefactorModulesPresent = Object.values(capitalRefactorScaffold.modules_present ?? {}).filter(Boolean).length;
+  const capitalDiagnosticsWarnings = Array.isArray(capitalRefactorDiagnostics.warnings) ? capitalRefactorDiagnostics.warnings : [];
+  const capitalDiagnosticsReports = useMemo<Row[]>(
+    () =>
+      [
+        "capital_refactor_phase1_diagnostics_summary",
+        "capital_refactor_phase1_rejection_shadow_book",
+        "capital_refactor_phase1_capital_blocked_winners",
+        "capital_refactor_phase1_top_winner_forensics",
+        "capital_refactor_phase1_strategy_bucket_capital_efficiency",
+        "capital_refactor_phase1_opportunity_cost_report",
+      ]
+        .map((key) => ({
+          key,
+          ...((artifactFreshness[key] ?? {}) as Row),
+        }))
+        .filter((row: Row) => row.path || row.exists !== undefined),
+    [artifactFreshness],
+  );
   const latestDataTimestamp = validationTruth.latest_data_timestamp ?? readiness.latest_common_data_timestamp;
   const runtimeLastProcessedTimestamp =
     soakStatus.runtime_last_processed_timestamp ?? runtimeContext.runtime_last_processed_timestamp;
@@ -2065,6 +2085,99 @@ export function DashboardShell({
             ) : (
               <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/55">
                 No capital scaffold inventory artifact has been published yet.
+              </div>
+            )}
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Capital Diagnostics" eyebrow="Phase 1 evidence only, with no runtime authority" accent="green">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <StatPill
+              label="Phase"
+              value={String(capitalRefactorDiagnostics.phase ?? "missing")}
+              tone={String(capitalRefactorDiagnostics.phase ?? "") === "phase_1_diagnostics_only" ? "good" : "warning"}
+            />
+            <StatPill
+              label="Diagnostics only"
+              value={String(capitalRefactorDiagnostics.diagnostics_only ?? false)}
+              tone={truthy(capitalRefactorDiagnostics.diagnostics_only) ? "good" : "warning"}
+            />
+            <StatPill
+              label="Behavior change allowed"
+              value={String(capitalRefactorDiagnostics.behavior_change_allowed ?? false)}
+              tone={truthy(capitalRefactorDiagnostics.behavior_change_allowed) ? "warning" : "good"}
+            />
+            <StatPill
+              label="Real-money allowed"
+              value={String(capitalRefactorDiagnostics.real_money_allowed ?? false)}
+              tone={truthy(capitalRefactorDiagnostics.real_money_allowed) ? "warning" : "good"}
+            />
+            <StatPill
+              label="Allocator behavior changed"
+              value={String(capitalRefactorDiagnostics.allocator_behavior_changed ?? false)}
+              tone={truthy(capitalRefactorDiagnostics.allocator_behavior_changed) ? "warning" : "good"}
+            />
+            <StatPill
+              label="Risk behavior changed"
+              value={String(capitalRefactorDiagnostics.risk_behavior_changed ?? false)}
+              tone={truthy(capitalRefactorDiagnostics.risk_behavior_changed) ? "warning" : "good"}
+            />
+            <StatPill
+              label="Sizing behavior changed"
+              value={String(capitalRefactorDiagnostics.sizing_behavior_changed ?? false)}
+              tone={truthy(capitalRefactorDiagnostics.sizing_behavior_changed) ? "warning" : "good"}
+            />
+            <StatPill
+              label="Generated at"
+              value={formatFlexibleTime(capitalRefactorDiagnostics.generated_at_utc)}
+            />
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">Phase 1 warnings</div>
+              <div className="mt-2 text-sm text-white/75">
+                {capitalDiagnosticsWarnings.length ? capitalDiagnosticsWarnings.join(" / ") : "none"}
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">Diagnostics reports</div>
+              <div className="mt-2 text-sm text-white/75">
+                {capitalDiagnosticsReports.length
+                  ? capitalDiagnosticsReports.map((row) => `${row.key}:${row.status ?? "unknown"}`).join(" / ")
+                  : "none"}
+              </div>
+            </div>
+          </div>
+          <div className="mt-4 space-y-3">
+            {capitalDiagnosticsReports.length ? (
+              capitalDiagnosticsReports.map((artifact) => (
+                <div key={artifact.key} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div className="min-w-0">
+                      <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">{artifact.key}</div>
+                      <div className="mt-2 break-all text-sm text-white/75">{artifact.path ?? "unknown path"}</div>
+                    </div>
+                    <div
+                      className={clsx(
+                        "inline-flex rounded-full border px-3 py-1 text-[10px] uppercase tracking-[0.18em]",
+                        artifact.status === "healthy"
+                          ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-200"
+                          : "border-orange-400/20 bg-orange-400/10 text-orange-200",
+                      )}
+                    >
+                      {artifact.status ?? "unknown"}
+                    </div>
+                  </div>
+                  <div className="mt-3 grid gap-2 md:grid-cols-3 text-sm text-white/65">
+                    <div>exists {String(artifact.exists)}</div>
+                    <div>last modified {formatFlexibleTime(artifact.last_modified_timestamp)}</div>
+                    <div>age {artifact.age_seconds != null ? `${number(artifact.age_seconds, 0)}s` : "n/a"}</div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/55">
+                No Phase 1 diagnostics artifact has been published yet.
               </div>
             )}
           </div>

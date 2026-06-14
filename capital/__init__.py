@@ -6,6 +6,13 @@ from pathlib import Path
 
 from .capital_lanes import DEFAULT_CAPITAL_LANES, default_lane_payload
 from .capital_promotion_review import build_capital_promotion_review
+from .phase1_diagnostics import (
+    DIAGNOSTIC_REPORT_FILENAMES,
+    diagnostics_output_dir,
+    diagnostics_report_paths,
+    diagnostics_summary_path,
+    write_phase1_diagnostics,
+)
 
 CAPITAL_REFACTOR_LAYERS = [
     "capital_lanes",
@@ -102,12 +109,17 @@ def write_scaffold_inventory(config, readiness: dict[str, object] | None = None)
 __all__ = [
     "CAPITAL_REFACTOR_LAYERS",
     "DEFAULT_CAPITAL_LANES",
+    "DIAGNOSTIC_REPORT_FILENAMES",
     "behavior_change_allowed",
     "build_capital_promotion_review",
     "build_scaffold_inventory_payload",
     "build_scaffold_layer_statuses",
     "capital_refactor_enabled",
+    "diagnostics_output_dir",
+    "diagnostics_report_paths",
+    "diagnostics_summary_path",
     "layer_enabled",
     "scaffold_inventory_path",
+    "write_phase1_diagnostics",
     "write_scaffold_inventory",
 ]
