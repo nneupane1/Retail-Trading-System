@@ -10,6 +10,7 @@ from typing import Any
 import pandas as pd
 
 from capital.phase1_diagnostics import diagnostics_report_paths
+from capital.phase1_evidence_review import review_report_paths
 from config import AppConfig
 from data.downloader import load_from_csv
 from data.resampler import TimeframeBuilder
@@ -297,6 +298,7 @@ def _build_artifact_freshness(
         else root / "missing_promotion_readiness_report.json"
     )
     phase1_paths = diagnostics_report_paths(config)
+    phase1_review_paths = review_report_paths(config)
     artifacts = {
         "baseline_freeze_snapshot": _artifact_status(root / "baseline_freeze_snapshot.json", stale_after_seconds=24 * 3600.0),
         "capital_refactor_phase1_diagnostics_summary": _artifact_status(
@@ -321,6 +323,22 @@ def _build_artifact_freshness(
         ),
         "capital_refactor_phase1_opportunity_cost_report": _artifact_status(
             phase1_paths["opportunity_cost_report"],
+            stale_after_seconds=7 * 24 * 3600.0,
+        ),
+        "capital_refactor_phase1_evidence_review_json": _artifact_status(
+            phase1_review_paths["json"],
+            stale_after_seconds=7 * 24 * 3600.0,
+        ),
+        "capital_refactor_phase1_evidence_review_md": _artifact_status(
+            phase1_review_paths["markdown"],
+            stale_after_seconds=7 * 24 * 3600.0,
+        ),
+        "capital_refactor_phase2_experiment_brief_md": _artifact_status(
+            phase1_review_paths["phase2_brief"],
+            stale_after_seconds=7 * 24 * 3600.0,
+        ),
+        "capital_refactor_phase1_review_status": _artifact_status(
+            phase1_review_paths["status"],
             stale_after_seconds=7 * 24 * 3600.0,
         ),
         "capital_refactor_scaffold_inventory": _artifact_status(root / "capital_refactor" / "scaffold_inventory.json", stale_after_seconds=24 * 3600.0),
@@ -419,6 +437,7 @@ def load_live_dashboard_snapshot(
             "baseline_freeze_snapshot": {},
             "capital_refactor_scaffold_inventory": {},
             "capital_refactor_phase1_diagnostics": {},
+            "capital_refactor_phase1_evidence_review": {},
             "validation_truth": _build_validation_truth(readiness),
             "artifact_freshness": artifact_freshness,
             "last_runtime_event": {},
@@ -446,6 +465,10 @@ def load_live_dashboard_snapshot(
     capital_refactor_scaffold_inventory = _read_json(root / "capital_refactor" / "scaffold_inventory.json", {})
     capital_refactor_phase1_diagnostics = _read_json(
         diagnostics_report_paths(config)["diagnostics_summary"],
+        {},
+    )
+    capital_refactor_phase1_evidence_review = _read_json(
+        review_report_paths(config)["json"],
         {},
     )
     if isinstance(paper_soak_status, dict) and paper_soak_status:
@@ -495,6 +518,7 @@ def load_live_dashboard_snapshot(
         "baseline_freeze_snapshot": baseline_freeze_snapshot,
         "capital_refactor_scaffold_inventory": capital_refactor_scaffold_inventory,
         "capital_refactor_phase1_diagnostics": capital_refactor_phase1_diagnostics,
+        "capital_refactor_phase1_evidence_review": capital_refactor_phase1_evidence_review,
         "validation_truth": validation_truth,
         "artifact_freshness": artifact_freshness,
         "last_runtime_event": last_runtime_event,

@@ -13,6 +13,11 @@ from .phase1_diagnostics import (
     diagnostics_summary_path,
     write_phase1_diagnostics,
 )
+from .phase1_evidence_review import (
+    review_output_dir,
+    review_report_paths,
+    write_phase1_evidence_review,
+)
 
 CAPITAL_REFACTOR_LAYERS = [
     "capital_lanes",
@@ -118,6 +123,9 @@ __all__ = [
     "diagnostics_output_dir",
     "diagnostics_report_paths",
     "diagnostics_summary_path",
+    "review_output_dir",
+    "review_report_paths",
+    "write_phase1_evidence_review",
     "layer_enabled",
     "scaffold_inventory_path",
     "write_phase1_diagnostics",

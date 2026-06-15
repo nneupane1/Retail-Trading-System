@@ -309,6 +309,55 @@ class DashboardTelemetryTests(unittest.TestCase):
                 json.dumps({"generated_at_utc": "2026-06-14T00:50:00+00:00", "observations": []}),
                 encoding="utf-8",
             )
+            review_root = diagnostics_root / "review"
+            review_root.mkdir(parents=True, exist_ok=True)
+            (review_root / "phase1_evidence_review.json").write_text(
+                json.dumps(
+                    {
+                        "generated_at_utc": "2026-06-14T00:55:00+00:00",
+                        "phase": "phase_1_evidence_review",
+                        "evidence_strength": {
+                            "overall": "moderate_backtest_only",
+                            "phase2_backtest_only_justified": True,
+                            "recommended_next_phase": "phase_2_backtest_only_capital_lane_experiment",
+                        },
+                        "behavior_change_allowed": False,
+                        "real_money_allowed": False,
+                        "allocator_behavior_changed": False,
+                        "risk_behavior_changed": False,
+                        "sizing_behavior_changed": False,
+                        "entry_behavior_changed": False,
+                        "exit_behavior_changed": False,
+                        "thresholds_changed": False,
+                        "sleeves_changed": False,
+                        "six_h_enabled": False,
+                        "h1_short_override_active": True,
+                        "top_rejection_reasons": [
+                            {"rejection_reason": "shared_risk_cap", "count": 12},
+                        ],
+                        "top_blocking_constraints": [
+                            {"blocking_constraint": "shared_risk_cap", "count": 6},
+                        ],
+                        "phase2_not_allowed_yet_reasoning": [
+                            "review gate only",
+                        ],
+                        "warnings": ["diagnostics_only_no_trading_behavior_change"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (review_root / "phase1_evidence_review.md").write_text(
+                "# review\n",
+                encoding="utf-8",
+            )
+            (review_root / "phase2_experiment_brief.md").write_text(
+                "# brief\n",
+                encoding="utf-8",
+            )
+            (review_root / "status.json").write_text(
+                json.dumps({"phase": "phase_1_evidence_review", "stage": "complete"}),
+                encoding="utf-8",
+            )
             (root / "paper_runtime_events.jsonl").write_text(
                 json.dumps(
                     {
@@ -412,6 +461,8 @@ class DashboardTelemetryTests(unittest.TestCase):
             self.assertEqual("scaffold_only", payload["capital_refactor_scaffold_inventory"]["promotion_review"]["status"])
             self.assertEqual("phase_1_diagnostics_only", payload["capital_refactor_phase1_diagnostics"]["phase"])
             self.assertFalse(payload["capital_refactor_phase1_diagnostics"]["real_money_allowed"])
+            self.assertEqual("phase_1_evidence_review", payload["capital_refactor_phase1_evidence_review"]["phase"])
+            self.assertTrue(payload["capital_refactor_phase1_evidence_review"]["evidence_strength"]["phase2_backtest_only_justified"])
             self.assertEqual("complete", payload["validation_truth"]["validation_status"])
             self.assertEqual("pass", payload["validation_truth"]["full_history_verdict"])
             self.assertEqual("pass", payload["validation_truth"]["trailing_holdout_verdict"])
@@ -419,6 +470,8 @@ class DashboardTelemetryTests(unittest.TestCase):
             self.assertEqual("healthy", payload["artifact_freshness"]["baseline_freeze_snapshot"]["status"])
             self.assertIn("capital_refactor_phase1_diagnostics_summary", payload["artifact_freshness"])
             self.assertEqual("healthy", payload["artifact_freshness"]["capital_refactor_phase1_diagnostics_summary"]["status"])
+            self.assertIn("capital_refactor_phase1_evidence_review_json", payload["artifact_freshness"])
+            self.assertEqual("healthy", payload["artifact_freshness"]["capital_refactor_phase1_evidence_review_json"]["status"])
             self.assertIn("paper_soak_daily_report", payload["artifact_freshness"])
             self.assertEqual("healthy", payload["artifact_freshness"]["paper_soak_daily_report"]["status"])
             self.assertIn("paper_soak_review", payload["artifact_freshness"])
@@ -450,10 +503,12 @@ class DashboardTelemetryTests(unittest.TestCase):
 
             self.assertEqual("missing", payload["artifact_freshness"]["baseline_freeze_snapshot"]["status"])
             self.assertEqual("missing", payload["artifact_freshness"]["capital_refactor_phase1_diagnostics_summary"]["status"])
+            self.assertEqual("missing", payload["artifact_freshness"]["capital_refactor_phase1_evidence_review_json"]["status"])
             self.assertEqual("missing", payload["artifact_freshness"]["paper_soak_daily_report"]["status"])
             self.assertEqual("missing", payload["artifact_freshness"]["paper_soak_review"]["status"])
             self.assertEqual("missing", payload["artifact_freshness"]["paper_soak_review_history"]["status"])
             self.assertIn("missing_artifact:capital_refactor_phase1_diagnostics_summary", payload["operator_warning_list"])
+            self.assertIn("missing_artifact:capital_refactor_phase1_evidence_review_json", payload["operator_warning_list"])
             self.assertIn("missing_artifact:baseline_freeze_snapshot", payload["operator_warning_list"])
             self.assertEqual("missing", payload["artifact_freshness"]["capital_refactor_scaffold_inventory"]["status"])
             self.assertEqual("missing", payload["artifact_freshness"]["paper_soak_status"]["status"])

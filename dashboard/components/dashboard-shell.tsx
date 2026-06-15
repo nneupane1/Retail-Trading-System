@@ -37,6 +37,7 @@ type Snapshot = {
   baseline_freeze_snapshot?: Record<string, any>;
   capital_refactor_scaffold_inventory?: Record<string, any>;
   capital_refactor_phase1_diagnostics?: Record<string, any>;
+  capital_refactor_phase1_evidence_review?: Record<string, any>;
   validation_truth?: Record<string, any>;
   artifact_freshness?: Record<string, Record<string, any>>;
   last_runtime_event?: Record<string, any>;
@@ -613,6 +614,7 @@ export function DashboardShell({
   const baselineFreezeSnapshot = snapshot?.baseline_freeze_snapshot ?? {};
   const capitalRefactorScaffold = snapshot?.capital_refactor_scaffold_inventory ?? {};
   const capitalRefactorDiagnostics = snapshot?.capital_refactor_phase1_diagnostics ?? {};
+  const capitalRefactorEvidenceReview = snapshot?.capital_refactor_phase1_evidence_review ?? {};
   const validationTruth = snapshot?.validation_truth ?? {};
   const artifactFreshness = snapshot?.artifact_freshness ?? {};
   const lastRuntimeEvent = snapshot?.last_runtime_event ?? {};
@@ -750,6 +752,7 @@ export function DashboardShell({
   );
   const capitalRefactorModulesPresent = Object.values(capitalRefactorScaffold.modules_present ?? {}).filter(Boolean).length;
   const capitalDiagnosticsWarnings = Array.isArray(capitalRefactorDiagnostics.warnings) ? capitalRefactorDiagnostics.warnings : [];
+  const capitalEvidenceWarnings = Array.isArray(capitalRefactorEvidenceReview.warnings) ? capitalRefactorEvidenceReview.warnings : [];
   const capitalDiagnosticsReports = useMemo<Row[]>(
     () =>
       [
@@ -759,6 +762,21 @@ export function DashboardShell({
         "capital_refactor_phase1_top_winner_forensics",
         "capital_refactor_phase1_strategy_bucket_capital_efficiency",
         "capital_refactor_phase1_opportunity_cost_report",
+      ]
+        .map((key) => ({
+          key,
+          ...((artifactFreshness[key] ?? {}) as Row),
+        }))
+        .filter((row: Row) => row.path || row.exists !== undefined),
+    [artifactFreshness],
+  );
+  const capitalEvidenceReports = useMemo<Row[]>(
+    () =>
+      [
+        "capital_refactor_phase1_evidence_review_json",
+        "capital_refactor_phase1_evidence_review_md",
+        "capital_refactor_phase2_experiment_brief_md",
+        "capital_refactor_phase1_review_status",
       ]
         .map((key) => ({
           key,
@@ -2178,6 +2196,121 @@ export function DashboardShell({
             ) : (
               <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/55">
                 No Phase 1 diagnostics artifact has been published yet.
+              </div>
+            )}
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Capital Evidence Review" eyebrow="Decision memo only, defining if Phase 2 is even justified" accent="green">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <StatPill
+              label="Review phase"
+              value={String(capitalRefactorEvidenceReview.phase ?? "missing")}
+              tone={String(capitalRefactorEvidenceReview.phase ?? "") === "phase_1_evidence_review" ? "good" : "warning"}
+            />
+            <StatPill
+              label="Evidence strength"
+              value={String(capitalRefactorEvidenceReview.evidence_strength?.overall ?? "unknown")}
+              tone={String(capitalRefactorEvidenceReview.evidence_strength?.phase2_backtest_only_justified ?? "false") === "true" ? "good" : "warning"}
+            />
+            <StatPill
+              label="Recommended next phase"
+              value={String(capitalRefactorEvidenceReview.evidence_strength?.recommended_next_phase ?? "none")}
+              tone="good"
+            />
+            <StatPill
+              label="Behavior change allowed"
+              value={String(capitalRefactorEvidenceReview.behavior_change_allowed ?? false)}
+              tone={truthy(capitalRefactorEvidenceReview.behavior_change_allowed) ? "warning" : "good"}
+            />
+            <StatPill
+              label="Real-money allowed"
+              value={String(capitalRefactorEvidenceReview.real_money_allowed ?? false)}
+              tone={truthy(capitalRefactorEvidenceReview.real_money_allowed) ? "warning" : "good"}
+            />
+            <StatPill
+              label="6H enabled"
+              value={String(capitalRefactorEvidenceReview.six_h_enabled ?? false)}
+              tone={truthy(capitalRefactorEvidenceReview.six_h_enabled) ? "warning" : "good"}
+            />
+            <StatPill
+              label="1H short override"
+              value={String(capitalRefactorEvidenceReview.h1_short_override_active ?? false)}
+              tone={truthy(capitalRefactorEvidenceReview.h1_short_override_active) ? "good" : "warning"}
+            />
+            <StatPill
+              label="Generated at"
+              value={formatFlexibleTime(capitalRefactorEvidenceReview.generated_at_utc)}
+            />
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">Top rejection reasons</div>
+              <div className="mt-2 text-sm text-white/75">
+                {Array.isArray(capitalRefactorEvidenceReview.top_rejection_reasons) && capitalRefactorEvidenceReview.top_rejection_reasons.length
+                  ? capitalRefactorEvidenceReview.top_rejection_reasons
+                      .slice(0, 4)
+                      .map((row: Row) => `${row.rejection_reason}:${row.count}`)
+                      .join(" / ")
+                  : "none"}
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">Top blocking constraints</div>
+              <div className="mt-2 text-sm text-white/75">
+                {Array.isArray(capitalRefactorEvidenceReview.top_blocking_constraints) && capitalRefactorEvidenceReview.top_blocking_constraints.length
+                  ? capitalRefactorEvidenceReview.top_blocking_constraints
+                      .slice(0, 4)
+                      .map((row: Row) => `${row.blocking_constraint}:${row.count}`)
+                      .join(" / ")
+                  : "none"}
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">Review warnings</div>
+              <div className="mt-2 text-sm text-white/75">
+                {capitalEvidenceWarnings.length ? capitalEvidenceWarnings.join(" / ") : "none"}
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">Phase 2 no-go reasoning</div>
+              <div className="mt-2 text-sm text-white/75">
+                {Array.isArray(capitalRefactorEvidenceReview.phase2_not_allowed_yet_reasoning) && capitalRefactorEvidenceReview.phase2_not_allowed_yet_reasoning.length
+                  ? capitalRefactorEvidenceReview.phase2_not_allowed_yet_reasoning.slice(0, 3).join(" / ")
+                  : "none"}
+              </div>
+            </div>
+          </div>
+          <div className="mt-4 space-y-3">
+            {capitalEvidenceReports.length ? (
+              capitalEvidenceReports.map((artifact) => (
+                <div key={artifact.key} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div className="min-w-0">
+                      <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">{artifact.key}</div>
+                      <div className="mt-2 break-all text-sm text-white/75">{artifact.path ?? "unknown path"}</div>
+                    </div>
+                    <div
+                      className={clsx(
+                        "inline-flex rounded-full border px-3 py-1 text-[10px] uppercase tracking-[0.18em]",
+                        artifact.status === "healthy"
+                          ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-200"
+                          : "border-orange-400/20 bg-orange-400/10 text-orange-200",
+                      )}
+                    >
+                      {artifact.status ?? "unknown"}
+                    </div>
+                  </div>
+                  <div className="mt-3 grid gap-2 md:grid-cols-3 text-sm text-white/65">
+                    <div>exists {String(artifact.exists)}</div>
+                    <div>last modified {formatFlexibleTime(artifact.last_modified_timestamp)}</div>
+                    <div>age {artifact.age_seconds != null ? `${number(artifact.age_seconds, 0)}s` : "n/a"}</div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/55">
+                No Phase 1 evidence review artifact has been published yet.
               </div>
             )}
           </div>

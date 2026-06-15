@@ -76,7 +76,7 @@ priority is making the existing routed stack more operationally complete:
 | Live paper cockpit | Active foundation | Needed to see what the engine is doing in real time | Expand visibility and polish |
 | Live continuity | Operationally hardened for paper | Engine must resume from prior state cleanly | Keep proving restart safety through soak evidence |
 | Dashboard UX | Multi-mode and telemetry-backed | Must show activity even when no trade fires | Keep improving density and elegance |
-| Capital-expression refactor | Scaffolded plus Phase 1 diagnostics-only evidence | Future allocator/capital research needs structure without contaminating runtime behavior | Keep passive until an explicit Phase 2 promotion |
+| Capital-expression refactor | Scaffolded plus Phase 1 diagnostics and evidence review | Future allocator/capital research needs structure without contaminating runtime behavior | Keep passive until an explicit Phase 2 promotion |
 
 ## Current Production-Like Stack
 
@@ -124,6 +124,7 @@ same job.
 | Cockpit truth alignment | Does the dashboard show artifact truth without mutating state? | Completed |
 | Capital-expression scaffold | Is the next capital refactor represented structurally without changing behavior? | Completed as dormant scaffold |
 | Capital Phase 1 diagnostics | Are rejection, winner, bucket, and opportunity-cost reports available without behavior change? | Completed |
+| Capital Phase 1 evidence review | Has diagnostics output been converted into a passive Phase 2 decision memo? | Completed |
 | Full paper-runtime maturation | Is the system ready for prolonged 24/7 paper ops? | Current active gate |
 
 ## Promotion Status
@@ -169,6 +170,14 @@ Current Phase 1 artifacts:
 
 The cockpit reads these files as operator evidence only. They do not grant
 runtime authority, alter routing, or relax the `paper-only` classification.
+
+Phase 1 also now includes a passive evidence review under:
+
+`backtest/output/capital_refactor/diagnostics/review/`
+
+These review artifacts summarize what the diagnostics actually support and what
+they still do not prove. They are a decision memo only. They do not authorize
+Phase 2 by themselves, and they do not change live or paper behavior.
 
 ## Command Center Modes
 
@@ -815,8 +824,9 @@ python -m unittest discover -s tests -v
 - The dashboard currently depends on telemetry artifacts; if the engine is not
   writing them correctly, the UI cannot invent missing truth.
 - The capital-expression refactor is still behaviorally dormant. Phase 1
-  diagnostics now exist, but they remain passive evidence only and do not
-  change allocator behavior, sizing, lane budgets, or promotion rules.
+  diagnostics and the follow-on evidence review now exist, but they remain
+  passive evidence only and do not change allocator behavior, sizing, lane
+  budgets, or promotion rules.
 
 ## Extension Guide
 
@@ -880,7 +890,13 @@ python main_backtest.py
 python backtest/run_capital_phase1_diagnostics.py
 ```
 
-### 7. Launch the live paper cockpit
+### 7. Generate the passive Phase 1 evidence review
+
+```powershell
+python backtest/review_capital_phase1_diagnostics.py
+```
+
+### 8. Launch the live paper cockpit
 
 ```powershell
 python run_live_cockpit.py
