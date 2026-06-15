@@ -56,6 +56,9 @@ type Snapshot = {
   latest_trade?: Row | null;
   latest_signal?: Row | null;
   available_symbols?: string[];
+  replay_status?: Record<string, any>;
+  replay_checkpoint?: Record<string, any>;
+  validation_window?: Record<string, any>;
 };
 
 type Point = { label?: string; value: number };
@@ -283,6 +286,13 @@ function getReplayTimestamp(snapshot: Snapshot | undefined, selectedSymbol: stri
   }
   const dates = [] as Array<number>;
 
+  if (snapshot.replay_checkpoint?.next_candle_time) {
+    const parsed = parseRunTimestamp(snapshot.replay_checkpoint.next_candle_time);
+    if (parsed) {
+      dates.push(parsed);
+    }
+  }
+
   if (snapshot.latest_signal?.timestamp) {
     const parsed = parseRunTimestamp(snapshot.latest_signal.timestamp);
     if (parsed) {
@@ -438,6 +448,8 @@ function HeaderMetric({
   tone = "neutral",
   points = [],
   pulse = false,
+  compact = false,
+  className,
 }: {
   label: string;
   value: string;
@@ -445,6 +457,8 @@ function HeaderMetric({
   tone?: "neutral" | "cyan" | "green" | "orange";
   points?: Point[];
   pulse?: boolean;
+  compact?: boolean;
+  className?: string;
 }) {
   const toneClass =
     tone === "cyan"
@@ -458,21 +472,32 @@ function HeaderMetric({
   const sparkPoints = points.length ? points : [{ value: 0 }, { value: 0 }];
   const compactValue = value.length > 18;
   return (
-    <div className={clsx("flex min-h-[138px] min-w-0 flex-col justify-between rounded-[24px] border px-4 py-3 shadow-[0_18px_40px_rgba(0,0,0,0.22)]", toneClass)}>
+    <div
+      className={clsx(
+        "flex min-w-0 flex-col justify-between rounded-[22px] border shadow-[0_18px_40px_rgba(0,0,0,0.22)]",
+        compact ? "min-h-[76px] px-3 py-2.5" : "px-4 py-3 min-h-[116px]",
+        toneClass,
+        className,
+      )}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <div className="text-[10px] uppercase tracking-[0.28em] text-white/52">{label}</div>
+          <div className={clsx("uppercase text-white/52", compact ? "text-[9px] tracking-[0.24em]" : "text-[10px] tracking-[0.28em]")}>{label}</div>
         </div>
         <div className="flex items-center gap-2">
           <MiniLineChart
             points={sparkPoints}
             tone={sparkTone}
-            className="h-[30px] w-[70px] rounded-full border border-white/14 bg-black/12"
-            height={34}
+            className={clsx(
+              "rounded-full border border-white/14 bg-black/12",
+              compact ? "h-[20px] w-[46px]" : "h-[30px] w-[70px]",
+            )}
+            height={compact ? 22 : 34}
           />
           <span
             className={clsx(
-              "inline-flex h-2.5 w-2.5 shrink-0 rounded-full shadow-[0_0_16px_currentColor]",
+              "inline-flex shrink-0 rounded-full shadow-[0_0_16px_currentColor]",
+              compact ? "h-1.5 w-1.5" : "h-2.5 w-2.5",
               tone === "green"
                 ? "bg-emerald-300"
                 : tone === "orange"
@@ -485,16 +510,26 @@ function HeaderMetric({
           />
         </div>
       </div>
-      <div className="mt-4 min-w-0">
+      <div className={clsx("min-w-0", compact ? "mt-2.5" : "mt-4")}>
         <div
           className={clsx(
             "break-words font-semibold leading-tight text-white",
-            compactValue ? "text-[15px] md:text-base" : "text-[26px]",
+            compact
+              ? compactValue
+                ? "text-[13px] md:text-[14px]"
+                : "text-[18px]"
+              : compactValue
+                ? "text-[15px] md:text-base"
+                : "text-[26px]",
           )}
         >
           {value}
         </div>
-        {subtext ? <div className="mt-2 text-xs leading-5 text-white/58">{subtext}</div> : null}
+        {subtext ? (
+          <div className={clsx("text-white/58", compact ? "mt-1 text-[10px] leading-4" : "mt-2 text-xs leading-5")}>
+            {subtext}
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -616,6 +651,9 @@ export function DashboardShell({
   const capitalRefactorDiagnostics = snapshot?.capital_refactor_phase1_diagnostics ?? {};
   const capitalRefactorEvidenceReview = snapshot?.capital_refactor_phase1_evidence_review ?? {};
   const validationTruth = snapshot?.validation_truth ?? {};
+  const replayStatus = snapshot?.replay_status ?? {};
+  const replayCheckpoint = snapshot?.replay_checkpoint ?? {};
+  const validationWindow = snapshot?.validation_window ?? {};
   const artifactFreshness = snapshot?.artifact_freshness ?? {};
   const lastRuntimeEvent = snapshot?.last_runtime_event ?? {};
   const runtimeContext = portfolio.runtime_context ?? {};
@@ -800,15 +838,24 @@ export function DashboardShell({
   const gateArtifactBlockers = Array.isArray(validationTruth.gate_report_blockers) ? validationTruth.gate_report_blockers : [];
   const gateStatusBlockers = Array.isArray(validationTruth.gate_status_blockers) ? validationTruth.gate_status_blockers : [];
   const replayTimestamp = useMemo(() => getReplayTimestamp(snapshot, symbol), [snapshot, symbol]);
+  const replayClipTimestamp = useMemo(() => {
+    const checkpointTime = replayCheckpoint.next_candle_time ?? replayCheckpoint.updated_at;
+    return parseRunTimestamp(checkpointTime);
+  }, [replayCheckpoint.next_candle_time, replayCheckpoint.updated_at]);
+  const replayProgressPercent = Number(replayCheckpoint.progress_percent ?? 0);
+  const replayNextIndex = Number(replayCheckpoint.next_index ?? 0);
+  const replayEstimatedBars = Number(replayCheckpoint.estimated_total_bars ?? 0);
+  const replayStage = String(replayStatus.stage ?? "idle");
+  const replayWindowPolicy = String(validationWindow.window_policy ?? "n/a");
   const liveFeedTimestamp = useMemo(
     () => parseRunTimestamp(engineHeartbeat.latest_recent_1m_timestamp ?? snapshot?.run?.last_write_time),
     [engineHeartbeat.latest_recent_1m_timestamp, snapshot?.run?.last_write_time],
   );
-  const chartClipTimestamp = dashboardMode === "backtest" ? replayTimestamp : null;
+  const chartClipTimestamp = dashboardMode === "backtest" ? replayClipTimestamp : null;
   const connectionLabel =
     dashboardMode === "backtest"
       ? snapshot?.run?.run_id
-        ? `replay ${snapshot.run.run_id}`
+        ? `replay ${replayStage}`
         : "no run"
       : socketConnected
         ? "stream live"
@@ -1107,36 +1154,47 @@ export function DashboardShell({
   );
 
   const marketContent = (
-    <div className="grid gap-5 xl:grid-cols-[1.52fr_0.92fr]">
-      <SectionCard title="Market Panel" eyebrow="Price / trades / levels" className="min-h-[680px]">
+    <div className="grid gap-5">
+      <SectionCard title="Market Panel" eyebrow="Price / trades / levels" className="min-h-[760px]">
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-[0.24em] text-white/65">
             {dashboardMode === "backtest"
-              ? `Replay clipping through ${formatFlexibleTime(replayTimestamp)}`
+              ? `Replay clipping through ${formatFlexibleTime(replayClipTimestamp)}`
               : `Live feed through ${formatFlexibleTime(liveFeedTimestamp)}`}
           </div>
-          <select
-            className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white"
-            value={symbol}
-            onChange={(event) => setSymbol(event.target.value)}
-          >
-            {availableSymbols.map((item) => (
-              <option key={item} value={item} className="bg-slate-950">
-                {item}
-              </option>
-            ))}
-          </select>
-          <select
-            className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white"
-            value={timeframe}
-            onChange={(event) => setTimeframe(event.target.value)}
-          >
-            {["1m", "15m", "1h", "6h", "12h", "1D"].map((item) => (
-              <option key={item} value={item} className="bg-slate-950">
-                {item}
-              </option>
-            ))}
-          </select>
+          {dashboardMode === "backtest" ? (
+            <div className="rounded-2xl border border-amber-400/20 bg-amber-400/10 px-4 py-2 text-xs uppercase tracking-[0.24em] text-amber-200">
+              {replayStage} {replayProgressPercent.toFixed(1)}%
+            </div>
+          ) : null}
+          <label className="flex min-w-[170px] flex-col gap-1 rounded-2xl border border-cyan-400/18 bg-cyan-400/10 px-3 py-2">
+            <span className="text-[10px] uppercase tracking-[0.22em] text-cyan-200/80">Symbol</span>
+            <select
+              className="rounded-xl border border-white/12 bg-slate-950/90 px-3 py-2 text-sm font-medium text-white outline-none"
+              value={symbol}
+              onChange={(event) => setSymbol(event.target.value)}
+            >
+              {availableSymbols.map((item) => (
+                <option key={item} value={item} className="bg-slate-950 text-white">
+                  {item}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex min-w-[120px] flex-col gap-1 rounded-2xl border border-cyan-400/18 bg-cyan-400/10 px-3 py-2">
+            <span className="text-[10px] uppercase tracking-[0.22em] text-cyan-200/80">Timeframe</span>
+            <select
+              className="rounded-xl border border-white/12 bg-slate-950/90 px-3 py-2 text-sm font-medium text-white outline-none"
+              value={timeframe}
+              onChange={(event) => setTimeframe(event.target.value)}
+            >
+              {["1m", "15m", "1h", "6h", "12h", "1D"].map((item) => (
+                <option key={item} value={item} className="bg-slate-950 text-white">
+                  {item}
+                </option>
+              ))}
+            </select>
+          </label>
           <div className="rounded-2xl border border-cyan-400/20 bg-cyan-400/10 px-4 py-2 text-xs uppercase tracking-[0.24em] text-cyan-200">
             Pan / zoom / price levels / trade markers
           </div>
@@ -1154,7 +1212,7 @@ export function DashboardShell({
             </div>
             <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-[0.24em] text-white/60">
               {dashboardMode === "backtest"
-                ? `replay progress ${formatFlexibleTime(replayTimestamp)}`
+                ? `next candle ${formatFlexibleTime(replayClipTimestamp)}`
                 : `strategy checkpoint ${formatFlexibleTime(replayTimestamp)}`}
             </div>
           </div>
@@ -1164,12 +1222,12 @@ export function DashboardShell({
           timeframe={timeframe}
           apiUrl={API_URL}
           untilTime={chartClipTimestamp}
-          runId={snapshot?.run?.run_id ?? undefined}
+          runId={dashboardMode === "backtest" ? "latest" : snapshot?.run?.run_id ?? undefined}
           mode={dashboardMode}
         />
       </SectionCard>
 
-      <div className="grid gap-5">
+      <div className="grid gap-5 xl:grid-cols-[0.82fr_1.18fr]">
         <SectionCard title="Trade Tape" eyebrow="Latest exits">
           <div className="space-y-2">
             {topTradeRows.length ? (
@@ -2552,26 +2610,47 @@ export function DashboardShell({
     allocator: allocatorContent,
     runtime: runtimeContent,
   }[view];
+  const headerExpanded = view === "overview";
 
   return (
     <main className="min-h-screen bg-transparent text-white">
-      <header className="fixed inset-x-0 top-0 z-50 border-b border-white/8 bg-[#040914]/78 backdrop-blur-2xl">
-        <div className="mx-auto flex max-w-[1900px] flex-col gap-6 px-5 py-5 md:px-8 md:py-6 xl:px-10 xl:py-7">
-          <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)] xl:items-center">
-            <div className="relative hidden h-[244px] overflow-hidden rounded-[38px] bg-[linear-gradient(145deg,rgba(11,23,45,0.7),rgba(6,12,28,0.42)_30%,rgba(8,18,39,0.7))] shadow-[0_26px_70px_rgba(5,10,28,0.55)] xl:block">
+      <header className="sticky top-0 z-50 border-b border-white/8 bg-[#040914]/88 shadow-[0_16px_44px_rgba(4,8,22,0.42)] backdrop-blur-2xl">
+        <div
+          className={clsx(
+            "mx-auto flex max-w-[1900px] flex-col px-5 md:px-8 xl:px-10",
+            headerExpanded ? "gap-4 py-4 md:py-5 xl:py-5" : "gap-3 py-3 md:py-3.5 xl:py-3.5",
+          )}
+        >
+          <div
+            className={clsx(
+              "grid xl:items-center",
+              headerExpanded ? "gap-5 xl:grid-cols-[280px_minmax(0,1fr)]" : "gap-3 xl:grid-cols-[92px_minmax(0,1fr)]",
+            )}
+          >
+            <div
+              className={clsx(
+                "relative overflow-hidden bg-[linear-gradient(145deg,rgba(11,23,45,0.7),rgba(6,12,28,0.42)_30%,rgba(8,18,39,0.7))]",
+                headerExpanded
+                  ? "hidden h-[190px] rounded-[32px] shadow-[0_20px_56px_rgba(5,10,28,0.48)] xl:block"
+                  : "hidden h-[72px] rounded-[20px] shadow-[0_12px_28px_rgba(5,10,28,0.28)] xl:block",
+              )}
+            >
               <div className="absolute inset-0 flex items-center justify-center">
                 <Image
                   src="/logo-hero.png"
                   alt="Retail Trading System hero logo"
                   fill
-                  className="object-contain p-0 drop-shadow-[0_0_28px_rgba(83,242,255,0.16)] scale-[1.21]"
+                  className={clsx(
+                    "object-contain p-0 drop-shadow-[0_0_28px_rgba(83,242,255,0.16)]",
+                    headerExpanded ? "scale-[1.12]" : "scale-[0.92]",
+                  )}
                   priority
                 />
               </div>
             </div>
 
             <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
+              <div className={clsx("flex flex-wrap items-center", headerExpanded ? "gap-2" : "gap-1.5")}>
                 <span className="rounded-full border border-cyan-300/30 bg-cyan-400/14 px-3 py-1 text-[10px] uppercase tracking-[0.34em] text-cyan-100 shadow-[0_0_18px_rgba(83,242,255,0.12)]">
                   Retail Trading System
                 </span>
@@ -2582,10 +2661,15 @@ export function DashboardShell({
                   {viewMeta.eyebrow}
                 </span>
               </div>
-              <h1 className="mt-4 text-4xl font-semibold tracking-[0.01em] text-white md:text-[2.5rem]">
-                Command Deck
+              <h1
+                className={clsx(
+                  "font-semibold tracking-[0.01em] text-white",
+                  headerExpanded ? "mt-3 text-3xl md:text-[2.2rem]" : "mt-1.5 text-[1.7rem] md:text-[1.85rem]",
+                )}
+              >
+                {headerExpanded ? "Command Deck" : viewMeta.label}
               </h1>
-              <div className="mt-2 flex flex-wrap gap-2">
+              <div className={clsx("flex flex-wrap", headerExpanded ? "mt-2 gap-2" : "mt-1.5 gap-1.5")}>
                 {(["paper", "backtest", "live"] as DashboardMode[]).map((item) => {
                   const isActive = item === dashboardMode;
                   const meta = MODE_META[item];
@@ -2594,7 +2678,8 @@ export function DashboardShell({
                       key={item}
                       href={meta.routeBase}
                       className={clsx(
-                        "rounded-full border px-3 py-1 text-xs uppercase tracking-[0.18em] transition-all",
+                        "rounded-full border uppercase tracking-[0.18em] transition-all",
+                        headerExpanded ? "px-3 py-1 text-xs" : "px-2.5 py-1 text-[10px]",
                         isActive
                           ? "border-cyan-300/28 bg-cyan-400/14 text-cyan-100 shadow-[0_0_20px_rgba(83,242,255,0.12)]"
                           : "border-white/10 bg-white/5 text-white/60 hover:border-cyan-300/18 hover:text-white",
@@ -2607,7 +2692,7 @@ export function DashboardShell({
               </div>
               {dashboardMode === "backtest" ? (
                 <>
-                  <div className="mt-3 flex flex-wrap gap-2">
+                  <div className={clsx("flex flex-wrap", headerExpanded ? "mt-3 gap-2" : "mt-2 gap-1.5")}>
                     <span className="inline-block rounded-full border border-amber-400/20 bg-amber-400/8 px-3 py-1 text-xs uppercase tracking-[0.18em] text-amber-200">
                       BACKTEST MODE
                     </span>
@@ -2615,26 +2700,38 @@ export function DashboardShell({
                       {snapshot?.run?.run_id ? `run ${snapshot.run.run_id}` : "no run loaded"}
                     </span>
                     <span className="inline-block rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-[0.18em] text-white/65">
-                      {snapshot?.run?.path ? `path ${snapshot.run.path}` : "path unknown"}
-                    </span>
-                    <span className="inline-block rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-[0.18em] text-white/65">
                       replay {formatFlexibleTime(replayTimestamp)}
                     </span>
+                    <span className="inline-block rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-xs uppercase tracking-[0.18em] text-cyan-200">
+                      progress {replayProgressPercent.toFixed(1)}%
+                    </span>
+                    <span className="inline-block rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1 text-xs uppercase tracking-[0.18em] text-emerald-200">
+                      {replayWindowPolicy}
+                    </span>
                   </div>
-                  <div className="mt-4 rounded-3xl border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
-                    This is backtest replay state. The chart and markers show the latest loaded snapshot for the selected run, not the full historical data.
-                  </div>
+                  {headerExpanded ? (
+                    <div className="mt-3 rounded-3xl border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
+                      This is active replay state. The chart clips to the current checkpoint, while tape, KPI, and allocator panels read directly from the running Phase 2 artifact stream.
+                    </div>
+                  ) : null}
                 </>
               ) : dashboardMode === "live" ? (
-                <div className="mt-4 rounded-3xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">
-                  Live Operations is the runtime command surface. It stays wired to the active telemetry rail and is ready to front a future execution adapter without redesigning the cockpit.
-                </div>
+                headerExpanded ? (
+                  <div className="mt-3 rounded-3xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">
+                    Live Operations is the runtime command surface. It stays wired to the active telemetry rail and is ready to front a future execution adapter without redesigning the cockpit.
+                  </div>
+                ) : null
               ) : null}
-              <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-200/72 md:text-[15px]">
-                {modeMeta.summary}
+              <p
+                className={clsx(
+                  "max-w-3xl text-slate-200/72",
+                  headerExpanded ? "mt-3 text-sm leading-7 md:text-[15px]" : "mt-1.5 text-[12px] leading-5",
+                )}
+              >
+                {headerExpanded ? modeMeta.summary : `${modeMeta.shellLabel} / ${viewMeta.description}`}
               </p>
 
-              <div className="mt-5 flex flex-wrap gap-2">
+              <div className={clsx("flex flex-wrap", headerExpanded ? "mt-5 gap-2" : "mt-2 gap-1.5")}>
                 {viewTabs.map((tab) => {
                   const isActive = view === tab.key;
                   return (
@@ -2642,7 +2739,8 @@ export function DashboardShell({
                       key={tab.key}
                       href={tab.href}
                       className={clsx(
-                        "group flex items-center gap-2 rounded-2xl border px-4 py-2 text-sm transition-all",
+                        "group flex items-center rounded-2xl border transition-all",
+                        headerExpanded ? "gap-2 px-4 py-2 text-sm" : "gap-1.5 px-3 py-1.5 text-[12px]",
                         isActive
                           ? "border-cyan-300/36 bg-cyan-400/14 text-cyan-50 shadow-[0_0_24px_rgba(83,242,255,0.14)]"
                           : "border-slate-200/10 bg-slate-900/35 text-slate-200/72 hover:border-cyan-300/20 hover:bg-slate-800/45 hover:text-white",
@@ -2657,12 +2755,20 @@ export function DashboardShell({
             </div>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-8">
+          <div
+            className={clsx(
+              headerExpanded
+                ? "grid gap-2 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8"
+                : "flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+            )}
+          >
             <HeaderMetric
               label="Connection"
               value={connectionLabel}
               subtext={formatFlexibleTime(engineHeartbeat.latest_recent_1m_timestamp || snapshot?.run?.last_write_time)}
               tone={connectionTone}
+              compact={!headerExpanded}
+              className={!headerExpanded ? "min-w-[168px] shrink-0" : undefined}
               points={[
                 { value: socketConnected ? 1 : 0.2 },
                 { value: socketConnected ? 1 : 0.25 },
@@ -2675,21 +2781,37 @@ export function DashboardShell({
               value={String(engineHeartbeat.status ?? "waiting")}
               subtext={`cycle ${engineHeartbeat.cycle_count ?? 0}`}
               tone={String(engineHeartbeat.status ?? "").includes("routed") ? "green" : "cyan"}
+              compact={!headerExpanded}
+              className={!headerExpanded ? "min-w-[168px] shrink-0" : undefined}
               points={enginePulsePoints}
               pulse
             />
             <HeaderMetric
               label="Replay"
-              value={formatFlexibleTime(replayTimestamp)}
-              subtext={snapshot?.run?.run_id ? `run ${snapshot.run.run_id}` : "no run"}
+              value={dashboardMode === "backtest" ? `${replayProgressPercent.toFixed(1)}%` : formatFlexibleTime(replayTimestamp)}
+              subtext={
+                dashboardMode === "backtest"
+                  ? `${replayNextIndex}${replayEstimatedBars ? ` / ${replayEstimatedBars}` : ""} bars`
+                  : snapshot?.run?.run_id
+                    ? `run ${snapshot.run.run_id}`
+                    : "no run"
+              }
               tone="orange"
-              points={[{ value: 1 }, { value: 0.7 }, { value: 0.4 }]}
+              compact={!headerExpanded}
+              className={!headerExpanded ? "min-w-[168px] shrink-0" : undefined}
+              points={[
+                { value: Math.max(0, replayProgressPercent / 100) },
+                { value: Math.max(0, replayProgressPercent / 120) },
+                { value: Math.max(0, replayProgressPercent / 150) },
+              ]}
             />
             <HeaderMetric
               label="Equity"
               value={formatMoney(portfolio.equity)}
               subtext={`PnL ${formatMoney(livePnl)}`}
               tone={livePnl >= 0 ? "green" : "orange"}
+              compact={!headerExpanded}
+              className={!headerExpanded ? "min-w-[168px] shrink-0" : undefined}
               points={equityPoints.slice(-20)}
             />
             <HeaderMetric
@@ -2697,6 +2819,8 @@ export function DashboardShell({
               value={runtimeRow?.label ?? "n/a"}
               subtext={`PF ${number(runtimeRow?.profit_factor, 2)}`}
               tone="orange"
+              compact={!headerExpanded}
+              className={!headerExpanded ? "min-w-[168px] shrink-0" : undefined}
               points={runtimePoints}
               pulse={String(runtimeRow?.fallback_to_short_only).toLowerCase() !== "true"}
             />
@@ -2705,6 +2829,8 @@ export function DashboardShell({
               value={String(portfolio.open_positions ?? 0)}
               subtext={`entries ${portfolio.daily_entries_taken ?? 0}`}
               tone="cyan"
+              compact={!headerExpanded}
+              className={!headerExpanded ? "min-w-[168px] shrink-0" : undefined}
               points={pnlPoints.slice(-20)}
             />
             <HeaderMetric
@@ -2712,6 +2838,8 @@ export function DashboardShell({
               value={String(cumulativeCapPressure.shared_risk_cap_count ?? 0)}
               subtext={`recent ${recentCapPressure.shared_risk_cap_count ?? 0}`}
               tone="cyan"
+              compact={!headerExpanded}
+              className={!headerExpanded ? "min-w-[168px] shrink-0" : undefined}
               points={capPoints}
             />
             <HeaderMetric
@@ -2719,11 +2847,13 @@ export function DashboardShell({
               value={topSymbols.length ? topSymbols.join(" / ") : "idle"}
               subtext={snapshot?.run?.run_id ?? "no run"}
               tone="neutral"
+              compact={!headerExpanded}
+              className={!headerExpanded ? "min-w-[220px] shrink-0" : undefined}
               points={thresholdPoints.slice(-20)}
             />
           </div>
 
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <div className={clsx("flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between", headerExpanded ? "" : "hidden")}>
             <div className="flex items-center gap-3 rounded-2xl border border-slate-200/10 bg-slate-900/40 px-4 py-2 text-sm text-slate-200/78 shadow-[0_18px_40px_rgba(4,9,20,0.24)]">
               <Globe className="h-4 w-4 text-cyan-200" />
               <span>{viewMeta.description}</span>
@@ -2745,7 +2875,7 @@ export function DashboardShell({
         </div>
       </header>
 
-      <div className="px-5 pb-8 pt-[580px] md:px-8 md:pt-[620px] xl:px-10 xl:pt-[540px] 2xl:pt-[500px]">
+      <div className="px-5 pb-8 pt-5 md:px-8 md:pt-6 xl:px-10 xl:pt-6">
         <div className="data-grid mx-auto max-w-[1900px] rounded-[34px] border border-white/8 p-4 md:p-6">
           <AnimatePresence mode="wait">
             <motion.div

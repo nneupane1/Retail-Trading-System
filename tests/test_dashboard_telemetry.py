@@ -3,6 +3,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import pandas as pd
+
 from common.dashboard_telemetry import build_trade_markers, list_live_runs, load_live_dashboard_snapshot, load_symbol_candles
 
 
@@ -31,6 +33,14 @@ class DummyConfig:
             "history": {
                 "start_date": "2018-01-01",
                 "end_date": "2026-05-12",
+            },
+            "timeframes": {
+                "base": {"label": "1m", "rule": "1min"},
+                "execution": {"label": "15m", "rule": "15min"},
+                "direction": {"label": "1h", "rule": "1h"},
+                "trend": {"label": "6h", "rule": "6h"},
+                "macro": {"label": "12h", "rule": "12h"},
+                "resample": {"drop_incomplete": True, "closed": "left", "label": "right"},
             },
             "account": {"initial_equity": 20000, "risk_per_trade": 0.01},
             "strategy": {
@@ -492,6 +502,97 @@ class DashboardTelemetryTests(unittest.TestCase):
             )
             self.assertEqual(soak_before, (root / "paper_soak_status.json").read_text(encoding="utf-8"))
 
+    def test_load_live_dashboard_snapshot_backtest_mode_reads_replay_checkpoint(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            config = DummyConfig(tmpdir)
+            _write_gate_artifacts(root)
+
+            phase_root = root / "backtest" / "output" / "capital_refactor" / "phase2_capital_lane_experiment"
+            scenario_root = phase_root / "scenario_phase2_capital_lane_candidate_full_history"
+            checkpoint_root = phase_root / "_checkpoints"
+            scenario_root.mkdir(parents=True, exist_ok=True)
+            checkpoint_root.mkdir(parents=True, exist_ok=True)
+
+            (scenario_root / "portfolio_status.json").write_text(
+                json.dumps(
+                    {
+                        "equity": 25000,
+                        "initial_equity": 20000,
+                        "open_positions": 2,
+                        "strategy_stats": {"core": {"count": 10, "wins": 6, "total_R": 2.5, "total_pnl": 250}},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (scenario_root / "portfolio_runtime_state.json").write_text(
+                json.dumps({"selection_reason_counts": {"opened": 123, "shared_risk_cap": 9}}),
+                encoding="utf-8",
+            )
+            (scenario_root / "validation_window.json").write_text(
+                json.dumps(
+                    {
+                        "window_policy": "full_history_latest_closed_day_v1",
+                        "train_start": "2018-01-01",
+                        "train_end": "2026-06-13",
+                        "latest_data_timestamp": "2026-06-13T00:00:00+00:00",
+                        "universe_symbols": ["BTCUSDT", "ETHUSDT"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (scenario_root / "daily_summary.csv").write_text(
+                "date,equity_end,realized_pnl,threshold\n2020-01-01,21000,100,0.8\n",
+                encoding="utf-8",
+            )
+            (scenario_root / "trades.csv").write_text(
+                "trade_id,symbol,side,strategy_type,pnl,entry_time,exit_time,exit_reason\n"
+                "1,BTCUSDT,long,core,120,2020-01-01T00:00:00,2020-01-01T01:00:00,target\n",
+                encoding="utf-8",
+            )
+            (scenario_root / "signals.csv").write_text(
+                "timestamp,symbol,side,strategy_type,selection_score,selection_reason\n"
+                "2020-06-14T21:45:00,BTCUSDT,long,core,0.91,opened\n",
+                encoding="utf-8",
+            )
+            for name, content in (
+                ("selection_reason_summary.csv", "selection_reason,count,is_cap_pressure\nopened,12,false\n"),
+                ("recent_selection_reason_summary.csv", "selection_reason,count,is_cap_pressure\nshared_risk_cap,4,true\n"),
+                ("selection_reason_by_strategy_summary.csv", "strategy_type,selection_reason,count\ncore,opened,12\n"),
+                ("runtime_policy_summary.csv", "label,profit_factor,count,avg_R\nbaseline,1.2,10,0.1\n"),
+                ("allocator_decisions.csv", "timestamp,final_reason\n2020-06-14T21:45:00,opened\n"),
+            ):
+                (scenario_root / name).write_text(content, encoding="utf-8")
+
+            (phase_root / "status.json").write_text(
+                json.dumps({"stage": "running", "updated_at_utc": "2026-06-15T12:00:00+00:00"}),
+                encoding="utf-8",
+            )
+            (phase_root / "scenario_progress.json").write_text(
+                json.dumps({"completed_steps": ["baseline_full_history", "baseline_holdout"]}),
+                encoding="utf-8",
+            )
+            (checkpoint_root / "phase2.checkpoint.json").write_text(
+                json.dumps(
+                    {
+                        "updated_at": "2026-06-15T12:00:00+00:00",
+                        "next_index": 95250,
+                        "next_candle_time": "2020-09-24T14:45:00+00:00",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            payload = load_live_dashboard_snapshot(phase_root, config=config, mode="backtest")
+
+            self.assertEqual("scenario_phase2_capital_lane_candidate_full_history", payload["run"]["run_id"])
+            self.assertEqual("replay_running", payload["engine_heartbeat"]["status"])
+            self.assertEqual(95250, payload["replay_checkpoint"]["next_index"])
+            self.assertGreater(payload["replay_checkpoint"]["progress_percent"], 0.0)
+            self.assertEqual("full_history_latest_closed_day_v1", payload["validation_window"]["window_policy"])
+            self.assertIn("BTCUSDT", payload["available_symbols"])
+            self.assertTrue(any(row["symbol"] == "BTCUSDT" for row in payload["symbol_pipeline_rows"]))
+
     def test_load_live_dashboard_snapshot_reports_missing_artifacts_gracefully(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -610,6 +711,134 @@ class DashboardTelemetryTests(unittest.TestCase):
             self.assertEqual(str(runtime_path), payload["source_path"])
             self.assertEqual(2, len(payload["candles"]))
             self.assertEqual(3.0, payload["candles"][-1]["close"])
+
+    def test_load_symbol_candles_supports_15m_alias(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = DummyConfig(tmpdir)
+            folder = config.path("storage", "base_path") / "BTCUSDT" / "1m"
+            folder.mkdir(parents=True, exist_ok=True)
+            runtime_path = folder / "BTCUSDT_1m_live_runtime.csv"
+            runtime_path.write_text(
+                "timestamp,open,high,low,close,volume\n"
+                "2026-06-13 00:00:00,1,2,1,2,1\n"
+                "2026-06-13 00:01:00,2,3,2,3,1\n"
+                "2026-06-13 00:02:00,3,4,3,4,1\n"
+                "2026-06-13 00:03:00,4,5,4,5,1\n"
+                "2026-06-13 00:04:00,5,6,5,6,1\n"
+                "2026-06-13 00:05:00,6,7,6,7,1\n"
+                "2026-06-13 00:06:00,7,8,7,8,1\n"
+                "2026-06-13 00:07:00,8,9,8,9,1\n"
+                "2026-06-13 00:08:00,9,10,9,10,1\n"
+                "2026-06-13 00:09:00,10,11,10,11,1\n"
+                "2026-06-13 00:10:00,11,12,11,12,1\n"
+                "2026-06-13 00:11:00,12,13,12,13,1\n"
+                "2026-06-13 00:12:00,13,14,13,14,1\n"
+                "2026-06-13 00:13:00,14,15,14,15,1\n"
+                "2026-06-13 00:14:00,15,16,15,16,1\n",
+                encoding="utf-8",
+            )
+
+            payload = load_symbol_candles("BTCUSDT", timeframe="15m", limit=5, config=config)
+
+            self.assertEqual(str(runtime_path), payload["source_path"])
+            self.assertEqual(1, len(payload["candles"]))
+            self.assertEqual(16.0, payload["candles"][-1]["close"])
+
+    def test_load_symbol_candles_backtest_mode_uses_validation_window_source_path(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = DummyConfig(tmpdir)
+            base_folder = config.path("storage", "base_path") / "BTCUSDT" / "1m"
+            base_folder.mkdir(parents=True, exist_ok=True)
+            history_path = base_folder / "BTCUSDT_1m_2018-01-01_to_2026-06-13.csv"
+            history_path.write_text(
+                "timestamp,open,high,low,close,volume\n"
+                "2026-06-13 00:00:00,1,2,1,2,1\n"
+                "2026-06-13 00:01:00,2,3,2,3,1\n",
+                encoding="utf-8",
+            )
+
+            phase_root = Path(tmpdir) / "backtest" / "output" / "capital_refactor" / "phase2_capital_lane_experiment"
+            scenario_root = phase_root / "scenario_phase2_capital_lane_candidate_full_history"
+            scenario_root.mkdir(parents=True, exist_ok=True)
+            (scenario_root / "portfolio_status.json").write_text(json.dumps({"equity": 1}), encoding="utf-8")
+            (scenario_root / "trades.csv").write_text("trade_id,symbol\n", encoding="utf-8")
+            (scenario_root / "validation_window.json").write_text(
+                json.dumps(
+                    {
+                        "window_policy": "full_history_latest_closed_day_v1",
+                        "symbol_latest_timestamps": [
+                            {
+                                "symbol": "BTCUSDT",
+                                "source_path": str(history_path),
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            payload = load_symbol_candles(
+                "BTCUSDT",
+                timeframe="1m",
+                limit=5,
+                config=config,
+                run_dir=phase_root,
+                mode="backtest",
+            )
+
+            self.assertEqual(str(history_path), payload["source_path"])
+            self.assertEqual(2, len(payload["candles"]))
+
+    def test_load_symbol_candles_respects_until_time_cutoff(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = DummyConfig(tmpdir)
+            folder = config.path("storage", "base_path") / "BTCUSDT" / "1m"
+            folder.mkdir(parents=True, exist_ok=True)
+            runtime_path = folder / "BTCUSDT_1m_live_runtime.csv"
+            runtime_path.write_text(
+                "timestamp,open,high,low,close,volume\n"
+                "2026-06-13 00:00:00,1,2,1,2,1\n"
+                "2026-06-13 00:01:00,2,3,2,3,1\n"
+                "2026-06-13 00:02:00,3,4,3,4,1\n",
+                encoding="utf-8",
+            )
+
+            payload = load_symbol_candles(
+                "BTCUSDT",
+                timeframe="1m",
+                limit=10,
+                config=config,
+                until_time="2026-06-13T00:01:00+00:00",
+            )
+
+            self.assertEqual(2, len(payload["candles"]))
+            self.assertEqual("2026-06-13 00:01:00", payload["candles"][-1]["timestamp"])
+
+    def test_load_symbol_candles_respects_numeric_string_until_time_cutoff(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = DummyConfig(tmpdir)
+            folder = config.path("storage", "base_path") / "BTCUSDT" / "1m"
+            folder.mkdir(parents=True, exist_ok=True)
+            runtime_path = folder / "BTCUSDT_1m_live_runtime.csv"
+            runtime_path.write_text(
+                "timestamp,open,high,low,close,volume\n"
+                "2026-06-13 00:00:00,1,2,1,2,1\n"
+                "2026-06-13 00:01:00,2,3,2,3,1\n"
+                "2026-06-13 00:02:00,3,4,3,4,1\n",
+                encoding="utf-8",
+            )
+
+            cutoff = int(pd.Timestamp("2026-06-13 00:01:00", tz="UTC").timestamp())
+            payload = load_symbol_candles(
+                "BTCUSDT",
+                timeframe="1m",
+                limit=10,
+                config=config,
+                until_time=str(cutoff),
+            )
+
+            self.assertEqual(2, len(payload["candles"]))
+            self.assertEqual("2026-06-13 00:01:00", payload["candles"][-1]["timestamp"])
 
 
 if __name__ == "__main__":
