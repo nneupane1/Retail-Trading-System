@@ -32,6 +32,7 @@ The codebase now has two equally important surfaces:
 - [System Roles At A Glance](#system-roles-at-a-glance)
 - [Validation Ladder](#validation-ladder)
 - [Promotion Status](#promotion-status)
+- [Future Market-Structure Refactor Scaffold](#future-market-structure-refactor-scaffold)
 - [Command Center Modes](#command-center-modes)
 - [Cockpit Surface Map](#cockpit-surface-map)
 - [Repository Map](#repository-map)
@@ -146,6 +147,43 @@ promotion phase. The system is expected to keep collecting forward-paper
 evidence while preserving restart cleanliness, operator truth, and policy
 discipline.
 
+## Future Market-Structure Refactor Scaffold
+
+The repository now also carries a dormant scaffold for a possible future
+support/resistance and liquidity-driven research path. This is not a live
+strategy layer and it is not part of the active Phase 2 capital-lane replay.
+
+The scaffold is intended to support future visualization and diagnostics around:
+
+- support and resistance levels and zones
+- range highs, range lows, and midpoints
+- swing highs and swing lows
+- equal highs, equal lows, and liquidity pools
+- liquidity sweeps, failed breakouts, failed breakdowns, and retest zones
+- higher-timeframe structure context that could later be inspected alongside the
+  existing signal stack
+
+Current boundaries are strict:
+
+- it is disabled by default
+- it is display-only and research-only
+- it does not influence trades
+- it does not change allocator, risk, sizing, entry, exit, or threshold logic
+- it does not change real-money permissions
+- it is isolated from the current Phase 2 capital-lane backtest
+
+The dormant defaults live in:
+
+`config/market_structure_scaffold.json`
+
+and the passive inventory artifact is written to:
+
+`backtest/output/market_structure/scaffold_inventory.json`
+
+Any future attempt to make market-structure context authoritative must go
+through its own backtest, holdout, Monte Carlo, and paper-soak validation
+before it is allowed anywhere near promotion.
+
 ### Capital Refactor Status
 
 The capital refactor is still deliberately non-invasive. Phase 0 remains the
@@ -255,6 +293,7 @@ layer are actually writing.
 | `exit/` | Hard-exit logic |
 | `features/` | Feature pipeline, candle metrics, indicators |
 | `live_sim/` | Live-paper runner, cycle loop, logging, portfolio state writes |
+| `market_structure/` | Dormant support/resistance and liquidity scaffold for future visualization/research |
 | `position/` | Risk-based sizing |
 | `pyramiding/` | Add-to-winner and convexity controls |
 | `regime/` | Higher-timeframe regime evaluation |

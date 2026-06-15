@@ -1,0 +1,19 @@
+{
+  "market_structure_refactor": {
+    "enabled": false,
+    "support_resistance": {
+      "enabled": false,
+      "display_only": true
+    },
+    "liquidity_zones": {
+      "enabled": false,
+      "display_only": true
+    },
+    "market_structure_context": {
+      "enabled": false,
+      "display_only": true
+    },
+    "strategy_authority_allowed": false,
+    "behavior_change_allowed": false
+  }
+}

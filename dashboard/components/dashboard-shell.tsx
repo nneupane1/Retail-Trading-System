@@ -35,6 +35,7 @@ type Snapshot = {
   paper_soak_daily_report?: Record<string, any>;
   paper_soak_review?: Record<string, any>;
   baseline_freeze_snapshot?: Record<string, any>;
+  market_structure_scaffold_inventory?: Record<string, any>;
   capital_refactor_scaffold_inventory?: Record<string, any>;
   capital_refactor_phase1_diagnostics?: Record<string, any>;
   capital_refactor_phase1_evidence_review?: Record<string, any>;
@@ -647,6 +648,7 @@ export function DashboardShell({
   const dailySoakReport = snapshot?.paper_soak_daily_report ?? {};
   const soakReview = snapshot?.paper_soak_review ?? {};
   const baselineFreezeSnapshot = snapshot?.baseline_freeze_snapshot ?? {};
+  const marketStructureScaffold = snapshot?.market_structure_scaffold_inventory ?? {};
   const capitalRefactorScaffold = snapshot?.capital_refactor_scaffold_inventory ?? {};
   const capitalRefactorDiagnostics = snapshot?.capital_refactor_phase1_diagnostics ?? {};
   const capitalRefactorEvidenceReview = snapshot?.capital_refactor_phase1_evidence_review ?? {};
@@ -779,6 +781,7 @@ export function DashboardShell({
   );
   const currentMode = String(runtimeContext.mode ?? readiness.requested_mode ?? "unknown");
   const baselineManualReview = baselineFreezeSnapshot.manual_review ?? {};
+  const marketStructureModulesPresent = Object.values(marketStructureScaffold.modules_present ?? {}).filter(Boolean).length;
   const capitalRefactorLayerStatuses = capitalRefactorScaffold.layer_statuses ?? {};
   const capitalRefactorLayers = useMemo<Row[]>(
     () =>
@@ -2163,6 +2166,60 @@ export function DashboardShell({
                 No capital scaffold inventory artifact has been published yet.
               </div>
             )}
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Future Market Structure Scaffold" eyebrow="Support/resistance and liquidity research only, fully disabled" accent="green">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <StatPill
+              label="Enabled"
+              value={String(marketStructureScaffold.enabled ?? false)}
+              tone={truthy(marketStructureScaffold.enabled) ? "warning" : "good"}
+            />
+            <StatPill
+              label="Display only"
+              value={String(marketStructureScaffold.display_only ?? false)}
+              tone={truthy(marketStructureScaffold.display_only) ? "good" : "warning"}
+            />
+            <StatPill
+              label="Behavior change allowed"
+              value={String(marketStructureScaffold.behavior_change_allowed ?? false)}
+              tone={truthy(marketStructureScaffold.behavior_change_allowed) ? "warning" : "good"}
+            />
+            <StatPill
+              label="Future research only"
+              value={String(marketStructureScaffold.future_research_only ?? false)}
+              tone={truthy(marketStructureScaffold.future_research_only) ? "good" : "warning"}
+            />
+            <StatPill
+              label="Real-money allowed"
+              value={String(marketStructureScaffold.real_money_allowed ?? false)}
+              tone={truthy(marketStructureScaffold.real_money_allowed) ? "warning" : "good"}
+            />
+            <StatPill
+              label="Modules present"
+              value={String(marketStructureModulesPresent)}
+              tone={marketStructureModulesPresent ? "good" : "warning"}
+            />
+            <StatPill label="Scaffold" value={String(marketStructureScaffold.scaffold ?? "missing")} />
+            <StatPill label="Generated at" value={formatFlexibleTime(marketStructureScaffold.generated_at_utc)} />
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">Warning</div>
+              <div className="mt-2 text-sm text-white/75">
+                {String(marketStructureScaffold.warning ?? "no market structure scaffold artifact published")}
+              </div>
+              <div className="mt-2 break-all text-xs text-white/45">
+                {String(marketStructureScaffold.config_path ?? "no config path")}
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">Scope</div>
+              <div className="mt-2 text-sm text-white/75">
+                Support/resistance zones, liquidity pools, sweeps, failed breaks, retests, and HTF context remain visualization and diagnostics scaffolding only.
+              </div>
+            </div>
           </div>
         </SectionCard>
 

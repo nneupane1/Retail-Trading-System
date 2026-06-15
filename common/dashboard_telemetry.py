@@ -15,6 +15,7 @@ from config import AppConfig
 from data.downloader import load_from_csv
 from data.resampler import TimeframeBuilder
 from common.runtime_readiness import build_runtime_readiness
+from market_structure import scaffold_inventory_path as market_structure_scaffold_inventory_path
 
 
 ROOT_PATH = Path(__file__).resolve().parents[1]
@@ -700,6 +701,7 @@ def _empty_snapshot_payload(readiness: dict[str, Any], artifact_freshness: dict[
         "paper_soak_daily_report": {},
         "paper_soak_review": {},
         "baseline_freeze_snapshot": {},
+        "market_structure_scaffold_inventory": {},
         "capital_refactor_scaffold_inventory": {},
         "capital_refactor_phase1_diagnostics": {},
         "capital_refactor_phase1_evidence_review": {},
@@ -802,6 +804,10 @@ def _load_backtest_dashboard_snapshot(
         "paper_soak_daily_report": {},
         "paper_soak_review": {},
         "baseline_freeze_snapshot": {},
+        "market_structure_scaffold_inventory": _read_json(
+            market_structure_scaffold_inventory_path(config.root_dir),
+            {},
+        ),
         "capital_refactor_scaffold_inventory": {},
         "capital_refactor_phase1_diagnostics": {},
         "capital_refactor_phase1_evidence_review": {},
@@ -891,6 +897,10 @@ def _build_artifact_freshness(
     phase1_review_paths = review_report_paths(config)
     artifacts = {
         "baseline_freeze_snapshot": _artifact_status(root / "baseline_freeze_snapshot.json", stale_after_seconds=24 * 3600.0),
+        "market_structure_scaffold_inventory": _artifact_status(
+            market_structure_scaffold_inventory_path(config.root_dir),
+            stale_after_seconds=7 * 24 * 3600.0,
+        ),
         "capital_refactor_phase1_diagnostics_summary": _artifact_status(
             phase1_paths["diagnostics_summary"],
             stale_after_seconds=7 * 24 * 3600.0,
@@ -1035,6 +1045,10 @@ def load_live_dashboard_snapshot(
     paper_soak_daily_report = _read_json(root / "paper_soak_daily_report.json", {})
     paper_soak_review = _read_json(root / "paper_soak_review.json", {})
     baseline_freeze_snapshot = _read_json(root / "baseline_freeze_snapshot.json", {})
+    market_structure_scaffold_inventory = _read_json(
+        market_structure_scaffold_inventory_path(config.root_dir),
+        {},
+    )
     capital_refactor_scaffold_inventory = _read_json(root / "capital_refactor" / "scaffold_inventory.json", {})
     capital_refactor_phase1_diagnostics = _read_json(
         diagnostics_report_paths(config)["diagnostics_summary"],
@@ -1089,6 +1103,7 @@ def load_live_dashboard_snapshot(
         "paper_soak_daily_report": paper_soak_daily_report,
         "paper_soak_review": paper_soak_review,
         "baseline_freeze_snapshot": baseline_freeze_snapshot,
+        "market_structure_scaffold_inventory": market_structure_scaffold_inventory,
         "capital_refactor_scaffold_inventory": capital_refactor_scaffold_inventory,
         "capital_refactor_phase1_diagnostics": capital_refactor_phase1_diagnostics,
         "capital_refactor_phase1_evidence_review": capital_refactor_phase1_evidence_review,
