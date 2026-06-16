@@ -1,0 +1,310 @@
+{
+  "stage_name": "Structural Compounding Lab Participation Routing 001",
+  "resolved_at_utc": "2026-06-16T17:43:27.348288+00:00",
+  "research_only": true,
+  "real_money_allowed": false,
+  "classification": "continue_research",
+  "allowed_classifications": [
+    "reject",
+    "continue_research",
+    "needs_routing_refinement",
+    "eligible_for_second_fast_review"
+  ],
+  "full_history_started": false,
+  "stress_windows_started": false,
+  "monte_carlo_started": false,
+  "live_behavior_changed": false,
+  "paper_behavior_changed": false,
+  "strategy_behavior_changed": false,
+  "allocator_behavior_changed": false,
+  "risk_behavior_changed": false,
+  "sizing_behavior_changed": false,
+  "entry_behavior_changed": false,
+  "exit_behavior_changed": false,
+  "config_settings_changed": false,
+  "macd_bollinger_hard_gates_enabled": false,
+  "pullback_buying_runtime_enabled": false,
+  "participation_mode_distribution": {
+    "total_candidates": 1057,
+    "counts": {
+      "PROBE_CANDIDATE": 458,
+      "REJECT_INVALID": 543,
+      "WAIT_FOR_CONFIRMATION": 11,
+      "NO_ADD_ON_MANAGEMENT": 11,
+      "FULL_SIZE_CANDIDATE": 8,
+      "REDUCED_SIZE_CANDIDATE": 3,
+      "DE_RISK_FAST_MANAGEMENT": 23
+    },
+    "rates": {
+      "FULL_SIZE_CANDIDATE": 0.007568590350047304,
+      "REDUCED_SIZE_CANDIDATE": 0.002838221381267739,
+      "PROBE_CANDIDATE": 0.43330179754020814,
+      "WAIT_FOR_CONFIRMATION": 0.010406811731315043,
+      "NO_ADD_ON_MANAGEMENT": 0.010406811731315043,
+      "DE_RISK_FAST_MANAGEMENT": 0.021759697256385997,
+      "REJECT_INVALID": 0.5137180700094608
+    }
+  },
+  "archetype_to_participation_report": {
+    "HEALTHY_CONTINUATION_PULLBACK": {
+      "candidate_count": 86,
+      "mode_counts": {
+        "PROBE_CANDIDATE": 53,
+        "REDUCED_SIZE_CANDIDATE": 3,
+        "REJECT_INVALID": 24,
+        "NO_ADD_ON_MANAGEMENT": 2,
+        "WAIT_FOR_CONFIRMATION": 2,
+        "DE_RISK_FAST_MANAGEMENT": 2
+      },
+      "full_size_rate": 0.0,
+      "reduced_rate": 0.03488372093023256,
+      "probe_rate": 0.6162790697674418,
+      "wait_rate": 0.023255813953488372,
+      "de_risk_rate": 0.023255813953488372,
+      "reject_rate": 0.27906976744186046
+    },
+    "LIQUIDITY_SWEEP_RECLAIM": {
+      "candidate_count": 288,
+      "mode_counts": {
+        "REJECT_INVALID": 77,
+        "PROBE_CANDIDATE": 171,
+        "WAIT_FOR_CONFIRMATION": 9,
+        "NO_ADD_ON_MANAGEMENT": 9,
+        "FULL_SIZE_CANDIDATE": 4,
+        "DE_RISK_FAST_MANAGEMENT": 18
+      },
+      "full_size_rate": 0.013888888888888888,
+      "reduced_rate": 0.0,
+      "probe_rate": 0.59375,
+      "wait_rate": 0.03125,
+      "de_risk_rate": 0.0625,
+      "reject_rate": 0.2673611111111111
+    },
+    "BREAKOUT_RETEST_PULLBACK": {
+      "candidate_count": 39,
+      "mode_counts": {
+        "PROBE_CANDIDATE": 28,
+        "REJECT_INVALID": 11
+      },
+      "full_size_rate": 0.0,
+      "reduced_rate": 0.0,
+      "probe_rate": 0.717948717948718,
+      "wait_rate": 0.0,
+      "de_risk_rate": 0.0,
+      "reject_rate": 0.28205128205128205
+    },
+    "EMA_VWAP_RECLAIM_PULLBACK": {
+      "candidate_count": 209,
+      "mode_counts": {
+        "PROBE_CANDIDATE": 131,
+        "REJECT_INVALID": 73,
+        "FULL_SIZE_CANDIDATE": 2,
+        "DE_RISK_FAST_MANAGEMENT": 3
+      },
+      "full_size_rate": 0.009569377990430622,
+      "reduced_rate": 0.0,
+      "probe_rate": 0.6267942583732058,
+      "wait_rate": 0.0,
+      "de_risk_rate": 0.014354066985645933,
+      "reject_rate": 0.3492822966507177
+    },
+    "STRUCTURE_BREAK_DIP": {
+      "candidate_count": 296,
+      "mode_counts": {
+        "REJECT_INVALID": 296
+      },
+      "full_size_rate": 0.0,
+      "reduced_rate": 0.0,
+      "probe_rate": 0.0,
+      "wait_rate": 0.0,
+      "de_risk_rate": 0.0,
+      "reject_rate": 1.0
+    },
+    "INSIDE_BAR_CONTINUATION": {
+      "candidate_count": 40,
+      "mode_counts": {
+        "PROBE_CANDIDATE": 14,
+        "REJECT_INVALID": 26
+      },
+      "full_size_rate": 0.0,
+      "reduced_rate": 0.0,
+      "probe_rate": 0.35,
+      "wait_rate": 0.0,
+      "de_risk_rate": 0.0,
+      "reject_rate": 0.65
+    },
+    "MICRO_PULLBACK_MOMENTUM": {
+      "candidate_count": 96,
+      "mode_counts": {
+        "REJECT_INVALID": 34,
+        "PROBE_CANDIDATE": 60,
+        "FULL_SIZE_CANDIDATE": 2
+      },
+      "full_size_rate": 0.020833333333333332,
+      "reduced_rate": 0.0,
+      "probe_rate": 0.625,
+      "wait_rate": 0.0,
+      "de_risk_rate": 0.0,
+      "reject_rate": 0.3541666666666667
+    },
+    "FAILED_BREAKDOWN_REVERSAL": {
+      "candidate_count": 3,
+      "mode_counts": {
+        "REJECT_INVALID": 2,
+        "PROBE_CANDIDATE": 1
+      },
+      "full_size_rate": 0.0,
+      "reduced_rate": 0.0,
+      "probe_rate": 0.3333333333333333,
+      "wait_rate": 0.0,
+      "de_risk_rate": 0.0,
+      "reject_rate": 0.6666666666666666
+    }
+  },
+  "personality_to_participation_report": {
+    "CHOPPY_LOW_TRUST": {
+      "candidate_count": 477,
+      "mode_counts": {
+        "PROBE_CANDIDATE": 193,
+        "REJECT_INVALID": 267,
+        "NO_ADD_ON_MANAGEMENT": 11,
+        "REDUCED_SIZE_CANDIDATE": 3,
+        "WAIT_FOR_CONFIRMATION": 3
+      },
+      "de_risk_rate": 0.0,
+      "full_size_rate": 0.0,
+      "reduced_or_probe_rate": 0.4109014675052411
+    },
+    "EXHAUSTION_RISK": {
+      "candidate_count": 107,
+      "mode_counts": {
+        "WAIT_FOR_CONFIRMATION": 8,
+        "REJECT_INVALID": 63,
+        "DE_RISK_FAST_MANAGEMENT": 23,
+        "PROBE_CANDIDATE": 13
+      },
+      "de_risk_rate": 0.21495327102803738,
+      "full_size_rate": 0.0,
+      "reduced_or_probe_rate": 0.12149532710280374
+    },
+    "STRUCTURAL_RUNNER": {
+      "candidate_count": 39,
+      "mode_counts": {
+        "PROBE_CANDIDATE": 28,
+        "REJECT_INVALID": 11
+      },
+      "de_risk_rate": 0.0,
+      "full_size_rate": 0.0,
+      "reduced_or_probe_rate": 0.717948717948718
+    },
+    "PULLBACK_CONTINUATION": {
+      "candidate_count": 319,
+      "mode_counts": {
+        "PROBE_CANDIDATE": 174,
+        "FULL_SIZE_CANDIDATE": 8,
+        "REJECT_INVALID": 137
+      },
+      "de_risk_rate": 0.0,
+      "full_size_rate": 0.025078369905956112,
+      "reduced_or_probe_rate": 0.5454545454545454
+    },
+    "COMPRESSION_BREAKOUT": {
+      "candidate_count": 55,
+      "mode_counts": {
+        "REJECT_INVALID": 38,
+        "PROBE_CANDIDATE": 17
+      },
+      "de_risk_rate": 0.0,
+      "full_size_rate": 0.0,
+      "reduced_or_probe_rate": 0.3090909090909091
+    },
+    "MOMENTUM_BURST": {
+      "candidate_count": 60,
+      "mode_counts": {
+        "PROBE_CANDIDATE": 33,
+        "REJECT_INVALID": 27
+      },
+      "de_risk_rate": 0.0,
+      "full_size_rate": 0.0,
+      "reduced_or_probe_rate": 0.55
+    }
+  },
+  "probe_candidate_report": {
+    "candidate_count": 458,
+    "archetype_distribution": {
+      "HEALTHY_CONTINUATION_PULLBACK": 53,
+      "LIQUIDITY_SWEEP_RECLAIM": 171,
+      "BREAKOUT_RETEST_PULLBACK": 28,
+      "EMA_VWAP_RECLAIM_PULLBACK": 131,
+      "INSIDE_BAR_CONTINUATION": 14,
+      "MICRO_PULLBACK_MOMENTUM": 60,
+      "FAILED_BREAKDOWN_REVERSAL": 1
+    },
+    "personality_distribution": {
+      "CHOPPY_LOW_TRUST": 193,
+      "STRUCTURAL_RUNNER": 28,
+      "PULLBACK_CONTINUATION": 174,
+      "MOMENTUM_BURST": 33,
+      "COMPRESSION_BREAKOUT": 17,
+      "EXHAUSTION_RISK": 13
+    },
+    "missed_winner_risk_count": 43,
+    "median_participation_score": 28.0
+  },
+  "de_risk_candidate_report": {
+    "candidate_count": 23,
+    "exhaustion_warning_rate": 1.0,
+    "archetype_distribution": {
+      "LIQUIDITY_SWEEP_RECLAIM": 18,
+      "EMA_VWAP_RECLAIM_PULLBACK": 3,
+      "HEALTHY_CONTINUATION_PULLBACK": 2
+    },
+    "personality_distribution": {
+      "EXHAUSTION_RISK": 23
+    }
+  },
+  "reject_invalid_report": {
+    "candidate_count": 543,
+    "archetype_distribution": {
+      "LIQUIDITY_SWEEP_RECLAIM": 77,
+      "STRUCTURE_BREAK_DIP": 296,
+      "EMA_VWAP_RECLAIM_PULLBACK": 73,
+      "HEALTHY_CONTINUATION_PULLBACK": 24,
+      "MICRO_PULLBACK_MOMENTUM": 34,
+      "INSIDE_BAR_CONTINUATION": 26,
+      "FAILED_BREAKDOWN_REVERSAL": 2,
+      "BREAKOUT_RETEST_PULLBACK": 11
+    },
+    "reject_reason_distribution": {
+      "invalid_structure_or_impossible_geometry": 543
+    },
+    "missed_winner_risk_rate": 0.2265193370165746
+  },
+  "missed_winner_participation_estimate": {
+    "missed_winner_flagged_count": 178,
+    "recovered_participation_count": 53,
+    "recovered_participation_rate": 0.29775280898876405,
+    "recovered_mode_distribution": {
+      "PROBE_CANDIDATE": 43,
+      "REDUCED_SIZE_CANDIDATE": 3,
+      "DE_RISK_FAST_MANAGEMENT": 7
+    },
+    "recovered_archetype_distribution": {
+      "BREAKOUT_RETEST_PULLBACK": 4,
+      "HEALTHY_CONTINUATION_PULLBACK": 10,
+      "LIQUIDITY_SWEEP_RECLAIM": 33,
+      "EMA_VWAP_RECLAIM_PULLBACK": 5,
+      "FAILED_BREAKDOWN_REVERSAL": 1
+    }
+  },
+  "soft_evidence_only": {
+    "macd_bollinger": true
+  },
+  "allowed_input_roots": [
+    "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\evidence_review_001",
+    "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\evidence_refinement_001",
+    "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\detector_tightening_001",
+    "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\detector_tightening_002",
+    "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\pullback_archetype_redesign_001"
+  ]
+}

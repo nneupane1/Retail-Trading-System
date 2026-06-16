@@ -1,0 +1,12 @@
+{
+  "state": "complete",
+  "resolved_at_utc": "2026-06-16T15:51:48.134446+00:00",
+  "classification": "continue_research",
+  "research_only": true,
+  "real_money_allowed": false,
+  "artifacts": {
+    "summary": "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\pullback_archetype_redesign_001\\archetype_redesign_summary.json",
+    "report": "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\pullback_archetype_redesign_001\\archetype_redesign_report.md",
+    "candidates_csv": "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\pullback_archetype_redesign_001\\diagnostics\\archetype_candidates.csv"
+  }
+}

@@ -1,0 +1,162 @@
+{
+  "development": {
+    "MICRO_PULLBACK_MOMENTUM": {
+      "stop_atr_too_small": 11,
+      "stop_cost_multiple_too_small": 25,
+      "tiny_stop_flag": 24,
+      "unrealistic_stop_flag": 25,
+      "cost_dominated_flag": 26,
+      "noise_stop_flag": 23,
+      "stop_cost_multiple_thin": 1
+    },
+    "BREAKOUT_RETEST_PULLBACK": {
+      "stop_cost_multiple_thin": 3,
+      "cost_dominated_flag": 10,
+      "stop_cost_multiple_too_small": 7,
+      "tiny_stop_flag": 7,
+      "unrealistic_stop_flag": 7,
+      "noise_stop_flag": 7,
+      "stop_atr_too_small": 3
+    },
+    "EMA_VWAP_RECLAIM_PULLBACK": {
+      "stop_cost_multiple_thin": 8,
+      "cost_dominated_flag": 71,
+      "noise_stop_flag": 59,
+      "stop_atr_too_small": 28,
+      "stop_cost_multiple_too_small": 61,
+      "tiny_stop_flag": 46,
+      "unrealistic_stop_flag": 61,
+      "fails_normal_cost": 14
+    },
+    "HEALTHY_CONTINUATION_PULLBACK": {
+      "stop_cost_multiple_too_small": 23,
+      "tiny_stop_flag": 21,
+      "unrealistic_stop_flag": 23,
+      "cost_dominated_flag": 28,
+      "noise_stop_flag": 24,
+      "stop_atr_too_small": 12,
+      "stop_cost_multiple_thin": 1,
+      "fails_normal_cost": 3
+    },
+    "LIQUIDITY_SWEEP_RECLAIM": {
+      "stop_atr_too_small": 38,
+      "stop_cost_multiple_too_small": 76,
+      "tiny_stop_flag": 59,
+      "unrealistic_stop_flag": 76,
+      "cost_dominated_flag": 90,
+      "noise_stop_flag": 76,
+      "fails_normal_cost": 22,
+      "stop_cost_multiple_thin": 5
+    },
+    "INSIDE_BAR_CONTINUATION": {
+      "stop_cost_multiple_too_small": 17,
+      "tiny_stop_flag": 13,
+      "unrealistic_stop_flag": 17,
+      "cost_dominated_flag": 17,
+      "noise_stop_flag": 15,
+      "stop_atr_too_small": 8,
+      "fails_normal_cost": 1
+    },
+    "FAILED_BREAKDOWN_REVERSAL": {
+      "stop_atr_too_small": 1,
+      "stop_cost_multiple_too_small": 1,
+      "tiny_stop_flag": 1,
+      "unrealistic_stop_flag": 1,
+      "cost_dominated_flag": 1,
+      "noise_stop_flag": 1,
+      "failed_breakdown_too_deep": 1
+    },
+    "STRUCTURE_BREAK_DIP": {
+      "stop_atr_too_small": 39,
+      "stop_cost_multiple_too_small": 82,
+      "tiny_stop_flag": 68,
+      "unrealistic_stop_flag": 82,
+      "cost_dominated_flag": 92,
+      "noise_stop_flag": 80,
+      "structure_or_context_failed": 99,
+      "fails_normal_cost": 42,
+      "stop_cost_multiple_thin": 5
+    }
+  },
+  "holdout_recent_preview": {
+    "MICRO_PULLBACK_MOMENTUM": {
+      "stop_cost_multiple_too_small": 65,
+      "unrealistic_stop_flag": 65,
+      "cost_dominated_flag": 68,
+      "stop_atr_too_small": 34,
+      "tiny_stop_flag": 59,
+      "noise_stop_flag": 61,
+      "stop_cost_multiple_thin": 3,
+      "fails_normal_cost": 2
+    },
+    "BREAKOUT_RETEST_PULLBACK": {
+      "stop_cost_multiple_thin": 3,
+      "cost_dominated_flag": 29,
+      "stop_cost_multiple_too_small": 25,
+      "unrealistic_stop_flag": 25,
+      "stop_atr_too_small": 18,
+      "tiny_stop_flag": 22,
+      "noise_stop_flag": 22,
+      "fails_normal_cost": 1
+    },
+    "EMA_VWAP_RECLAIM_PULLBACK": {
+      "fails_normal_cost": 25,
+      "stop_cost_multiple_too_small": 123,
+      "unrealistic_stop_flag": 123,
+      "cost_dominated_flag": 136,
+      "noise_stop_flag": 109,
+      "stop_atr_too_small": 56,
+      "tiny_stop_flag": 86,
+      "stop_cost_multiple_thin": 9
+    },
+    "HEALTHY_CONTINUATION_PULLBACK": {
+      "stop_atr_too_small": 20,
+      "stop_cost_multiple_too_small": 43,
+      "tiny_stop_flag": 36,
+      "unrealistic_stop_flag": 43,
+      "cost_dominated_flag": 51,
+      "noise_stop_flag": 42,
+      "fails_normal_cost": 8,
+      "stop_cost_multiple_thin": 2
+    },
+    "LIQUIDITY_SWEEP_RECLAIM": {
+      "stop_atr_too_small": 78,
+      "stop_cost_multiple_too_small": 146,
+      "tiny_stop_flag": 120,
+      "unrealistic_stop_flag": 146,
+      "cost_dominated_flag": 176,
+      "noise_stop_flag": 147,
+      "fails_normal_cost": 35,
+      "stop_cost_multiple_thin": 13
+    },
+    "INSIDE_BAR_CONTINUATION": {
+      "stop_atr_too_small": 12,
+      "stop_cost_multiple_too_small": 23,
+      "tiny_stop_flag": 18,
+      "unrealistic_stop_flag": 23,
+      "cost_dominated_flag": 23,
+      "noise_stop_flag": 20,
+      "fails_normal_cost": 2
+    },
+    "FAILED_BREAKDOWN_REVERSAL": {
+      "stop_cost_multiple_too_small": 2,
+      "tiny_stop_flag": 2,
+      "unrealistic_stop_flag": 2,
+      "cost_dominated_flag": 2,
+      "noise_stop_flag": 2,
+      "failed_breakdown_too_deep": 2,
+      "stop_atr_too_small": 1
+    },
+    "STRUCTURE_BREAK_DIP": {
+      "fails_normal_cost": 86,
+      "stop_atr_too_small": 85,
+      "stop_cost_multiple_too_small": 171,
+      "tiny_stop_flag": 136,
+      "unrealistic_stop_flag": 171,
+      "cost_dominated_flag": 190,
+      "noise_stop_flag": 164,
+      "structure_or_context_failed": 197,
+      "stop_cost_multiple_thin": 12
+    }
+  }
+}

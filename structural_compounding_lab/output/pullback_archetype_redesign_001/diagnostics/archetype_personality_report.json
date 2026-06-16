@@ -1,0 +1,143 @@
+{
+  "development": {
+    "MICRO_PULLBACK_MOMENTUM": {
+      "best_personality_labels": [
+        "PULLBACK_CONTINUATION"
+      ],
+      "worst_personality_labels": [
+        "PULLBACK_CONTINUATION"
+      ]
+    },
+    "BREAKOUT_RETEST_PULLBACK": {
+      "best_personality_labels": [
+        "STRUCTURAL_RUNNER"
+      ],
+      "worst_personality_labels": [
+        "STRUCTURAL_RUNNER"
+      ]
+    },
+    "EMA_VWAP_RECLAIM_PULLBACK": {
+      "best_personality_labels": [
+        "PULLBACK_CONTINUATION"
+      ],
+      "worst_personality_labels": [
+        "PULLBACK_CONTINUATION"
+      ]
+    },
+    "HEALTHY_CONTINUATION_PULLBACK": {
+      "best_personality_labels": [
+        "CHOPPY_LOW_TRUST"
+      ],
+      "worst_personality_labels": [
+        "CHOPPY_LOW_TRUST"
+      ]
+    },
+    "LIQUIDITY_SWEEP_RECLAIM": {
+      "best_personality_labels": [
+        "PULLBACK_CONTINUATION",
+        "CHOPPY_LOW_TRUST"
+      ],
+      "worst_personality_labels": [
+        "CHOPPY_LOW_TRUST",
+        "PULLBACK_CONTINUATION"
+      ]
+    },
+    "INSIDE_BAR_CONTINUATION": {
+      "best_personality_labels": [
+        "PULLBACK_CONTINUATION"
+      ],
+      "worst_personality_labels": [
+        "PULLBACK_CONTINUATION"
+      ]
+    },
+    "FAILED_BREAKDOWN_REVERSAL": {
+      "best_personality_labels": [
+        "CHOPPY_LOW_TRUST"
+      ],
+      "worst_personality_labels": [
+        "CHOPPY_LOW_TRUST"
+      ]
+    },
+    "STRUCTURE_BREAK_DIP": {
+      "best_personality_labels": [
+        "EXHAUSTION_RISK",
+        "CHOPPY_LOW_TRUST"
+      ],
+      "worst_personality_labels": [
+        "MOMENTUM_BURST",
+        "COMPRESSION_BREAKOUT"
+      ]
+    }
+  },
+  "holdout_recent_preview": {
+    "MICRO_PULLBACK_MOMENTUM": {
+      "best_personality_labels": [
+        "PULLBACK_CONTINUATION"
+      ],
+      "worst_personality_labels": [
+        "PULLBACK_CONTINUATION"
+      ]
+    },
+    "BREAKOUT_RETEST_PULLBACK": {
+      "best_personality_labels": [
+        "STRUCTURAL_RUNNER"
+      ],
+      "worst_personality_labels": [
+        "STRUCTURAL_RUNNER"
+      ]
+    },
+    "EMA_VWAP_RECLAIM_PULLBACK": {
+      "best_personality_labels": [
+        "PULLBACK_CONTINUATION"
+      ],
+      "worst_personality_labels": [
+        "PULLBACK_CONTINUATION"
+      ]
+    },
+    "HEALTHY_CONTINUATION_PULLBACK": {
+      "best_personality_labels": [
+        "CHOPPY_LOW_TRUST"
+      ],
+      "worst_personality_labels": [
+        "CHOPPY_LOW_TRUST"
+      ]
+    },
+    "LIQUIDITY_SWEEP_RECLAIM": {
+      "best_personality_labels": [
+        "PULLBACK_CONTINUATION",
+        "CHOPPY_LOW_TRUST"
+      ],
+      "worst_personality_labels": [
+        "CHOPPY_LOW_TRUST",
+        "PULLBACK_CONTINUATION"
+      ]
+    },
+    "INSIDE_BAR_CONTINUATION": {
+      "best_personality_labels": [
+        "PULLBACK_CONTINUATION"
+      ],
+      "worst_personality_labels": [
+        "PULLBACK_CONTINUATION"
+      ]
+    },
+    "FAILED_BREAKDOWN_REVERSAL": {
+      "best_personality_labels": [
+        "CHOPPY_LOW_TRUST"
+      ],
+      "worst_personality_labels": [
+        "CHOPPY_LOW_TRUST"
+      ]
+    },
+    "STRUCTURE_BREAK_DIP": {
+      "best_personality_labels": [
+        "EXHAUSTION_RISK",
+        "CHOPPY_LOW_TRUST"
+      ],
+      "worst_personality_labels": [
+        "MOMENTUM_BURST",
+        "COMPRESSION_BREAKOUT"
+      ]
+    }
+  },
+  "soft_evidence_only": true
+}

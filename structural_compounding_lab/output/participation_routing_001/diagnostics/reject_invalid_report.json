@@ -1,0 +1,17 @@
+{
+  "candidate_count": 543,
+  "archetype_distribution": {
+    "LIQUIDITY_SWEEP_RECLAIM": 77,
+    "STRUCTURE_BREAK_DIP": 296,
+    "EMA_VWAP_RECLAIM_PULLBACK": 73,
+    "HEALTHY_CONTINUATION_PULLBACK": 24,
+    "MICRO_PULLBACK_MOMENTUM": 34,
+    "INSIDE_BAR_CONTINUATION": 26,
+    "FAILED_BREAKDOWN_REVERSAL": 2,
+    "BREAKOUT_RETEST_PULLBACK": 11
+  },
+  "reject_reason_distribution": {
+    "invalid_structure_or_impossible_geometry": 543
+  },
+  "missed_winner_risk_rate": 0.2265193370165746
+}

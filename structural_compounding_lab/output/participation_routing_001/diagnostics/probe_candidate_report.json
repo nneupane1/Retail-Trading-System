@@ -1,0 +1,22 @@
+{
+  "candidate_count": 458,
+  "archetype_distribution": {
+    "HEALTHY_CONTINUATION_PULLBACK": 53,
+    "LIQUIDITY_SWEEP_RECLAIM": 171,
+    "BREAKOUT_RETEST_PULLBACK": 28,
+    "EMA_VWAP_RECLAIM_PULLBACK": 131,
+    "INSIDE_BAR_CONTINUATION": 14,
+    "MICRO_PULLBACK_MOMENTUM": 60,
+    "FAILED_BREAKDOWN_REVERSAL": 1
+  },
+  "personality_distribution": {
+    "CHOPPY_LOW_TRUST": 193,
+    "STRUCTURAL_RUNNER": 28,
+    "PULLBACK_CONTINUATION": 174,
+    "MOMENTUM_BURST": 33,
+    "COMPRESSION_BREAKOUT": 17,
+    "EXHAUSTION_RISK": 13
+  },
+  "missed_winner_risk_count": 43,
+  "median_participation_score": 28.0
+}

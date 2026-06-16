@@ -1,0 +1,17 @@
+{
+  "missed_winner_flagged_count": 178,
+  "recovered_participation_count": 53,
+  "recovered_participation_rate": 0.29775280898876405,
+  "recovered_mode_distribution": {
+    "PROBE_CANDIDATE": 43,
+    "REDUCED_SIZE_CANDIDATE": 3,
+    "DE_RISK_FAST_MANAGEMENT": 7
+  },
+  "recovered_archetype_distribution": {
+    "BREAKOUT_RETEST_PULLBACK": 4,
+    "HEALTHY_CONTINUATION_PULLBACK": 10,
+    "LIQUIDITY_SWEEP_RECLAIM": 33,
+    "EMA_VWAP_RECLAIM_PULLBACK": 5,
+    "FAILED_BREAKDOWN_REVERSAL": 1
+  }
+}

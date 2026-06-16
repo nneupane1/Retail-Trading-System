@@ -1,0 +1,118 @@
+{
+  "development": {
+    "MICRO_PULLBACK_MOMENTUM": {
+      "candidate_count": 27,
+      "pass_count": 1,
+      "normal_cost_survival_rate": 1.0,
+      "high_cost_survival_rate": 0.9629629629629629,
+      "cost_dominated_rate": 0.9629629629629629
+    },
+    "BREAKOUT_RETEST_PULLBACK": {
+      "candidate_count": 10,
+      "pass_count": 0,
+      "normal_cost_survival_rate": 1.0,
+      "high_cost_survival_rate": 1.0,
+      "cost_dominated_rate": 1.0
+    },
+    "EMA_VWAP_RECLAIM_PULLBACK": {
+      "candidate_count": 72,
+      "pass_count": 1,
+      "normal_cost_survival_rate": 0.8055555555555556,
+      "high_cost_survival_rate": 0.7916666666666666,
+      "cost_dominated_rate": 0.9861111111111112
+    },
+    "HEALTHY_CONTINUATION_PULLBACK": {
+      "candidate_count": 32,
+      "pass_count": 3,
+      "normal_cost_survival_rate": 0.90625,
+      "high_cost_survival_rate": 0.90625,
+      "cost_dominated_rate": 0.875
+    },
+    "LIQUIDITY_SWEEP_RECLAIM": {
+      "candidate_count": 101,
+      "pass_count": 7,
+      "normal_cost_survival_rate": 0.7821782178217822,
+      "high_cost_survival_rate": 0.7722772277227723,
+      "cost_dominated_rate": 0.8910891089108911
+    },
+    "INSIDE_BAR_CONTINUATION": {
+      "candidate_count": 17,
+      "pass_count": 0,
+      "normal_cost_survival_rate": 0.9411764705882353,
+      "high_cost_survival_rate": 0.8235294117647058,
+      "cost_dominated_rate": 1.0
+    },
+    "FAILED_BREAKDOWN_REVERSAL": {
+      "candidate_count": 1,
+      "pass_count": 0,
+      "normal_cost_survival_rate": 1.0,
+      "high_cost_survival_rate": 1.0,
+      "cost_dominated_rate": 1.0
+    },
+    "STRUCTURE_BREAK_DIP": {
+      "candidate_count": 99,
+      "pass_count": 0,
+      "normal_cost_survival_rate": 0.5757575757575758,
+      "high_cost_survival_rate": 0.5454545454545454,
+      "cost_dominated_rate": 0.9292929292929293
+    }
+  },
+  "holdout_recent_preview": {
+    "MICRO_PULLBACK_MOMENTUM": {
+      "candidate_count": 69,
+      "pass_count": 1,
+      "normal_cost_survival_rate": 0.9710144927536232,
+      "high_cost_survival_rate": 0.9565217391304348,
+      "cost_dominated_rate": 0.9855072463768116
+    },
+    "BREAKOUT_RETEST_PULLBACK": {
+      "candidate_count": 29,
+      "pass_count": 0,
+      "normal_cost_survival_rate": 0.9655172413793104,
+      "high_cost_survival_rate": 0.9310344827586207,
+      "cost_dominated_rate": 1.0
+    },
+    "EMA_VWAP_RECLAIM_PULLBACK": {
+      "candidate_count": 137,
+      "pass_count": 1,
+      "normal_cost_survival_rate": 0.8175182481751825,
+      "high_cost_survival_rate": 0.781021897810219,
+      "cost_dominated_rate": 0.9927007299270073
+    },
+    "HEALTHY_CONTINUATION_PULLBACK": {
+      "candidate_count": 54,
+      "pass_count": 2,
+      "normal_cost_survival_rate": 0.8518518518518519,
+      "high_cost_survival_rate": 0.8518518518518519,
+      "cost_dominated_rate": 0.9444444444444444
+    },
+    "LIQUIDITY_SWEEP_RECLAIM": {
+      "candidate_count": 187,
+      "pass_count": 6,
+      "normal_cost_survival_rate": 0.8128342245989305,
+      "high_cost_survival_rate": 0.7967914438502673,
+      "cost_dominated_rate": 0.9411764705882353
+    },
+    "INSIDE_BAR_CONTINUATION": {
+      "candidate_count": 23,
+      "pass_count": 0,
+      "normal_cost_survival_rate": 0.9130434782608695,
+      "high_cost_survival_rate": 0.7391304347826086,
+      "cost_dominated_rate": 1.0
+    },
+    "FAILED_BREAKDOWN_REVERSAL": {
+      "candidate_count": 2,
+      "pass_count": 0,
+      "normal_cost_survival_rate": 1.0,
+      "high_cost_survival_rate": 1.0,
+      "cost_dominated_rate": 1.0
+    },
+    "STRUCTURE_BREAK_DIP": {
+      "candidate_count": 197,
+      "pass_count": 0,
+      "normal_cost_survival_rate": 0.5634517766497462,
+      "high_cost_survival_rate": 0.5380710659898477,
+      "cost_dominated_rate": 0.9644670050761421
+    }
+  }
+}

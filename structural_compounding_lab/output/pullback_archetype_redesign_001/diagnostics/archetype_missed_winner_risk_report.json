@@ -1,0 +1,86 @@
+{
+  "development": {
+    "MICRO_PULLBACK_MOMENTUM": {
+      "candidate_count": 27,
+      "missed_winner_risk": 0.0,
+      "recommendation": "continue_refinement"
+    },
+    "BREAKOUT_RETEST_PULLBACK": {
+      "candidate_count": 10,
+      "missed_winner_risk": 0.2,
+      "recommendation": "reject_or_redefine"
+    },
+    "EMA_VWAP_RECLAIM_PULLBACK": {
+      "candidate_count": 72,
+      "missed_winner_risk": 0.06944444444444445,
+      "recommendation": "continue_refinement"
+    },
+    "HEALTHY_CONTINUATION_PULLBACK": {
+      "candidate_count": 32,
+      "missed_winner_risk": 0.25,
+      "recommendation": "continue_refinement"
+    },
+    "LIQUIDITY_SWEEP_RECLAIM": {
+      "candidate_count": 101,
+      "missed_winner_risk": 0.1485148514851485,
+      "recommendation": "continue_refinement"
+    },
+    "INSIDE_BAR_CONTINUATION": {
+      "candidate_count": 17,
+      "missed_winner_risk": 0.0,
+      "recommendation": "reject_or_redefine"
+    },
+    "FAILED_BREAKDOWN_REVERSAL": {
+      "candidate_count": 1,
+      "missed_winner_risk": 0.0,
+      "recommendation": "insufficient_sample"
+    },
+    "STRUCTURE_BREAK_DIP": {
+      "candidate_count": 99,
+      "missed_winner_risk": 0.2828282828282828,
+      "recommendation": "reject_or_redefine"
+    }
+  },
+  "holdout_recent_preview": {
+    "MICRO_PULLBACK_MOMENTUM": {
+      "candidate_count": 69,
+      "missed_winner_risk": 0.0,
+      "recommendation": "continue_refinement"
+    },
+    "BREAKOUT_RETEST_PULLBACK": {
+      "candidate_count": 29,
+      "missed_winner_risk": 0.06896551724137931,
+      "recommendation": "reject_or_redefine"
+    },
+    "EMA_VWAP_RECLAIM_PULLBACK": {
+      "candidate_count": 137,
+      "missed_winner_risk": 0.058394160583941604,
+      "recommendation": "continue_refinement"
+    },
+    "HEALTHY_CONTINUATION_PULLBACK": {
+      "candidate_count": 54,
+      "missed_winner_risk": 0.2037037037037037,
+      "recommendation": "continue_refinement"
+    },
+    "LIQUIDITY_SWEEP_RECLAIM": {
+      "candidate_count": 187,
+      "missed_winner_risk": 0.15508021390374332,
+      "recommendation": "continue_refinement"
+    },
+    "INSIDE_BAR_CONTINUATION": {
+      "candidate_count": 23,
+      "missed_winner_risk": 0.0,
+      "recommendation": "reject_or_redefine"
+    },
+    "FAILED_BREAKDOWN_REVERSAL": {
+      "candidate_count": 2,
+      "missed_winner_risk": 0.5,
+      "recommendation": "insufficient_sample"
+    },
+    "STRUCTURE_BREAK_DIP": {
+      "candidate_count": 197,
+      "missed_winner_risk": 0.350253807106599,
+      "recommendation": "reject_or_redefine"
+    }
+  }
+}

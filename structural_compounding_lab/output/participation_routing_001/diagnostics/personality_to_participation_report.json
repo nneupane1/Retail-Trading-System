@@ -1,0 +1,68 @@
+{
+  "CHOPPY_LOW_TRUST": {
+    "candidate_count": 477,
+    "mode_counts": {
+      "PROBE_CANDIDATE": 193,
+      "REJECT_INVALID": 267,
+      "NO_ADD_ON_MANAGEMENT": 11,
+      "REDUCED_SIZE_CANDIDATE": 3,
+      "WAIT_FOR_CONFIRMATION": 3
+    },
+    "de_risk_rate": 0.0,
+    "full_size_rate": 0.0,
+    "reduced_or_probe_rate": 0.4109014675052411
+  },
+  "EXHAUSTION_RISK": {
+    "candidate_count": 107,
+    "mode_counts": {
+      "WAIT_FOR_CONFIRMATION": 8,
+      "REJECT_INVALID": 63,
+      "DE_RISK_FAST_MANAGEMENT": 23,
+      "PROBE_CANDIDATE": 13
+    },
+    "de_risk_rate": 0.21495327102803738,
+    "full_size_rate": 0.0,
+    "reduced_or_probe_rate": 0.12149532710280374
+  },
+  "STRUCTURAL_RUNNER": {
+    "candidate_count": 39,
+    "mode_counts": {
+      "PROBE_CANDIDATE": 28,
+      "REJECT_INVALID": 11
+    },
+    "de_risk_rate": 0.0,
+    "full_size_rate": 0.0,
+    "reduced_or_probe_rate": 0.717948717948718
+  },
+  "PULLBACK_CONTINUATION": {
+    "candidate_count": 319,
+    "mode_counts": {
+      "PROBE_CANDIDATE": 174,
+      "FULL_SIZE_CANDIDATE": 8,
+      "REJECT_INVALID": 137
+    },
+    "de_risk_rate": 0.0,
+    "full_size_rate": 0.025078369905956112,
+    "reduced_or_probe_rate": 0.5454545454545454
+  },
+  "COMPRESSION_BREAKOUT": {
+    "candidate_count": 55,
+    "mode_counts": {
+      "REJECT_INVALID": 38,
+      "PROBE_CANDIDATE": 17
+    },
+    "de_risk_rate": 0.0,
+    "full_size_rate": 0.0,
+    "reduced_or_probe_rate": 0.3090909090909091
+  },
+  "MOMENTUM_BURST": {
+    "candidate_count": 60,
+    "mode_counts": {
+      "PROBE_CANDIDATE": 33,
+      "REJECT_INVALID": 27
+    },
+    "de_risk_rate": 0.0,
+    "full_size_rate": 0.0,
+    "reduced_or_probe_rate": 0.55
+  }
+}

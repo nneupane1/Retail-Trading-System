@@ -1,0 +1,86 @@
+{
+  "classification": "continue_research",
+  "best_archetype": "LIQUIDITY_SWEEP_RECLAIM",
+  "worst_archetype": "STRUCTURE_BREAK_DIP",
+  "development_winner": {
+    "candidate_count": 101,
+    "pass_count": 7,
+    "pass_rate": 0.06930693069306931,
+    "median_improved_R_delta": 0.6905453318715615,
+    "trimmed_mean_improved_R_delta": 0.4959189808198223,
+    "winsorized_mean_improved_R_delta": 0.4959189808198223,
+    "normal_cost_survival_rate": 0.7821782178217822,
+    "high_cost_survival_rate": 0.7722772277227723,
+    "tiny_stop_rate": 0.5841584158415841,
+    "unrealistic_stop_rate": 0.7524752475247525,
+    "cost_dominated_rate": 0.8910891089108911,
+    "missed_winner_risk": 0.1485148514851485,
+    "average_stop_atr_fraction": 0.351641740696711,
+    "median_stop_cost_multiple": 0.9285036802478639,
+    "best_personality_labels": [
+      "PULLBACK_CONTINUATION",
+      "CHOPPY_LOW_TRUST"
+    ],
+    "worst_personality_labels": [
+      "CHOPPY_LOW_TRUST",
+      "PULLBACK_CONTINUATION"
+    ],
+    "reject_reason_distribution": {
+      "stop_atr_too_small": 38,
+      "stop_cost_multiple_too_small": 76,
+      "tiny_stop_flag": 59,
+      "unrealistic_stop_flag": 76,
+      "cost_dominated_flag": 90,
+      "noise_stop_flag": 76,
+      "fails_normal_cost": 22,
+      "stop_cost_multiple_thin": 5
+    },
+    "recommendation": "continue_refinement"
+  },
+  "holdout_preview_winner": {
+    "candidate_count": 187,
+    "pass_count": 6,
+    "pass_rate": 0.03208556149732621,
+    "median_improved_R_delta": 0.7537138477175399,
+    "trimmed_mean_improved_R_delta": 1.0777414284771256,
+    "winsorized_mean_improved_R_delta": 1.0777414284771256,
+    "normal_cost_survival_rate": 0.8128342245989305,
+    "high_cost_survival_rate": 0.7967914438502673,
+    "tiny_stop_rate": 0.6417112299465241,
+    "unrealistic_stop_rate": 0.7807486631016043,
+    "cost_dominated_rate": 0.9411764705882353,
+    "missed_winner_risk": 0.15508021390374332,
+    "average_stop_atr_fraction": 0.30983784946982557,
+    "median_stop_cost_multiple": 0.715860148120113,
+    "best_personality_labels": [
+      "PULLBACK_CONTINUATION",
+      "CHOPPY_LOW_TRUST"
+    ],
+    "worst_personality_labels": [
+      "CHOPPY_LOW_TRUST",
+      "PULLBACK_CONTINUATION"
+    ],
+    "reject_reason_distribution": {
+      "stop_atr_too_small": 78,
+      "stop_cost_multiple_too_small": 146,
+      "tiny_stop_flag": 120,
+      "unrealistic_stop_flag": 146,
+      "cost_dominated_flag": 176,
+      "noise_stop_flag": 147,
+      "fails_normal_cost": 35,
+      "stop_cost_multiple_thin": 13
+    },
+    "recommendation": "continue_refinement"
+  },
+  "allowed_next_step": "second_fast_review_only_if_stage4_classification_is_eligible",
+  "forbidden": [
+    "no_full_history_confirmation",
+    "no_stress_windows",
+    "no_monte_carlo",
+    "no_paper_candidate",
+    "no_live_runtime_change",
+    "no_paper_runtime_change",
+    "no_real_money_enablement",
+    "no_macd_bollinger_hard_gates"
+  ]
+}

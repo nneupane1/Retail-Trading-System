@@ -1,0 +1,116 @@
+{
+  "HEALTHY_CONTINUATION_PULLBACK": {
+    "candidate_count": 86,
+    "mode_counts": {
+      "PROBE_CANDIDATE": 53,
+      "REDUCED_SIZE_CANDIDATE": 3,
+      "REJECT_INVALID": 24,
+      "NO_ADD_ON_MANAGEMENT": 2,
+      "WAIT_FOR_CONFIRMATION": 2,
+      "DE_RISK_FAST_MANAGEMENT": 2
+    },
+    "full_size_rate": 0.0,
+    "reduced_rate": 0.03488372093023256,
+    "probe_rate": 0.6162790697674418,
+    "wait_rate": 0.023255813953488372,
+    "de_risk_rate": 0.023255813953488372,
+    "reject_rate": 0.27906976744186046
+  },
+  "LIQUIDITY_SWEEP_RECLAIM": {
+    "candidate_count": 288,
+    "mode_counts": {
+      "REJECT_INVALID": 77,
+      "PROBE_CANDIDATE": 171,
+      "WAIT_FOR_CONFIRMATION": 9,
+      "NO_ADD_ON_MANAGEMENT": 9,
+      "FULL_SIZE_CANDIDATE": 4,
+      "DE_RISK_FAST_MANAGEMENT": 18
+    },
+    "full_size_rate": 0.013888888888888888,
+    "reduced_rate": 0.0,
+    "probe_rate": 0.59375,
+    "wait_rate": 0.03125,
+    "de_risk_rate": 0.0625,
+    "reject_rate": 0.2673611111111111
+  },
+  "BREAKOUT_RETEST_PULLBACK": {
+    "candidate_count": 39,
+    "mode_counts": {
+      "PROBE_CANDIDATE": 28,
+      "REJECT_INVALID": 11
+    },
+    "full_size_rate": 0.0,
+    "reduced_rate": 0.0,
+    "probe_rate": 0.717948717948718,
+    "wait_rate": 0.0,
+    "de_risk_rate": 0.0,
+    "reject_rate": 0.28205128205128205
+  },
+  "EMA_VWAP_RECLAIM_PULLBACK": {
+    "candidate_count": 209,
+    "mode_counts": {
+      "PROBE_CANDIDATE": 131,
+      "REJECT_INVALID": 73,
+      "FULL_SIZE_CANDIDATE": 2,
+      "DE_RISK_FAST_MANAGEMENT": 3
+    },
+    "full_size_rate": 0.009569377990430622,
+    "reduced_rate": 0.0,
+    "probe_rate": 0.6267942583732058,
+    "wait_rate": 0.0,
+    "de_risk_rate": 0.014354066985645933,
+    "reject_rate": 0.3492822966507177
+  },
+  "STRUCTURE_BREAK_DIP": {
+    "candidate_count": 296,
+    "mode_counts": {
+      "REJECT_INVALID": 296
+    },
+    "full_size_rate": 0.0,
+    "reduced_rate": 0.0,
+    "probe_rate": 0.0,
+    "wait_rate": 0.0,
+    "de_risk_rate": 0.0,
+    "reject_rate": 1.0
+  },
+  "INSIDE_BAR_CONTINUATION": {
+    "candidate_count": 40,
+    "mode_counts": {
+      "PROBE_CANDIDATE": 14,
+      "REJECT_INVALID": 26
+    },
+    "full_size_rate": 0.0,
+    "reduced_rate": 0.0,
+    "probe_rate": 0.35,
+    "wait_rate": 0.0,
+    "de_risk_rate": 0.0,
+    "reject_rate": 0.65
+  },
+  "MICRO_PULLBACK_MOMENTUM": {
+    "candidate_count": 96,
+    "mode_counts": {
+      "REJECT_INVALID": 34,
+      "PROBE_CANDIDATE": 60,
+      "FULL_SIZE_CANDIDATE": 2
+    },
+    "full_size_rate": 0.020833333333333332,
+    "reduced_rate": 0.0,
+    "probe_rate": 0.625,
+    "wait_rate": 0.0,
+    "de_risk_rate": 0.0,
+    "reject_rate": 0.3541666666666667
+  },
+  "FAILED_BREAKDOWN_REVERSAL": {
+    "candidate_count": 3,
+    "mode_counts": {
+      "REJECT_INVALID": 2,
+      "PROBE_CANDIDATE": 1
+    },
+    "full_size_rate": 0.0,
+    "reduced_rate": 0.0,
+    "probe_rate": 0.3333333333333333,
+    "wait_rate": 0.0,
+    "de_risk_rate": 0.0,
+    "reject_rate": 0.6666666666666666
+  }
+}

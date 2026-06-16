@@ -1,0 +1,18 @@
+{
+  "classification": "continue_research",
+  "notes": [
+    "Stage 5 converts detector output into participation routing rather than hard gating.",
+    "Reduced-size and probe labels are research-only and do not modify runtime sizing.",
+    "STRUCTURE_BREAK_DIP remains invalid and routes to reject."
+  ],
+  "forbidden": [
+    "no_full_history_confirmation",
+    "no_stress_windows",
+    "no_monte_carlo",
+    "no_live_runtime_change",
+    "no_paper_runtime_change",
+    "no_real_money_enablement",
+    "no_macd_bollinger_hard_gates",
+    "no_pullback_activation"
+  ]
+}

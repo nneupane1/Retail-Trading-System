@@ -1,0 +1,12 @@
+{
+  "candidate_count": 23,
+  "exhaustion_warning_rate": 1.0,
+  "archetype_distribution": {
+    "LIQUIDITY_SWEEP_RECLAIM": 18,
+    "EMA_VWAP_RECLAIM_PULLBACK": 3,
+    "HEALTHY_CONTINUATION_PULLBACK": 2
+  },
+  "personality_distribution": {
+    "EXHAUSTION_RISK": 23
+  }
+}

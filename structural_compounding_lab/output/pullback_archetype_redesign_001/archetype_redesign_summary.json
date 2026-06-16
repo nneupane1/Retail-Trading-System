@@ -1,0 +1,583 @@
+{
+  "stage_name": "Structural Compounding Lab Pullback Archetype Redesign 001",
+  "resolved_at_utc": "2026-06-16T15:51:48.134446+00:00",
+  "research_only": true,
+  "real_money_allowed": false,
+  "classification": "continue_research",
+  "allowed_classifications": [
+    "reject",
+    "continue_research",
+    "needs_archetype_refinement",
+    "eligible_for_second_fast_review"
+  ],
+  "development_windows": [
+    "smoke",
+    "diagnostic_fast"
+  ],
+  "holdout_preview_window": "holdout_recent_preview",
+  "full_history_started": false,
+  "stress_windows_started": false,
+  "monte_carlo_started": false,
+  "live_behavior_changed": false,
+  "paper_behavior_changed": false,
+  "strategy_behavior_changed": false,
+  "allocator_behavior_changed": false,
+  "risk_behavior_changed": false,
+  "sizing_behavior_changed": false,
+  "entry_behavior_changed": false,
+  "exit_behavior_changed": false,
+  "config_settings_changed": false,
+  "macd_bollinger_hard_gates_enabled": false,
+  "pullback_buying_runtime_enabled": false,
+  "archetypes_implemented": [
+    "MICRO_PULLBACK_MOMENTUM",
+    "BREAKOUT_RETEST_PULLBACK",
+    "EMA_VWAP_RECLAIM_PULLBACK",
+    "HEALTHY_CONTINUATION_PULLBACK",
+    "LIQUIDITY_SWEEP_RECLAIM",
+    "INSIDE_BAR_CONTINUATION",
+    "FAILED_BREAKDOWN_REVERSAL",
+    "STRUCTURE_BREAK_DIP"
+  ],
+  "development_summary": {
+    "MICRO_PULLBACK_MOMENTUM": {
+      "candidate_count": 27,
+      "pass_count": 1,
+      "pass_rate": 0.037037037037037035,
+      "median_improved_R_delta": 2.0791143181169613,
+      "trimmed_mean_improved_R_delta": 2.0791143181169613,
+      "winsorized_mean_improved_R_delta": 2.0791143181169613,
+      "normal_cost_survival_rate": 1.0,
+      "high_cost_survival_rate": 0.9629629629629629,
+      "tiny_stop_rate": 0.8888888888888888,
+      "unrealistic_stop_rate": 0.9259259259259259,
+      "cost_dominated_rate": 0.9629629629629629,
+      "missed_winner_risk": 0.0,
+      "average_stop_atr_fraction": 0.21074630669878253,
+      "median_stop_cost_multiple": 0.5521100148264344,
+      "best_personality_labels": [
+        "PULLBACK_CONTINUATION"
+      ],
+      "worst_personality_labels": [
+        "PULLBACK_CONTINUATION"
+      ],
+      "reject_reason_distribution": {
+        "stop_atr_too_small": 11,
+        "stop_cost_multiple_too_small": 25,
+        "tiny_stop_flag": 24,
+        "unrealistic_stop_flag": 25,
+        "cost_dominated_flag": 26,
+        "noise_stop_flag": 23,
+        "stop_cost_multiple_thin": 1
+      },
+      "recommendation": "continue_refinement"
+    },
+    "BREAKOUT_RETEST_PULLBACK": {
+      "candidate_count": 10,
+      "pass_count": 0,
+      "pass_rate": 0.0,
+      "median_improved_R_delta": 5.129517062067562,
+      "trimmed_mean_improved_R_delta": 5.012522310464541,
+      "winsorized_mean_improved_R_delta": 4.920916160262571,
+      "normal_cost_survival_rate": 1.0,
+      "high_cost_survival_rate": 1.0,
+      "tiny_stop_rate": 0.7,
+      "unrealistic_stop_rate": 0.7,
+      "cost_dominated_rate": 1.0,
+      "missed_winner_risk": 0.2,
+      "average_stop_atr_fraction": 0.25009242514308544,
+      "median_stop_cost_multiple": 0.6684275081535891,
+      "best_personality_labels": [
+        "STRUCTURAL_RUNNER"
+      ],
+      "worst_personality_labels": [
+        "STRUCTURAL_RUNNER"
+      ],
+      "reject_reason_distribution": {
+        "stop_cost_multiple_thin": 3,
+        "cost_dominated_flag": 10,
+        "stop_cost_multiple_too_small": 7,
+        "tiny_stop_flag": 7,
+        "unrealistic_stop_flag": 7,
+        "noise_stop_flag": 7,
+        "stop_atr_too_small": 3
+      },
+      "recommendation": "reject_or_redefine"
+    },
+    "EMA_VWAP_RECLAIM_PULLBACK": {
+      "candidate_count": 72,
+      "pass_count": 1,
+      "pass_rate": 0.013888888888888888,
+      "median_improved_R_delta": 0.2196173022600707,
+      "trimmed_mean_improved_R_delta": 0.2196173022600707,
+      "winsorized_mean_improved_R_delta": 0.2196173022600707,
+      "normal_cost_survival_rate": 0.8055555555555556,
+      "high_cost_survival_rate": 0.7916666666666666,
+      "tiny_stop_rate": 0.6388888888888888,
+      "unrealistic_stop_rate": 0.8472222222222222,
+      "cost_dominated_rate": 0.9861111111111112,
+      "missed_winner_risk": 0.06944444444444445,
+      "average_stop_atr_fraction": 0.28964539199860373,
+      "median_stop_cost_multiple": 0.5200398406746658,
+      "best_personality_labels": [
+        "PULLBACK_CONTINUATION"
+      ],
+      "worst_personality_labels": [
+        "PULLBACK_CONTINUATION"
+      ],
+      "reject_reason_distribution": {
+        "stop_cost_multiple_thin": 8,
+        "cost_dominated_flag": 71,
+        "noise_stop_flag": 59,
+        "stop_atr_too_small": 28,
+        "stop_cost_multiple_too_small": 61,
+        "tiny_stop_flag": 46,
+        "unrealistic_stop_flag": 61,
+        "fails_normal_cost": 14
+      },
+      "recommendation": "continue_refinement"
+    },
+    "HEALTHY_CONTINUATION_PULLBACK": {
+      "candidate_count": 32,
+      "pass_count": 3,
+      "pass_rate": 0.09375,
+      "median_improved_R_delta": 1.082788296948526,
+      "trimmed_mean_improved_R_delta": 1.004647156460141,
+      "winsorized_mean_improved_R_delta": 1.004647156460141,
+      "normal_cost_survival_rate": 0.90625,
+      "high_cost_survival_rate": 0.90625,
+      "tiny_stop_rate": 0.65625,
+      "unrealistic_stop_rate": 0.71875,
+      "cost_dominated_rate": 0.875,
+      "missed_winner_risk": 0.25,
+      "average_stop_atr_fraction": 0.30054186510059316,
+      "median_stop_cost_multiple": 0.6923011063827924,
+      "best_personality_labels": [
+        "CHOPPY_LOW_TRUST"
+      ],
+      "worst_personality_labels": [
+        "CHOPPY_LOW_TRUST"
+      ],
+      "reject_reason_distribution": {
+        "stop_cost_multiple_too_small": 23,
+        "tiny_stop_flag": 21,
+        "unrealistic_stop_flag": 23,
+        "cost_dominated_flag": 28,
+        "noise_stop_flag": 24,
+        "stop_atr_too_small": 12,
+        "stop_cost_multiple_thin": 1,
+        "fails_normal_cost": 3
+      },
+      "recommendation": "continue_refinement"
+    },
+    "LIQUIDITY_SWEEP_RECLAIM": {
+      "candidate_count": 101,
+      "pass_count": 7,
+      "pass_rate": 0.06930693069306931,
+      "median_improved_R_delta": 0.6905453318715615,
+      "trimmed_mean_improved_R_delta": 0.4959189808198223,
+      "winsorized_mean_improved_R_delta": 0.4959189808198223,
+      "normal_cost_survival_rate": 0.7821782178217822,
+      "high_cost_survival_rate": 0.7722772277227723,
+      "tiny_stop_rate": 0.5841584158415841,
+      "unrealistic_stop_rate": 0.7524752475247525,
+      "cost_dominated_rate": 0.8910891089108911,
+      "missed_winner_risk": 0.1485148514851485,
+      "average_stop_atr_fraction": 0.351641740696711,
+      "median_stop_cost_multiple": 0.9285036802478639,
+      "best_personality_labels": [
+        "PULLBACK_CONTINUATION",
+        "CHOPPY_LOW_TRUST"
+      ],
+      "worst_personality_labels": [
+        "CHOPPY_LOW_TRUST",
+        "PULLBACK_CONTINUATION"
+      ],
+      "reject_reason_distribution": {
+        "stop_atr_too_small": 38,
+        "stop_cost_multiple_too_small": 76,
+        "tiny_stop_flag": 59,
+        "unrealistic_stop_flag": 76,
+        "cost_dominated_flag": 90,
+        "noise_stop_flag": 76,
+        "fails_normal_cost": 22,
+        "stop_cost_multiple_thin": 5
+      },
+      "recommendation": "continue_refinement"
+    },
+    "INSIDE_BAR_CONTINUATION": {
+      "candidate_count": 17,
+      "pass_count": 0,
+      "pass_rate": 0.0,
+      "median_improved_R_delta": 8.337837762788688,
+      "trimmed_mean_improved_R_delta": 39.957458187974034,
+      "winsorized_mean_improved_R_delta": 64.05460158289581,
+      "normal_cost_survival_rate": 0.9411764705882353,
+      "high_cost_survival_rate": 0.8235294117647058,
+      "tiny_stop_rate": 0.7647058823529411,
+      "unrealistic_stop_rate": 1.0,
+      "cost_dominated_rate": 1.0,
+      "missed_winner_risk": 0.0,
+      "average_stop_atr_fraction": 0.21569433984480849,
+      "median_stop_cost_multiple": 0.2522919790647237,
+      "best_personality_labels": [
+        "PULLBACK_CONTINUATION"
+      ],
+      "worst_personality_labels": [
+        "PULLBACK_CONTINUATION"
+      ],
+      "reject_reason_distribution": {
+        "stop_cost_multiple_too_small": 17,
+        "tiny_stop_flag": 13,
+        "unrealistic_stop_flag": 17,
+        "cost_dominated_flag": 17,
+        "noise_stop_flag": 15,
+        "stop_atr_too_small": 8,
+        "fails_normal_cost": 1
+      },
+      "recommendation": "reject_or_redefine"
+    },
+    "FAILED_BREAKDOWN_REVERSAL": {
+      "candidate_count": 1,
+      "pass_count": 0,
+      "pass_rate": 0.0,
+      "median_improved_R_delta": 30.257743613041733,
+      "trimmed_mean_improved_R_delta": 30.257743613041733,
+      "winsorized_mean_improved_R_delta": 30.257743613041733,
+      "normal_cost_survival_rate": 1.0,
+      "high_cost_survival_rate": 1.0,
+      "tiny_stop_rate": 1.0,
+      "unrealistic_stop_rate": 1.0,
+      "cost_dominated_rate": 1.0,
+      "missed_winner_risk": 0.0,
+      "average_stop_atr_fraction": 0.04434232568356911,
+      "median_stop_cost_multiple": 0.11599104768128676,
+      "best_personality_labels": [
+        "CHOPPY_LOW_TRUST"
+      ],
+      "worst_personality_labels": [
+        "CHOPPY_LOW_TRUST"
+      ],
+      "reject_reason_distribution": {
+        "stop_atr_too_small": 1,
+        "stop_cost_multiple_too_small": 1,
+        "tiny_stop_flag": 1,
+        "unrealistic_stop_flag": 1,
+        "cost_dominated_flag": 1,
+        "noise_stop_flag": 1,
+        "failed_breakdown_too_deep": 1
+      },
+      "recommendation": "insufficient_sample"
+    },
+    "STRUCTURE_BREAK_DIP": {
+      "candidate_count": 99,
+      "pass_count": 0,
+      "pass_rate": 0.0,
+      "median_improved_R_delta": 1.6039960800478097,
+      "trimmed_mean_improved_R_delta": 4.498580731999687,
+      "winsorized_mean_improved_R_delta": 5.992604158420863,
+      "normal_cost_survival_rate": 0.5757575757575758,
+      "high_cost_survival_rate": 0.5454545454545454,
+      "tiny_stop_rate": 0.6868686868686869,
+      "unrealistic_stop_rate": 0.8282828282828283,
+      "cost_dominated_rate": 0.9292929292929293,
+      "missed_winner_risk": 0.2828282828282828,
+      "average_stop_atr_fraction": 0.305883992297023,
+      "median_stop_cost_multiple": 0.6114370465897337,
+      "best_personality_labels": [
+        "EXHAUSTION_RISK",
+        "CHOPPY_LOW_TRUST"
+      ],
+      "worst_personality_labels": [
+        "MOMENTUM_BURST",
+        "COMPRESSION_BREAKOUT"
+      ],
+      "reject_reason_distribution": {
+        "stop_atr_too_small": 39,
+        "stop_cost_multiple_too_small": 82,
+        "tiny_stop_flag": 68,
+        "unrealistic_stop_flag": 82,
+        "cost_dominated_flag": 92,
+        "noise_stop_flag": 80,
+        "structure_or_context_failed": 99,
+        "fails_normal_cost": 42,
+        "stop_cost_multiple_thin": 5
+      },
+      "recommendation": "reject_or_redefine"
+    }
+  },
+  "holdout_recent_preview_summary": {
+    "MICRO_PULLBACK_MOMENTUM": {
+      "candidate_count": 69,
+      "pass_count": 1,
+      "pass_rate": 0.014492753623188406,
+      "median_improved_R_delta": 2.0791143181169613,
+      "trimmed_mean_improved_R_delta": 2.0791143181169613,
+      "winsorized_mean_improved_R_delta": 2.0791143181169613,
+      "normal_cost_survival_rate": 0.9710144927536232,
+      "high_cost_survival_rate": 0.9565217391304348,
+      "tiny_stop_rate": 0.855072463768116,
+      "unrealistic_stop_rate": 0.9420289855072463,
+      "cost_dominated_rate": 0.9855072463768116,
+      "missed_winner_risk": 0.0,
+      "average_stop_atr_fraction": 0.2028757307783354,
+      "median_stop_cost_multiple": 0.33656912755551655,
+      "best_personality_labels": [
+        "PULLBACK_CONTINUATION"
+      ],
+      "worst_personality_labels": [
+        "PULLBACK_CONTINUATION"
+      ],
+      "reject_reason_distribution": {
+        "stop_cost_multiple_too_small": 65,
+        "unrealistic_stop_flag": 65,
+        "cost_dominated_flag": 68,
+        "stop_atr_too_small": 34,
+        "tiny_stop_flag": 59,
+        "noise_stop_flag": 61,
+        "stop_cost_multiple_thin": 3,
+        "fails_normal_cost": 2
+      },
+      "recommendation": "continue_refinement"
+    },
+    "BREAKOUT_RETEST_PULLBACK": {
+      "candidate_count": 29,
+      "pass_count": 0,
+      "pass_rate": 0.0,
+      "median_improved_R_delta": 7.387194578205561,
+      "trimmed_mean_improved_R_delta": 1421.979742882574,
+      "winsorized_mean_improved_R_delta": 3659.4743124962915,
+      "normal_cost_survival_rate": 0.9655172413793104,
+      "high_cost_survival_rate": 0.9310344827586207,
+      "tiny_stop_rate": 0.7586206896551724,
+      "unrealistic_stop_rate": 0.8620689655172413,
+      "cost_dominated_rate": 1.0,
+      "missed_winner_risk": 0.06896551724137931,
+      "average_stop_atr_fraction": 0.21675172635138593,
+      "median_stop_cost_multiple": 0.35115073091949434,
+      "best_personality_labels": [
+        "STRUCTURAL_RUNNER"
+      ],
+      "worst_personality_labels": [
+        "STRUCTURAL_RUNNER"
+      ],
+      "reject_reason_distribution": {
+        "stop_cost_multiple_thin": 3,
+        "cost_dominated_flag": 29,
+        "stop_cost_multiple_too_small": 25,
+        "unrealistic_stop_flag": 25,
+        "stop_atr_too_small": 18,
+        "tiny_stop_flag": 22,
+        "noise_stop_flag": 22,
+        "fails_normal_cost": 1
+      },
+      "recommendation": "reject_or_redefine"
+    },
+    "EMA_VWAP_RECLAIM_PULLBACK": {
+      "candidate_count": 137,
+      "pass_count": 1,
+      "pass_rate": 0.0072992700729927005,
+      "median_improved_R_delta": 0.2196173022600707,
+      "trimmed_mean_improved_R_delta": 0.2196173022600707,
+      "winsorized_mean_improved_R_delta": 0.2196173022600707,
+      "normal_cost_survival_rate": 0.8175182481751825,
+      "high_cost_survival_rate": 0.781021897810219,
+      "tiny_stop_rate": 0.6277372262773723,
+      "unrealistic_stop_rate": 0.8978102189781022,
+      "cost_dominated_rate": 0.9927007299270073,
+      "missed_winner_risk": 0.058394160583941604,
+      "average_stop_atr_fraction": 0.2844438411026318,
+      "median_stop_cost_multiple": 0.4593341517105199,
+      "best_personality_labels": [
+        "PULLBACK_CONTINUATION"
+      ],
+      "worst_personality_labels": [
+        "PULLBACK_CONTINUATION"
+      ],
+      "reject_reason_distribution": {
+        "fails_normal_cost": 25,
+        "stop_cost_multiple_too_small": 123,
+        "unrealistic_stop_flag": 123,
+        "cost_dominated_flag": 136,
+        "noise_stop_flag": 109,
+        "stop_atr_too_small": 56,
+        "tiny_stop_flag": 86,
+        "stop_cost_multiple_thin": 9
+      },
+      "recommendation": "continue_refinement"
+    },
+    "HEALTHY_CONTINUATION_PULLBACK": {
+      "candidate_count": 54,
+      "pass_count": 2,
+      "pass_rate": 0.037037037037037035,
+      "median_improved_R_delta": 0.9655765862159482,
+      "trimmed_mean_improved_R_delta": 0.9655765862159482,
+      "winsorized_mean_improved_R_delta": 0.9655765862159482,
+      "normal_cost_survival_rate": 0.8518518518518519,
+      "high_cost_survival_rate": 0.8518518518518519,
+      "tiny_stop_rate": 0.6666666666666666,
+      "unrealistic_stop_rate": 0.7962962962962963,
+      "cost_dominated_rate": 0.9444444444444444,
+      "missed_winner_risk": 0.2037037037037037,
+      "average_stop_atr_fraction": 0.3063536265158424,
+      "median_stop_cost_multiple": 0.6461558790735813,
+      "best_personality_labels": [
+        "CHOPPY_LOW_TRUST"
+      ],
+      "worst_personality_labels": [
+        "CHOPPY_LOW_TRUST"
+      ],
+      "reject_reason_distribution": {
+        "stop_atr_too_small": 20,
+        "stop_cost_multiple_too_small": 43,
+        "tiny_stop_flag": 36,
+        "unrealistic_stop_flag": 43,
+        "cost_dominated_flag": 51,
+        "noise_stop_flag": 42,
+        "fails_normal_cost": 8,
+        "stop_cost_multiple_thin": 2
+      },
+      "recommendation": "continue_refinement"
+    },
+    "LIQUIDITY_SWEEP_RECLAIM": {
+      "candidate_count": 187,
+      "pass_count": 6,
+      "pass_rate": 0.03208556149732621,
+      "median_improved_R_delta": 0.7537138477175399,
+      "trimmed_mean_improved_R_delta": 1.0777414284771256,
+      "winsorized_mean_improved_R_delta": 1.0777414284771256,
+      "normal_cost_survival_rate": 0.8128342245989305,
+      "high_cost_survival_rate": 0.7967914438502673,
+      "tiny_stop_rate": 0.6417112299465241,
+      "unrealistic_stop_rate": 0.7807486631016043,
+      "cost_dominated_rate": 0.9411764705882353,
+      "missed_winner_risk": 0.15508021390374332,
+      "average_stop_atr_fraction": 0.30983784946982557,
+      "median_stop_cost_multiple": 0.715860148120113,
+      "best_personality_labels": [
+        "PULLBACK_CONTINUATION",
+        "CHOPPY_LOW_TRUST"
+      ],
+      "worst_personality_labels": [
+        "CHOPPY_LOW_TRUST",
+        "PULLBACK_CONTINUATION"
+      ],
+      "reject_reason_distribution": {
+        "stop_atr_too_small": 78,
+        "stop_cost_multiple_too_small": 146,
+        "tiny_stop_flag": 120,
+        "unrealistic_stop_flag": 146,
+        "cost_dominated_flag": 176,
+        "noise_stop_flag": 147,
+        "fails_normal_cost": 35,
+        "stop_cost_multiple_thin": 13
+      },
+      "recommendation": "continue_refinement"
+    },
+    "INSIDE_BAR_CONTINUATION": {
+      "candidate_count": 23,
+      "pass_count": 0,
+      "pass_rate": 0.0,
+      "median_improved_R_delta": 7.65758752371582,
+      "trimmed_mean_improved_R_delta": 9.186092424396097,
+      "winsorized_mean_improved_R_delta": 11.275626162595705,
+      "normal_cost_survival_rate": 0.9130434782608695,
+      "high_cost_survival_rate": 0.7391304347826086,
+      "tiny_stop_rate": 0.782608695652174,
+      "unrealistic_stop_rate": 1.0,
+      "cost_dominated_rate": 1.0,
+      "missed_winner_risk": 0.0,
+      "average_stop_atr_fraction": 0.1989556306307737,
+      "median_stop_cost_multiple": 0.1874203032211748,
+      "best_personality_labels": [
+        "PULLBACK_CONTINUATION"
+      ],
+      "worst_personality_labels": [
+        "PULLBACK_CONTINUATION"
+      ],
+      "reject_reason_distribution": {
+        "stop_atr_too_small": 12,
+        "stop_cost_multiple_too_small": 23,
+        "tiny_stop_flag": 18,
+        "unrealistic_stop_flag": 23,
+        "cost_dominated_flag": 23,
+        "noise_stop_flag": 20,
+        "fails_normal_cost": 2
+      },
+      "recommendation": "reject_or_redefine"
+    },
+    "FAILED_BREAKDOWN_REVERSAL": {
+      "candidate_count": 2,
+      "pass_count": 0,
+      "pass_rate": 0.0,
+      "median_improved_R_delta": 16.136733460011232,
+      "trimmed_mean_improved_R_delta": 16.136733460011232,
+      "winsorized_mean_improved_R_delta": 16.136733460011232,
+      "normal_cost_survival_rate": 1.0,
+      "high_cost_survival_rate": 1.0,
+      "tiny_stop_rate": 1.0,
+      "unrealistic_stop_rate": 1.0,
+      "cost_dominated_rate": 1.0,
+      "missed_winner_risk": 0.5,
+      "average_stop_atr_fraction": 0.180311498378708,
+      "median_stop_cost_multiple": 0.5215906349237078,
+      "best_personality_labels": [
+        "CHOPPY_LOW_TRUST"
+      ],
+      "worst_personality_labels": [
+        "CHOPPY_LOW_TRUST"
+      ],
+      "reject_reason_distribution": {
+        "stop_cost_multiple_too_small": 2,
+        "tiny_stop_flag": 2,
+        "unrealistic_stop_flag": 2,
+        "cost_dominated_flag": 2,
+        "noise_stop_flag": 2,
+        "failed_breakdown_too_deep": 2,
+        "stop_atr_too_small": 1
+      },
+      "recommendation": "insufficient_sample"
+    },
+    "STRUCTURE_BREAK_DIP": {
+      "candidate_count": 197,
+      "pass_count": 0,
+      "pass_rate": 0.0,
+      "median_improved_R_delta": 1.2083158636653302,
+      "trimmed_mean_improved_R_delta": 4.972086358939828,
+      "winsorized_mean_improved_R_delta": 7.476877578452349,
+      "normal_cost_survival_rate": 0.5634517766497462,
+      "high_cost_survival_rate": 0.5380710659898477,
+      "tiny_stop_rate": 0.6903553299492385,
+      "unrealistic_stop_rate": 0.868020304568528,
+      "cost_dominated_rate": 0.9644670050761421,
+      "missed_winner_risk": 0.350253807106599,
+      "average_stop_atr_fraction": 0.28934362960483356,
+      "median_stop_cost_multiple": 0.5259022647358382,
+      "best_personality_labels": [
+        "EXHAUSTION_RISK",
+        "CHOPPY_LOW_TRUST"
+      ],
+      "worst_personality_labels": [
+        "MOMENTUM_BURST",
+        "COMPRESSION_BREAKOUT"
+      ],
+      "reject_reason_distribution": {
+        "fails_normal_cost": 86,
+        "stop_atr_too_small": 85,
+        "stop_cost_multiple_too_small": 171,
+        "tiny_stop_flag": 136,
+        "unrealistic_stop_flag": 171,
+        "cost_dominated_flag": 190,
+        "noise_stop_flag": 164,
+        "structure_or_context_failed": 197,
+        "stop_cost_multiple_thin": 12
+      },
+      "recommendation": "reject_or_redefine"
+    }
+  },
+  "best_archetype": "LIQUIDITY_SWEEP_RECLAIM",
+  "worst_archetype": "STRUCTURE_BREAK_DIP",
+  "soft_evidence_only": {
+    "macd_bollinger": true
+  }
+}
