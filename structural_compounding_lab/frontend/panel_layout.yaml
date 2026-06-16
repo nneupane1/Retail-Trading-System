@@ -1,0 +1,58 @@
+shell:
+  identity: "Structural Compounding Lab"
+  theme: "dark-cockpit"
+  data_mode: "read-only"
+pages:
+  overview:
+    cards:
+      - base_capital
+      - active_trading_capital
+      - locked_profit
+      - floating_profit
+      - current_compounding_cycle
+      - cooldown_state
+      - total_return
+      - max_drawdown
+      - win_rate
+      - profit_factor
+      - r_multiple_summary
+  market_replay:
+    chart:
+      overlays:
+        - ema_stack
+        - support_resistance_zones
+        - liquidity_sweeps
+        - pullback_zones
+        - range_high_low
+        - retest_zones
+        - bollinger_bands
+        - vwap
+      markers:
+        - entry
+        - exit
+        - add_on
+        - profit_lock
+        - cooldown
+        - danger
+        - micro_pullback
+        - structural_runner
+        - exhaustion_warning
+  structure_map:
+    tables:
+      - structural_levels
+      - liquidity_pools
+      - failed_break_zones
+  profit_vault:
+    panels:
+      - base_capital_ledger
+      - locked_profit_ledger
+      - cycle_reset_history
+  trade_review:
+    tables:
+      - trades
+      - trade_reasoning
+  settings:
+    mode: "read-only"
+    sources:
+      - config/structural_compounding_settings.json
+      - config/structural_compounding_settings.yaml

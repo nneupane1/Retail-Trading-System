@@ -1,0 +1,42 @@
+{
+  "name": "structural_compounding_lab",
+  "version": "0.1.0",
+  "research_only": true,
+  "read_only_frontend": true,
+  "separate_from_runtime": true,
+  "primary_routes": [
+    "/structural-lab",
+    "/structural-lab/overview",
+    "/structural-lab/market-replay",
+    "/structural-lab/structure-map",
+    "/structural-lab/profit-vault",
+    "/structural-lab/trade-review",
+    "/structural-lab/settings"
+  ],
+  "entrypoints": {
+    "cockpit_launcher": "run_structural_compounding_cockpit.py",
+    "backtest_cli": "python -m structural_compounding_lab.backtest.run_structural_backtest"
+  },
+  "artifact_contract": [
+    "master_lab_plan.json",
+    "candidate_registry.json",
+    "summary.json",
+    "equity.csv",
+    "trades.csv",
+    "setup_log.csv",
+    "level_log.csv",
+    "liquidity_events.csv",
+    "profit_vault.json",
+    "cooldown_log.csv",
+    "pyramiding_log.csv",
+    "report.md",
+    "diagnostics/pullback_quality_report.json",
+    "diagnostics/original_vs_pullback_entry.csv",
+    "diagnostics/pullback_type_performance_report.json",
+    "diagnostics/missed_due_to_waiting_report.csv",
+    "diagnostics/pullback_compounding_readiness_report.json",
+    "diagnostics/personality_performance_report.json",
+    "diagnostics/indicator_confluence_report.json",
+    "execution_realism/execution_cost_sensitivity.json"
+  ]
+}

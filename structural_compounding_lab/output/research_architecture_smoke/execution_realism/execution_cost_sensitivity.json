@@ -1,0 +1,58 @@
+{
+  "research_only": true,
+  "scenario_metrics": {
+    "low_cost": {
+      "trade_count": 0,
+      "gross_pnl": 0.0,
+      "net_pnl_after_costs": 0.0,
+      "gross_r": 0.0,
+      "net_r_after_costs": 0.0,
+      "profit_factor_before_costs": 0.0,
+      "profit_factor_after_costs": 0.0,
+      "average_cost_per_trade": 0.0,
+      "total_fees": 0.0,
+      "total_estimated_slippage": 0.0,
+      "max_drawdown_penalty_proxy": 0.0
+    },
+    "normal_cost": {
+      "trade_count": 0,
+      "gross_pnl": 0.0,
+      "net_pnl_after_costs": 0.0,
+      "gross_r": 0.0,
+      "net_r_after_costs": 0.0,
+      "profit_factor_before_costs": 0.0,
+      "profit_factor_after_costs": 0.0,
+      "average_cost_per_trade": 0.0,
+      "total_fees": 0.0,
+      "total_estimated_slippage": 0.0,
+      "max_drawdown_penalty_proxy": 0.0
+    },
+    "high_cost": {
+      "trade_count": 0,
+      "gross_pnl": 0.0,
+      "net_pnl_after_costs": 0.0,
+      "gross_r": 0.0,
+      "net_r_after_costs": 0.0,
+      "profit_factor_before_costs": 0.0,
+      "profit_factor_after_costs": 0.0,
+      "average_cost_per_trade": 0.0,
+      "total_fees": 0.0,
+      "total_estimated_slippage": 0.0,
+      "max_drawdown_penalty_proxy": 0.0
+    },
+    "stress_cost": {
+      "trade_count": 0,
+      "gross_pnl": 0.0,
+      "net_pnl_after_costs": 0.0,
+      "gross_r": 0.0,
+      "net_r_after_costs": 0.0,
+      "profit_factor_before_costs": 0.0,
+      "profit_factor_after_costs": 0.0,
+      "average_cost_per_trade": 0.0,
+      "total_fees": 0.0,
+      "total_estimated_slippage": 0.0,
+      "max_drawdown_penalty_proxy": 0.0
+    }
+  },
+  "acceptance_rule": "A candidate is weak if it only works before costs and fails after realistic cost assumptions."
+}

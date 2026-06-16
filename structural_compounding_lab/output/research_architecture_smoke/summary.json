@@ -1,0 +1,461 @@
+{
+  "lab_name": "Structural Compounding Lab Smoke",
+  "symbol": "BTCUSDT",
+  "execution_timeframe": "15m",
+  "source_csv": "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\tests\\fixtures\\btcusdt_structural_fixture_1m.csv",
+  "run_state": "completed",
+  "resumed_from_checkpoint": false,
+  "progress": {
+    "current_index": 0,
+    "total_bars": 0,
+    "progress_pct": 0.0
+  },
+  "current_equity": 20000.0,
+  "ending_equity": 20000.0,
+  "active_trading_capital": 20000.0,
+  "locked_profit": 0.0,
+  "floating_profit": 0.0,
+  "cooldown_active": false,
+  "current_compounding_cycle": "cycle-0",
+  "trade_count": 0,
+  "setup_count": 0,
+  "level_count": 0,
+  "liquidity_event_count": 0,
+  "add_on_event_count": 0,
+  "profit_lock_count": 0,
+  "cooldown_event_count": 0,
+  "replay_checkpoint_timestamp": null,
+  "run_context": {
+    "loaded_history_start": null,
+    "loaded_history_end": null,
+    "analysis_start_date": "2026-01-01",
+    "analysis_end_date": "2026-01-01",
+    "structure_window_bars": 64,
+    "liquidity_window_bars": 48,
+    "setup_window_bars": 32,
+    "recent_liquidity_bars": 8
+  },
+  "metrics": {
+    "trade_count": 0,
+    "win_rate": 0.0,
+    "profit_factor": 0.0,
+    "avg_r": 0.0,
+    "total_return_pct": 0.0,
+    "max_drawdown_pct": 0.0,
+    "r_multiple_summary": "No trades yet."
+  },
+  "artifacts": {
+    "summary": "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\research_architecture_smoke\\summary.json",
+    "master_lab_plan_json": "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\research_architecture_smoke\\master_lab_plan.json",
+    "master_lab_plan_md": "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\research_architecture_smoke\\master_lab_plan.md",
+    "candidate_registry": "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\research_architecture_smoke\\candidate_registry.json",
+    "candidate_report": "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\research_architecture_smoke\\candidate_report.md",
+    "feature_flags": "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\research_architecture_smoke\\feature_flags.json",
+    "equity": "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\research_architecture_smoke\\equity.csv",
+    "trades": "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\research_architecture_smoke\\trades.csv",
+    "setup_log": "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\research_architecture_smoke\\setup_log.csv",
+    "level_log": "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\research_architecture_smoke\\level_log.csv",
+    "liquidity_events": "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\research_architecture_smoke\\liquidity_events.csv",
+    "profit_vault": "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\research_architecture_smoke\\profit_vault.json",
+    "cooldown_log": "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\research_architecture_smoke\\cooldown_log.csv",
+    "pyramiding_log": "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\research_architecture_smoke\\pyramiding_log.csv",
+    "report": "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\research_architecture_smoke\\report.md",
+    "trade_story_report": "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\research_architecture_smoke\\reports\\trade_story_report.md",
+    "winner_story_report": "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\research_architecture_smoke\\diagnostics\\winner_story_report.md",
+    "rejected_signal_story_report": "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\research_architecture_smoke\\diagnostics\\rejected_signal_story_report.md",
+    "entry_quality_report": "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\research_architecture_smoke\\diagnostics\\entry_quality_report.json",
+    "pullback_quality_report": "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\research_architecture_smoke\\diagnostics\\pullback_quality_report.json",
+    "original_vs_refined_entry": "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\research_architecture_smoke\\diagnostics\\original_vs_refined_entry.csv",
+    "original_vs_pullback_entry": "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\research_architecture_smoke\\diagnostics\\original_vs_pullback_entry.csv",
+    "pullback_type_performance_report": "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\research_architecture_smoke\\diagnostics\\pullback_type_performance_report.json",
+    "missed_due_to_waiting_report": "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\research_architecture_smoke\\diagnostics\\missed_due_to_waiting_report.csv",
+    "pullback_compounding_readiness_report": "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\research_architecture_smoke\\diagnostics\\pullback_compounding_readiness_report.json",
+    "personality_performance_report": "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\research_architecture_smoke\\diagnostics\\personality_performance_report.json",
+    "indicator_confluence_report": "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\research_architecture_smoke\\diagnostics\\indicator_confluence_report.json",
+    "promotion_packet": "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\research_architecture_smoke\\reports\\promotion_packet.json",
+    "execution_cost_model": "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\research_architecture_smoke\\execution_realism\\execution_cost_model.json",
+    "execution_cost_assumptions": "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\research_architecture_smoke\\execution_realism\\execution_cost_assumptions.md",
+    "execution_cost_sensitivity": "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\research_architecture_smoke\\execution_realism\\execution_cost_sensitivity.json",
+    "execution_cost_sensitivity_md": "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\research_architecture_smoke\\execution_realism\\execution_cost_sensitivity.md",
+    "status": "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\research_architecture_smoke\\status.json",
+    "scenario_progress": "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\research_architecture_smoke\\scenario_progress.json",
+    "checkpoint": "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\research_architecture_smoke\\_checkpoints\\structural_backtest.checkpoint.json"
+  },
+  "research_diagnostics": {
+    "feature_flags": {
+      "momentum_personality_layer": {
+        "enabled": true,
+        "authoritative": false,
+        "paper_allowed": false,
+        "live_allowed": false,
+        "real_money_allowed": false,
+        "description": "Soft evidence layer using MACD/Bollinger to classify setup personality without blocking core setup logic."
+      },
+      "intelligent_pullback_accumulation": {
+        "enabled": true,
+        "authoritative": false,
+        "paper_allowed": false,
+        "live_allowed": false,
+        "real_money_allowed": false,
+        "description": "Research-only structural pullback scoring and original-vs-pullback entry comparison."
+      },
+      "structural_pullback_compounding_entry": {
+        "enabled": true,
+        "authoritative": false,
+        "paper_allowed": false,
+        "live_allowed": false,
+        "real_money_allowed": false,
+        "description": "Compounding-readiness study for improved pullback geometry and add-on base quality."
+      }
+    },
+    "candidate_registry": {
+      "lab_name": "Structural Compounding Lab",
+      "research_only": true,
+      "authoritative": false,
+      "candidate_count": 6,
+      "candidates": [
+        {
+          "candidate_id": "btc_micro_pullback_refinement",
+          "hypothesis": "BTC structural continuation trades may gain materially better R and add-on base quality when entry waits for a valid lower-timeframe micro pullback instead of chasing the first impulse.",
+          "allowed_scope": [
+            "research_reports",
+            "backtest_comparison",
+            "btc_only"
+          ],
+          "forbidden_scope": [
+            "live_runtime",
+            "paper_runtime",
+            "real_orders",
+            "hard_entry_gate"
+          ],
+          "required_inputs": [
+            "1m_candles",
+            "5m_candles",
+            "1h_structural_context",
+            "12h_context"
+          ],
+          "expected_outputs": [
+            "original_vs_pullback_entry.csv",
+            "pullback_quality_report.json"
+          ],
+          "validation_ladder": [
+            "plan_spec",
+            "unit_tests",
+            "smoke_window",
+            "diagnostic_fast_window",
+            "recent_holdout"
+          ],
+          "acceptance_criteria": [
+            "average_R_improves",
+            "missed_winner_rate_remains_bounded",
+            "drawdown_does_not_worsen_materially"
+          ],
+          "no_go_rules": [
+            "trade_frequency_collapses",
+            "holdout_degrades",
+            "pullback_logic_requires_future_leakage"
+          ],
+          "safety_flags": {
+            "research_only": true,
+            "authoritative": false
+          },
+          "rollback_plan": "Delete candidate wiring and fall back to read-only artifact generation.",
+          "live_allowed": false,
+          "paper_allowed": false,
+          "real_money_allowed": false,
+          "authoritative": false,
+          "requires_manual_promotion": true
+        },
+        {
+          "candidate_id": "htf_structural_continuation",
+          "hypothesis": "Higher-timeframe structural continuation trades can be classified more intelligently by separating clean continuation from exhaustion and broken structure.",
+          "allowed_scope": [
+            "research_classification",
+            "reporting",
+            "holdout_comparison"
+          ],
+          "forbidden_scope": [
+            "runtime_routing",
+            "threshold_changes",
+            "live_orders"
+          ],
+          "required_inputs": [
+            "1h_setups",
+            "12h_context",
+            "levels",
+            "liquidity_events"
+          ],
+          "expected_outputs": [
+            "winner_story_report.md",
+            "pullback_type_performance_report.json"
+          ],
+          "validation_ladder": [
+            "plan_spec",
+            "unit_tests",
+            "diagnostic_fast_window",
+            "recent_holdout"
+          ],
+          "acceptance_criteria": [
+            "structural_runner_cluster_has_positive_expectancy"
+          ],
+          "no_go_rules": [
+            "classification_only_adds_noise"
+          ],
+          "safety_flags": {
+            "research_only": true,
+            "authoritative": false
+          },
+          "rollback_plan": "Delete candidate wiring and fall back to read-only artifact generation.",
+          "live_allowed": false,
+          "paper_allowed": false,
+          "real_money_allowed": false,
+          "authoritative": false,
+          "requires_manual_promotion": true
+        },
+        {
+          "candidate_id": "momentum_burst_research",
+          "hypothesis": "MACD/Bollinger soft evidence can separate true momentum bursts from noisy continuation without becoming a hard gate.",
+          "allowed_scope": [
+            "soft_scoring",
+            "diagnostics",
+            "personality_reports"
+          ],
+          "forbidden_scope": [
+            "hard_filter",
+            "runtime_behavior_change"
+          ],
+          "required_inputs": [
+            "execution_frame_indicators",
+            "setup_log",
+            "trade_log"
+          ],
+          "expected_outputs": [
+            "indicator_confluence_report.json",
+            "personality_performance_report.json"
+          ],
+          "validation_ladder": [
+            "plan_spec",
+            "unit_tests",
+            "diagnostic_fast_window"
+          ],
+          "acceptance_criteria": [
+            "soft_confluence_explains_trade_personality"
+          ],
+          "no_go_rules": [
+            "soft_layer_becomes_hidden_hard_gate"
+          ],
+          "safety_flags": {
+            "research_only": true,
+            "authoritative": false
+          },
+          "rollback_plan": "Delete candidate wiring and fall back to read-only artifact generation.",
+          "live_allowed": false,
+          "paper_allowed": false,
+          "real_money_allowed": false,
+          "authoritative": false,
+          "requires_manual_promotion": true
+        },
+        {
+          "candidate_id": "compression_breakout_research",
+          "hypothesis": "Compression states identified through Bollinger width and structural acceptance may deserve different patience and runner handling.",
+          "allowed_scope": [
+            "research_classification",
+            "reporting"
+          ],
+          "forbidden_scope": [
+            "live_behavior_change",
+            "paper_behavior_change"
+          ],
+          "required_inputs": [
+            "bollinger_features",
+            "levels",
+            "trade_outcomes"
+          ],
+          "expected_outputs": [
+            "indicator_confluence_report.json",
+            "pullback_compounding_readiness_report.json"
+          ],
+          "validation_ladder": [
+            "plan_spec",
+            "unit_tests",
+            "diagnostic_fast_window"
+          ],
+          "acceptance_criteria": [
+            "compression_breakouts_show_distinct_distribution"
+          ],
+          "no_go_rules": [
+            "classification_is_not_stable"
+          ],
+          "safety_flags": {
+            "research_only": true,
+            "authoritative": false
+          },
+          "rollback_plan": "Delete candidate wiring and fall back to read-only artifact generation.",
+          "live_allowed": false,
+          "paper_allowed": false,
+          "real_money_allowed": false,
+          "authoritative": false,
+          "requires_manual_promotion": true
+        },
+        {
+          "candidate_id": "exhaustion_risk_research",
+          "hypothesis": "Exhaustion-risk tags should identify structurally valid but lower-trust entries that may deserve more conservative de-risking in future research.",
+          "allowed_scope": [
+            "warning_labels",
+            "post_trade_analysis"
+          ],
+          "forbidden_scope": [
+            "hard_rejection",
+            "runtime_exit_change"
+          ],
+          "required_inputs": [
+            "macd_features",
+            "bollinger_features",
+            "volume_context",
+            "trade_log"
+          ],
+          "expected_outputs": [
+            "personality_performance_report.json",
+            "rejected_signal_story_report.md"
+          ],
+          "validation_ladder": [
+            "plan_spec",
+            "unit_tests",
+            "diagnostic_fast_window"
+          ],
+          "acceptance_criteria": [
+            "exhaustion_tag_explains_weaker_distribution"
+          ],
+          "no_go_rules": [
+            "warning_label_produces_false_precision"
+          ],
+          "safety_flags": {
+            "research_only": true,
+            "authoritative": false
+          },
+          "rollback_plan": "Delete candidate wiring and fall back to read-only artifact generation.",
+          "live_allowed": false,
+          "paper_allowed": false,
+          "real_money_allowed": false,
+          "authoritative": false,
+          "requires_manual_promotion": true
+        },
+        {
+          "candidate_id": "runner_quality_research",
+          "hypothesis": "Not all structural winners deserve runner treatment; a compounding-readiness layer can distinguish tactical exits from true runner candidates.",
+          "allowed_scope": [
+            "readiness_scoring",
+            "reporting",
+            "backtest_only"
+          ],
+          "forbidden_scope": [
+            "exit_logic_change",
+            "pyramiding_behavior_change"
+          ],
+          "required_inputs": [
+            "trade_log",
+            "setup_log",
+            "context_features"
+          ],
+          "expected_outputs": [
+            "pullback_compounding_readiness_report.json",
+            "winner_story_report.md"
+          ],
+          "validation_ladder": [
+            "plan_spec",
+            "unit_tests",
+            "diagnostic_fast_window",
+            "recent_holdout"
+          ],
+          "acceptance_criteria": [
+            "runner_tags_are_selective_and_explanatory"
+          ],
+          "no_go_rules": [
+            "runner_tags_track_pnl_after_the_fact_only"
+          ],
+          "safety_flags": {
+            "research_only": true,
+            "authoritative": false
+          },
+          "rollback_plan": "Delete candidate wiring and fall back to read-only artifact generation.",
+          "live_allowed": false,
+          "paper_allowed": false,
+          "real_money_allowed": false,
+          "authoritative": false,
+          "requires_manual_promotion": true
+        }
+      ]
+    },
+    "entry_quality": {
+      "count": 0,
+      "average_improved_R_delta": 0.0,
+      "average_stop_reduction_pct": 0.0
+    },
+    "pullback_type_report": {},
+    "missed_pullbacks": 0,
+    "personality_report": {},
+    "confluence_report": {},
+    "compounding_readiness": {
+      "average_compounding_readiness": 0.0,
+      "runner_candidate_rate": 0.0
+    },
+    "execution_costs": {
+      "research_only": true,
+      "scenario_metrics": {
+        "low_cost": {
+          "trade_count": 0,
+          "gross_pnl": 0.0,
+          "net_pnl_after_costs": 0.0,
+          "gross_r": 0.0,
+          "net_r_after_costs": 0.0,
+          "profit_factor_before_costs": 0.0,
+          "profit_factor_after_costs": 0.0,
+          "average_cost_per_trade": 0.0,
+          "total_fees": 0.0,
+          "total_estimated_slippage": 0.0,
+          "max_drawdown_penalty_proxy": 0.0
+        },
+        "normal_cost": {
+          "trade_count": 0,
+          "gross_pnl": 0.0,
+          "net_pnl_after_costs": 0.0,
+          "gross_r": 0.0,
+          "net_r_after_costs": 0.0,
+          "profit_factor_before_costs": 0.0,
+          "profit_factor_after_costs": 0.0,
+          "average_cost_per_trade": 0.0,
+          "total_fees": 0.0,
+          "total_estimated_slippage": 0.0,
+          "max_drawdown_penalty_proxy": 0.0
+        },
+        "high_cost": {
+          "trade_count": 0,
+          "gross_pnl": 0.0,
+          "net_pnl_after_costs": 0.0,
+          "gross_r": 0.0,
+          "net_r_after_costs": 0.0,
+          "profit_factor_before_costs": 0.0,
+          "profit_factor_after_costs": 0.0,
+          "average_cost_per_trade": 0.0,
+          "total_fees": 0.0,
+          "total_estimated_slippage": 0.0,
+          "max_drawdown_penalty_proxy": 0.0
+        },
+        "stress_cost": {
+          "trade_count": 0,
+          "gross_pnl": 0.0,
+          "net_pnl_after_costs": 0.0,
+          "gross_r": 0.0,
+          "net_r_after_costs": 0.0,
+          "profit_factor_before_costs": 0.0,
+          "profit_factor_after_costs": 0.0,
+          "average_cost_per_trade": 0.0,
+          "total_fees": 0.0,
+          "total_estimated_slippage": 0.0,
+          "max_drawdown_penalty_proxy": 0.0
+        }
+      },
+      "acceptance_rule": "A candidate is weak if it only works before costs and fails after realistic cost assumptions."
+    }
+  }
+}

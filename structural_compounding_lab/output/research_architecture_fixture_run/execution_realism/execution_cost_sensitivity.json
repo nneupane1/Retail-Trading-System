@@ -1,0 +1,58 @@
+{
+  "research_only": true,
+  "scenario_metrics": {
+    "low_cost": {
+      "trade_count": 1,
+      "gross_pnl": 94.76494023904048,
+      "net_pnl_after_costs": 94.59797711404049,
+      "gross_r": 0.3981720178110945,
+      "net_r_after_costs": 0.39747049207580043,
+      "profit_factor_before_costs": 1.0,
+      "profit_factor_after_costs": 1.0,
+      "average_cost_per_trade": 0.166963125,
+      "total_fees": 0.089047,
+      "total_estimated_slippage": 0.077916125,
+      "max_drawdown_penalty_proxy": 0.0007
+    },
+    "normal_cost": {
+      "trade_count": 1,
+      "gross_pnl": 94.76494023904048,
+      "net_pnl_after_costs": 94.41988311404049,
+      "gross_r": 0.3981720178110945,
+      "net_r_after_costs": 0.39672219795815333,
+      "profit_factor_before_costs": 1.0,
+      "profit_factor_after_costs": 1.0,
+      "average_cost_per_trade": 0.345057125,
+      "total_fees": 0.178094,
+      "total_estimated_slippage": 0.16696312500000002,
+      "max_drawdown_penalty_proxy": 0.0015
+    },
+    "high_cost": {
+      "trade_count": 1,
+      "gross_pnl": 94.76494023904048,
+      "net_pnl_after_costs": 94.23622367654049,
+      "gross_r": 0.3981720178110945,
+      "net_r_after_costs": 0.3959505196493298,
+      "profit_factor_before_costs": 1.0,
+      "profit_factor_after_costs": 1.0,
+      "average_cost_per_trade": 0.5287165625,
+      "total_fees": 0.26714099999999996,
+      "total_estimated_slippage": 0.2615755625,
+      "max_drawdown_penalty_proxy": 0.00235
+    },
+    "stress_cost": {
+      "trade_count": 1,
+      "gross_pnl": 94.76494023904048,
+      "net_pnl_after_costs": 93.99690986404048,
+      "gross_r": 0.3981720178110945,
+      "net_r_after_costs": 0.39494499942874156,
+      "profit_factor_before_costs": 1.0,
+      "profit_factor_after_costs": 1.0,
+      "average_cost_per_trade": 0.768030375,
+      "total_fees": 0.356188,
+      "total_estimated_slippage": 0.41184237500000004,
+      "max_drawdown_penalty_proxy": 0.0037
+    }
+  },
+  "acceptance_rule": "A candidate is weak if it only works before costs and fails after realistic cost assumptions."
+}

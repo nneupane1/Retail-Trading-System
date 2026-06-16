@@ -1,0 +1,350 @@
+{
+  "research_only": true,
+  "requires_manual_promotion": true,
+  "automatic_promotion": false,
+  "summary_metrics": {
+    "trade_count": 1,
+    "win_rate": 1.0,
+    "profit_factor": 1.0,
+    "avg_r": 0.3981720178110945,
+    "total_return_pct": 0.00473824701195208,
+    "max_drawdown_pct": 0.0,
+    "r_multiple_summary": "1 winners / 0 losers / average R 0.40"
+  },
+  "candidate_registry": {
+    "lab_name": "Structural Compounding Lab",
+    "research_only": true,
+    "authoritative": false,
+    "candidate_count": 6,
+    "candidates": [
+      {
+        "candidate_id": "btc_micro_pullback_refinement",
+        "hypothesis": "BTC structural continuation trades may gain materially better R and add-on base quality when entry waits for a valid lower-timeframe micro pullback instead of chasing the first impulse.",
+        "allowed_scope": [
+          "research_reports",
+          "backtest_comparison",
+          "btc_only"
+        ],
+        "forbidden_scope": [
+          "live_runtime",
+          "paper_runtime",
+          "real_orders",
+          "hard_entry_gate"
+        ],
+        "required_inputs": [
+          "1m_candles",
+          "5m_candles",
+          "1h_structural_context",
+          "12h_context"
+        ],
+        "expected_outputs": [
+          "original_vs_pullback_entry.csv",
+          "pullback_quality_report.json"
+        ],
+        "validation_ladder": [
+          "plan_spec",
+          "unit_tests",
+          "smoke_window",
+          "diagnostic_fast_window",
+          "recent_holdout"
+        ],
+        "acceptance_criteria": [
+          "average_R_improves",
+          "missed_winner_rate_remains_bounded",
+          "drawdown_does_not_worsen_materially"
+        ],
+        "no_go_rules": [
+          "trade_frequency_collapses",
+          "holdout_degrades",
+          "pullback_logic_requires_future_leakage"
+        ],
+        "safety_flags": {
+          "research_only": true,
+          "authoritative": false
+        },
+        "rollback_plan": "Delete candidate wiring and fall back to read-only artifact generation.",
+        "live_allowed": false,
+        "paper_allowed": false,
+        "real_money_allowed": false,
+        "authoritative": false,
+        "requires_manual_promotion": true
+      },
+      {
+        "candidate_id": "htf_structural_continuation",
+        "hypothesis": "Higher-timeframe structural continuation trades can be classified more intelligently by separating clean continuation from exhaustion and broken structure.",
+        "allowed_scope": [
+          "research_classification",
+          "reporting",
+          "holdout_comparison"
+        ],
+        "forbidden_scope": [
+          "runtime_routing",
+          "threshold_changes",
+          "live_orders"
+        ],
+        "required_inputs": [
+          "1h_setups",
+          "12h_context",
+          "levels",
+          "liquidity_events"
+        ],
+        "expected_outputs": [
+          "winner_story_report.md",
+          "pullback_type_performance_report.json"
+        ],
+        "validation_ladder": [
+          "plan_spec",
+          "unit_tests",
+          "diagnostic_fast_window",
+          "recent_holdout"
+        ],
+        "acceptance_criteria": [
+          "structural_runner_cluster_has_positive_expectancy"
+        ],
+        "no_go_rules": [
+          "classification_only_adds_noise"
+        ],
+        "safety_flags": {
+          "research_only": true,
+          "authoritative": false
+        },
+        "rollback_plan": "Delete candidate wiring and fall back to read-only artifact generation.",
+        "live_allowed": false,
+        "paper_allowed": false,
+        "real_money_allowed": false,
+        "authoritative": false,
+        "requires_manual_promotion": true
+      },
+      {
+        "candidate_id": "momentum_burst_research",
+        "hypothesis": "MACD/Bollinger soft evidence can separate true momentum bursts from noisy continuation without becoming a hard gate.",
+        "allowed_scope": [
+          "soft_scoring",
+          "diagnostics",
+          "personality_reports"
+        ],
+        "forbidden_scope": [
+          "hard_filter",
+          "runtime_behavior_change"
+        ],
+        "required_inputs": [
+          "execution_frame_indicators",
+          "setup_log",
+          "trade_log"
+        ],
+        "expected_outputs": [
+          "indicator_confluence_report.json",
+          "personality_performance_report.json"
+        ],
+        "validation_ladder": [
+          "plan_spec",
+          "unit_tests",
+          "diagnostic_fast_window"
+        ],
+        "acceptance_criteria": [
+          "soft_confluence_explains_trade_personality"
+        ],
+        "no_go_rules": [
+          "soft_layer_becomes_hidden_hard_gate"
+        ],
+        "safety_flags": {
+          "research_only": true,
+          "authoritative": false
+        },
+        "rollback_plan": "Delete candidate wiring and fall back to read-only artifact generation.",
+        "live_allowed": false,
+        "paper_allowed": false,
+        "real_money_allowed": false,
+        "authoritative": false,
+        "requires_manual_promotion": true
+      },
+      {
+        "candidate_id": "compression_breakout_research",
+        "hypothesis": "Compression states identified through Bollinger width and structural acceptance may deserve different patience and runner handling.",
+        "allowed_scope": [
+          "research_classification",
+          "reporting"
+        ],
+        "forbidden_scope": [
+          "live_behavior_change",
+          "paper_behavior_change"
+        ],
+        "required_inputs": [
+          "bollinger_features",
+          "levels",
+          "trade_outcomes"
+        ],
+        "expected_outputs": [
+          "indicator_confluence_report.json",
+          "pullback_compounding_readiness_report.json"
+        ],
+        "validation_ladder": [
+          "plan_spec",
+          "unit_tests",
+          "diagnostic_fast_window"
+        ],
+        "acceptance_criteria": [
+          "compression_breakouts_show_distinct_distribution"
+        ],
+        "no_go_rules": [
+          "classification_is_not_stable"
+        ],
+        "safety_flags": {
+          "research_only": true,
+          "authoritative": false
+        },
+        "rollback_plan": "Delete candidate wiring and fall back to read-only artifact generation.",
+        "live_allowed": false,
+        "paper_allowed": false,
+        "real_money_allowed": false,
+        "authoritative": false,
+        "requires_manual_promotion": true
+      },
+      {
+        "candidate_id": "exhaustion_risk_research",
+        "hypothesis": "Exhaustion-risk tags should identify structurally valid but lower-trust entries that may deserve more conservative de-risking in future research.",
+        "allowed_scope": [
+          "warning_labels",
+          "post_trade_analysis"
+        ],
+        "forbidden_scope": [
+          "hard_rejection",
+          "runtime_exit_change"
+        ],
+        "required_inputs": [
+          "macd_features",
+          "bollinger_features",
+          "volume_context",
+          "trade_log"
+        ],
+        "expected_outputs": [
+          "personality_performance_report.json",
+          "rejected_signal_story_report.md"
+        ],
+        "validation_ladder": [
+          "plan_spec",
+          "unit_tests",
+          "diagnostic_fast_window"
+        ],
+        "acceptance_criteria": [
+          "exhaustion_tag_explains_weaker_distribution"
+        ],
+        "no_go_rules": [
+          "warning_label_produces_false_precision"
+        ],
+        "safety_flags": {
+          "research_only": true,
+          "authoritative": false
+        },
+        "rollback_plan": "Delete candidate wiring and fall back to read-only artifact generation.",
+        "live_allowed": false,
+        "paper_allowed": false,
+        "real_money_allowed": false,
+        "authoritative": false,
+        "requires_manual_promotion": true
+      },
+      {
+        "candidate_id": "runner_quality_research",
+        "hypothesis": "Not all structural winners deserve runner treatment; a compounding-readiness layer can distinguish tactical exits from true runner candidates.",
+        "allowed_scope": [
+          "readiness_scoring",
+          "reporting",
+          "backtest_only"
+        ],
+        "forbidden_scope": [
+          "exit_logic_change",
+          "pyramiding_behavior_change"
+        ],
+        "required_inputs": [
+          "trade_log",
+          "setup_log",
+          "context_features"
+        ],
+        "expected_outputs": [
+          "pullback_compounding_readiness_report.json",
+          "winner_story_report.md"
+        ],
+        "validation_ladder": [
+          "plan_spec",
+          "unit_tests",
+          "diagnostic_fast_window",
+          "recent_holdout"
+        ],
+        "acceptance_criteria": [
+          "runner_tags_are_selective_and_explanatory"
+        ],
+        "no_go_rules": [
+          "runner_tags_track_pnl_after_the_fact_only"
+        ],
+        "safety_flags": {
+          "research_only": true,
+          "authoritative": false
+        },
+        "rollback_plan": "Delete candidate wiring and fall back to read-only artifact generation.",
+        "live_allowed": false,
+        "paper_allowed": false,
+        "real_money_allowed": false,
+        "authoritative": false,
+        "requires_manual_promotion": true
+      }
+    ]
+  },
+  "execution_cost_sensitivity": {
+    "research_only": true,
+    "scenario_metrics": {
+      "low_cost": {
+        "trade_count": 1,
+        "gross_pnl": 94.76494023904048,
+        "net_pnl_after_costs": 94.59797711404049,
+        "gross_r": 0.3981720178110945,
+        "net_r_after_costs": 0.39747049207580043,
+        "profit_factor_before_costs": 1.0,
+        "profit_factor_after_costs": 1.0,
+        "average_cost_per_trade": 0.166963125,
+        "total_fees": 0.089047,
+        "total_estimated_slippage": 0.077916125,
+        "max_drawdown_penalty_proxy": 0.0007
+      },
+      "normal_cost": {
+        "trade_count": 1,
+        "gross_pnl": 94.76494023904048,
+        "net_pnl_after_costs": 94.41988311404049,
+        "gross_r": 0.3981720178110945,
+        "net_r_after_costs": 0.39672219795815333,
+        "profit_factor_before_costs": 1.0,
+        "profit_factor_after_costs": 1.0,
+        "average_cost_per_trade": 0.345057125,
+        "total_fees": 0.178094,
+        "total_estimated_slippage": 0.16696312500000002,
+        "max_drawdown_penalty_proxy": 0.0015
+      },
+      "high_cost": {
+        "trade_count": 1,
+        "gross_pnl": 94.76494023904048,
+        "net_pnl_after_costs": 94.23622367654049,
+        "gross_r": 0.3981720178110945,
+        "net_r_after_costs": 0.3959505196493298,
+        "profit_factor_before_costs": 1.0,
+        "profit_factor_after_costs": 1.0,
+        "average_cost_per_trade": 0.5287165625,
+        "total_fees": 0.26714099999999996,
+        "total_estimated_slippage": 0.2615755625,
+        "max_drawdown_penalty_proxy": 0.00235
+      },
+      "stress_cost": {
+        "trade_count": 1,
+        "gross_pnl": 94.76494023904048,
+        "net_pnl_after_costs": 93.99690986404048,
+        "gross_r": 0.3981720178110945,
+        "net_r_after_costs": 0.39494499942874156,
+        "profit_factor_before_costs": 1.0,
+        "profit_factor_after_costs": 1.0,
+        "average_cost_per_trade": 0.768030375,
+        "total_fees": 0.356188,
+        "total_estimated_slippage": 0.41184237500000004,
+        "max_drawdown_penalty_proxy": 0.0037
+      }
+    },
+    "acceptance_rule": "A candidate is weak if it only works before costs and fails after realistic cost assumptions."
+  }
+}

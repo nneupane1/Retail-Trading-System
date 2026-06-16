@@ -1,0 +1,45 @@
+{
+  "updated_at": "2026-06-16T11:50:36.460132+00:00",
+  "metadata": {
+    "symbol": "BTCUSDT",
+    "source_csv": "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\tests\\fixtures\\btcusdt_structural_fixture_1m.csv",
+    "execution_timeframe": "15m",
+    "analysis_start_date": "2026-01-01",
+    "analysis_end_date": "2026-01-01",
+    "output_dir": "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\research_architecture_smoke"
+  },
+  "next_index": 0,
+  "total_bars": 0,
+  "next_candle_time": null,
+  "portfolio_state": {
+    "profit_vault": {
+      "base_capital": 20000.0,
+      "active_trading_capital": 20000.0,
+      "locked_profit": 0.0,
+      "floating_profit": 0.0,
+      "cooldown_active": false,
+      "cooldown_until": null,
+      "current_compounding_cycle_id": "cycle-0"
+    },
+    "cooldown": {
+      "active": false,
+      "remaining_bars": 0,
+      "elapsed_bars": 0,
+      "minimum_bars": 0,
+      "fast_resume_score": 0.0,
+      "requires_danger_clear": true,
+      "reason": "",
+      "release_reason": ""
+    },
+    "open_trade": null,
+    "equity_curve": [],
+    "trade_rows": [],
+    "setup_rows": [],
+    "level_rows": [],
+    "liquidity_rows": [],
+    "cooldown_rows": [],
+    "pyramiding_rows": []
+  },
+  "seen_levels": [],
+  "seen_liquidity": []
+}

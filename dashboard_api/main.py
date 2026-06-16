@@ -16,6 +16,8 @@ from common.dashboard_telemetry import (
     list_live_runs,
     load_live_dashboard_snapshot,
     load_symbol_candles,
+    load_structural_lab_candles,
+    load_structural_lab_snapshot,
 )
 from config import AppConfig
 
@@ -133,6 +135,27 @@ def candles(
         config=_config(),
         run_dir=run_dir,
         mode=mode,
+        until_time=until_time,
+    )
+
+
+@app.get("/api/structural-lab/snapshot")
+def structural_lab_snapshot() -> dict:
+    return load_structural_lab_snapshot()
+
+
+@app.get("/api/structural-lab/candles")
+def structural_lab_candles(
+    symbol: str,
+    timeframe: str = Query("1h"),
+    limit: int = Query(500, ge=50, le=5000),
+    until_time: str | None = Query(None),
+) -> dict:
+    return load_structural_lab_candles(
+        symbol,
+        timeframe=timeframe,
+        limit=limit,
+        config=_config(),
         until_time=until_time,
     )
 

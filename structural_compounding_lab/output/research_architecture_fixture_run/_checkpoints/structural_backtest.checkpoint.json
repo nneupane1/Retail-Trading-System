@@ -1,0 +1,2381 @@
+{
+  "updated_at": "2026-06-16T11:51:37.805912+00:00",
+  "metadata": {
+    "symbol": "BTCUSDT",
+    "source_csv": "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\tests\\fixtures\\btcusdt_structural_fixture_1m.csv",
+    "execution_timeframe": "15m",
+    "analysis_start_date": "2026-01-01",
+    "analysis_end_date": "2026-01-02",
+    "output_dir": "C:\\Users\\v25946b\\OneDrive - Iveco Group\\Documents\\Retail-Trading-System\\structural_compounding_lab\\output\\research_architecture_fixture_run"
+  },
+  "next_index": 28,
+  "total_bars": 28,
+  "next_candle_time": "2026-01-01T12:00:00+00:00",
+  "portfolio_state": {
+    "profit_vault": {
+      "base_capital": 20000.0,
+      "active_trading_capital": 20094.76494023904,
+      "locked_profit": 0.0,
+      "floating_profit": 0.0,
+      "cooldown_active": false,
+      "cooldown_until": null,
+      "current_compounding_cycle_id": "cycle-0"
+    },
+    "cooldown": {
+      "active": false,
+      "remaining_bars": 0,
+      "elapsed_bars": 0,
+      "minimum_bars": 0,
+      "fast_resume_score": 0.0,
+      "requires_danger_clear": true,
+      "reason": "",
+      "release_reason": ""
+    },
+    "open_trade": null,
+    "equity_curve": [
+      {
+        "timestamp": "2026-01-01T05:15:00+00:00",
+        "equity": 20000.0,
+        "active_capital": 20000.0,
+        "locked_profit": 0.0
+      },
+      {
+        "timestamp": "2026-01-01T05:30:00+00:00",
+        "equity": 20000.0,
+        "active_capital": 20000.0,
+        "locked_profit": 0.0
+      },
+      {
+        "timestamp": "2026-01-01T05:45:00+00:00",
+        "equity": 20000.0,
+        "active_capital": 20000.0,
+        "locked_profit": 0.0
+      },
+      {
+        "timestamp": "2026-01-01T06:00:00+00:00",
+        "equity": 20000.0,
+        "active_capital": 20000.0,
+        "locked_profit": 0.0
+      },
+      {
+        "timestamp": "2026-01-01T06:15:00+00:00",
+        "equity": 20000.0,
+        "active_capital": 20000.0,
+        "locked_profit": 0.0
+      },
+      {
+        "timestamp": "2026-01-01T06:30:00+00:00",
+        "equity": 20000.0,
+        "active_capital": 20000.0,
+        "locked_profit": 0.0
+      },
+      {
+        "timestamp": "2026-01-01T06:45:00+00:00",
+        "equity": 20000.0,
+        "active_capital": 20000.0,
+        "locked_profit": 0.0
+      },
+      {
+        "timestamp": "2026-01-01T07:00:00+00:00",
+        "equity": 20000.0,
+        "active_capital": 20000.0,
+        "locked_profit": 0.0
+      },
+      {
+        "timestamp": "2026-01-01T07:15:00+00:00",
+        "equity": 20000.0,
+        "active_capital": 20000.0,
+        "locked_profit": 0.0
+      },
+      {
+        "timestamp": "2026-01-01T07:30:00+00:00",
+        "equity": 20000.0,
+        "active_capital": 20000.0,
+        "locked_profit": 0.0
+      },
+      {
+        "timestamp": "2026-01-01T07:45:00+00:00",
+        "equity": 20000.0,
+        "active_capital": 20000.0,
+        "locked_profit": 0.0
+      },
+      {
+        "timestamp": "2026-01-01T08:00:00+00:00",
+        "equity": 20000.0,
+        "active_capital": 20000.0,
+        "locked_profit": 0.0
+      },
+      {
+        "timestamp": "2026-01-01T08:15:00+00:00",
+        "equity": 20000.0,
+        "active_capital": 20000.0,
+        "locked_profit": 0.0
+      },
+      {
+        "timestamp": "2026-01-01T08:30:00+00:00",
+        "equity": 20000.0,
+        "active_capital": 20000.0,
+        "locked_profit": 0.0
+      },
+      {
+        "timestamp": "2026-01-01T08:45:00+00:00",
+        "equity": 20000.0,
+        "active_capital": 20000.0,
+        "locked_profit": 0.0
+      },
+      {
+        "timestamp": "2026-01-01T09:00:00+00:00",
+        "equity": 20000.0,
+        "active_capital": 20000.0,
+        "locked_profit": 0.0
+      },
+      {
+        "timestamp": "2026-01-01T09:15:00+00:00",
+        "equity": 20000.0,
+        "active_capital": 20000.0,
+        "locked_profit": 0.0
+      },
+      {
+        "timestamp": "2026-01-01T09:30:00+00:00",
+        "equity": 20000.0,
+        "active_capital": 20000.0,
+        "locked_profit": 0.0
+      },
+      {
+        "timestamp": "2026-01-01T09:45:00+00:00",
+        "equity": 20000.0,
+        "active_capital": 20000.0,
+        "locked_profit": 0.0
+      },
+      {
+        "timestamp": "2026-01-01T10:00:00+00:00",
+        "equity": 20000.0,
+        "active_capital": 20000.0,
+        "locked_profit": 0.0
+      },
+      {
+        "timestamp": "2026-01-01T10:15:00+00:00",
+        "equity": 20326.51792828684,
+        "active_capital": 20000.0,
+        "locked_profit": 0.0
+      },
+      {
+        "timestamp": "2026-01-01T10:30:00+00:00",
+        "equity": 20094.76494023904,
+        "active_capital": 20094.76494023904,
+        "locked_profit": 0.0
+      },
+      {
+        "timestamp": "2026-01-01T10:45:00+00:00",
+        "equity": 20094.76494023904,
+        "active_capital": 20094.76494023904,
+        "locked_profit": 0.0
+      },
+      {
+        "timestamp": "2026-01-01T11:00:00+00:00",
+        "equity": 20094.76494023904,
+        "active_capital": 20094.76494023904,
+        "locked_profit": 0.0
+      },
+      {
+        "timestamp": "2026-01-01T11:15:00+00:00",
+        "equity": 20094.76494023904,
+        "active_capital": 20094.76494023904,
+        "locked_profit": 0.0
+      },
+      {
+        "timestamp": "2026-01-01T11:30:00+00:00",
+        "equity": 20094.76494023904,
+        "active_capital": 20094.76494023904,
+        "locked_profit": 0.0
+      },
+      {
+        "timestamp": "2026-01-01T11:45:00+00:00",
+        "equity": 20094.76494023904,
+        "active_capital": 20094.76494023904,
+        "locked_profit": 0.0
+      },
+      {
+        "timestamp": "2026-01-01T12:00:00+00:00",
+        "equity": 20094.76494023904,
+        "active_capital": 20094.76494023904,
+        "locked_profit": 0.0
+      }
+    ],
+    "trade_rows": [
+      {
+        "trade_id": "BTCUSDT-1",
+        "symbol": "BTCUSDT",
+        "side": "short",
+        "entry_time": "2026-01-01T10:00:00+00:00",
+        "exit_time": "2026-01-01T10:30:00+00:00",
+        "entry_price": 111.3937,
+        "exit_price": 111.2238,
+        "initial_stop": 111.8204,
+        "trail_stop": 111.3937,
+        "pnl": 94.76494023904048,
+        "r_multiple": 0.3981720178110945,
+        "entry_reason": "A structural setup: sweep_high near range_high | RR 3.94 | HTF neutral (0.0) | level distance 0.42 ATR.",
+        "exit_reason": "danger_sniffed",
+        "add_on_count": 0,
+        "holding_bars": 2,
+        "setup_class": "A",
+        "strategy_type": "structural_compounding",
+        "moonshot_state": "normal",
+        "entry_score": 4.9725,
+        "risk_multiplier": 1.19,
+        "convexity_label": "elite_convexity",
+        "cooldown_fast_clear_eligible": false,
+        "personality_label": "PULLBACK_CONTINUATION",
+        "personality_confidence": 0.36,
+        "pullback_type": "MICRO_PULLBACK_MOMENTUM",
+        "pullback_quality_score": 0.75,
+        "pullback_entry_price": 111.351,
+        "pullback_stop_price": 111.7234,
+        "pullback_r_improvement": 0.8694123109509251,
+        "compounding_readiness_score": 0.5125,
+        "runner_label": "normal_swing",
+        "add_on_research_candidate": false,
+        "patience_score": 0.5,
+        "de_risk_score": 0.5,
+        "equity_after": 20094.76494023904,
+        "cycle_id": "cycle-0"
+      }
+    ],
+    "setup_rows": [
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-01-01T10:00:00+00:00",
+        "side": "short",
+        "setup_type": "structural_compounding",
+        "setup_class": "A",
+        "classification": "A",
+        "structure_score": 1.1725,
+        "liquidity_score": 1.1,
+        "ema_score": 0.92,
+        "htf_confirmation_score": 0.18,
+        "volatility_score": 0.35,
+        "risk_reward_score": 1.25,
+        "score": 4.9725,
+        "total_score": 4.9725,
+        "accepted": true,
+        "decision": "opened",
+        "entry_reason": "A structural setup: sweep_high near range_high | RR 3.94 | HTF neutral (0.0) | level distance 0.42 ATR.",
+        "explanation": "A structural setup: sweep_high near range_high | RR 3.94 | HTF neutral (0.0) | level distance 0.42 ATR.",
+        "pattern": "sweep_high",
+        "htf_aligned": false,
+        "target_price": 109.559,
+        "level_distance_atr": 0.42,
+        "liquidity_event_type": "sweep_high",
+        "liquidity_event_age_bars": 0,
+        "risk_multiplier": 1.19,
+        "convexity_label": "elite_convexity",
+        "cooldown_fast_clear_eligible": false,
+        "execution_timeframe": "15m",
+        "story_id": "BTCUSDT-2026-01-01T10:00:00+00:00-short",
+        "personality_label": "PULLBACK_CONTINUATION",
+        "personality_confidence": 0.36,
+        "personality_explanation": "PULLBACK_CONTINUATION from EMA/HTF structure, volume state, MACD/Bollinger soft evidence, and pullback type MICRO_PULLBACK_MOMENTUM. Warnings do not invalidate the core setup; they downgrade confidence only.",
+        "macd_state": "bullish",
+        "macd_confirmation_flag": false,
+        "macd_warning_flag": true,
+        "bollinger_state": "expansion",
+        "bb_compression": false,
+        "bb_expansion": true,
+        "bb_warning_flag": false,
+        "pullback_type": "MICRO_PULLBACK_MOMENTUM",
+        "micro_pullback_detected": true,
+        "pullback_entry_time": "2026-01-01T10:00:00+00:00",
+        "pullback_entry_price": 111.351,
+        "pullback_stop_price": 111.7234,
+        "pullback_quality_score": 0.75,
+        "pullback_depth_atr": 0.3979722413623303,
+        "pullback_estimated_r": 4.812030075187987,
+        "pullback_r_improvement": 0.8694123109509251,
+        "pullback_explanation": "MICRO_PULLBACK_MOMENTUM with depth 0.40 ATR and refined R delta 0.87.",
+        "compounding_readiness_score": 0.5125,
+        "runner_label": "normal_swing",
+        "runner_eligible_candidate": true,
+        "add_on_research_candidate": false,
+        "patience_score": 0.5,
+        "de_risk_score": 0.5,
+        "opened": true
+      }
+    ],
+    "level_rows": [
+      {
+        "symbol": "BTCUSDT",
+        "price": 108.7808,
+        "type": "midpoint",
+        "timeframe_source": "15m",
+        "touch_count": 1,
+        "recency": 0.0,
+        "strength": 1.25,
+        "first_seen": "2026-01-01T05:15:00+00:00",
+        "last_touched": "2026-01-01T05:15:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T05:15:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 109.1359,
+        "type": "range_high",
+        "timeframe_source": "15m",
+        "touch_count": 1,
+        "recency": 0.0,
+        "strength": 1.25,
+        "first_seen": "2026-01-01T05:15:00+00:00",
+        "last_touched": "2026-01-01T05:15:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T05:15:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 108.4257,
+        "type": "range_low",
+        "timeframe_source": "15m",
+        "touch_count": 1,
+        "recency": 0.0,
+        "strength": 1.25,
+        "first_seen": "2026-01-01T05:15:00+00:00",
+        "last_touched": "2026-01-01T05:15:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T05:15:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 108.0187,
+        "type": "midpoint",
+        "timeframe_source": "15m",
+        "touch_count": 1,
+        "recency": 0.0,
+        "strength": 1.25,
+        "first_seen": "2026-01-01T05:15:00+00:00",
+        "last_touched": "2026-01-01T05:30:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T05:30:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 109.1359,
+        "type": "range_high",
+        "timeframe_source": "15m",
+        "touch_count": 1,
+        "recency": 0.0,
+        "strength": 1.25,
+        "first_seen": "2026-01-01T05:15:00+00:00",
+        "last_touched": "2026-01-01T05:30:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T05:30:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 106.9015,
+        "type": "range_low",
+        "timeframe_source": "15m",
+        "touch_count": 1,
+        "recency": 0.0,
+        "strength": 1.25,
+        "first_seen": "2026-01-01T05:15:00+00:00",
+        "last_touched": "2026-01-01T05:30:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T05:30:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 107.29255,
+        "type": "midpoint",
+        "timeframe_source": "15m",
+        "touch_count": 1,
+        "recency": 0.0,
+        "strength": 1.25,
+        "first_seen": "2026-01-01T05:15:00+00:00",
+        "last_touched": "2026-01-01T05:45:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T05:45:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 109.1359,
+        "type": "range_high",
+        "timeframe_source": "15m",
+        "touch_count": 1,
+        "recency": 0.0,
+        "strength": 1.25,
+        "first_seen": "2026-01-01T05:15:00+00:00",
+        "last_touched": "2026-01-01T05:45:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T05:45:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 105.4492,
+        "type": "range_low",
+        "timeframe_source": "15m",
+        "touch_count": 1,
+        "recency": 0.0,
+        "strength": 1.25,
+        "first_seen": "2026-01-01T05:15:00+00:00",
+        "last_touched": "2026-01-01T05:45:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T05:45:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 107.08235,
+        "type": "midpoint",
+        "timeframe_source": "15m",
+        "touch_count": 1,
+        "recency": 0.0,
+        "strength": 1.25,
+        "first_seen": "2026-01-01T05:15:00+00:00",
+        "last_touched": "2026-01-01T06:00:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T06:00:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 109.1359,
+        "type": "range_high",
+        "timeframe_source": "15m",
+        "touch_count": 1,
+        "recency": 0.0,
+        "strength": 1.25,
+        "first_seen": "2026-01-01T05:15:00+00:00",
+        "last_touched": "2026-01-01T06:00:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T06:00:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 105.0288,
+        "type": "range_low",
+        "timeframe_source": "15m",
+        "touch_count": 1,
+        "recency": 0.0,
+        "strength": 1.25,
+        "first_seen": "2026-01-01T05:15:00+00:00",
+        "last_touched": "2026-01-01T06:00:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T06:00:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 107.06525,
+        "type": "midpoint",
+        "timeframe_source": "15m",
+        "touch_count": 1,
+        "recency": 0.0,
+        "strength": 1.25,
+        "first_seen": "2026-01-01T05:15:00+00:00",
+        "last_touched": "2026-01-01T06:15:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T06:15:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 109.1359,
+        "type": "range_high",
+        "timeframe_source": "15m",
+        "touch_count": 1,
+        "recency": 0.0,
+        "strength": 1.25,
+        "first_seen": "2026-01-01T05:15:00+00:00",
+        "last_touched": "2026-01-01T06:15:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T06:15:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 104.9946,
+        "type": "range_low",
+        "timeframe_source": "15m",
+        "touch_count": 2,
+        "recency": 0.0,
+        "strength": 1.6875,
+        "first_seen": "2026-01-01T05:15:00+00:00",
+        "last_touched": "2026-01-01T06:15:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T06:15:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 106.6465,
+        "type": "midpoint",
+        "timeframe_source": "15m",
+        "touch_count": 1,
+        "recency": 0.0,
+        "strength": 1.25,
+        "first_seen": "2026-01-01T05:15:00+00:00",
+        "last_touched": "2026-01-01T06:30:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T06:30:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 109.1359,
+        "type": "range_high",
+        "timeframe_source": "15m",
+        "touch_count": 1,
+        "recency": 0.0,
+        "strength": 1.25,
+        "first_seen": "2026-01-01T05:15:00+00:00",
+        "last_touched": "2026-01-01T06:30:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T06:30:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 104.1571,
+        "type": "range_low",
+        "timeframe_source": "15m",
+        "touch_count": 1,
+        "recency": 0.0,
+        "strength": 1.25,
+        "first_seen": "2026-01-01T05:15:00+00:00",
+        "last_touched": "2026-01-01T06:30:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T06:30:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 105.9424,
+        "type": "midpoint",
+        "timeframe_source": "15m",
+        "touch_count": 1,
+        "recency": 0.0,
+        "strength": 1.25,
+        "first_seen": "2026-01-01T05:15:00+00:00",
+        "last_touched": "2026-01-01T06:45:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T06:45:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 109.1359,
+        "type": "range_high",
+        "timeframe_source": "15m",
+        "touch_count": 1,
+        "recency": 0.0,
+        "strength": 1.25,
+        "first_seen": "2026-01-01T05:15:00+00:00",
+        "last_touched": "2026-01-01T06:45:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T06:45:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 102.7489,
+        "type": "range_low",
+        "timeframe_source": "15m",
+        "touch_count": 1,
+        "recency": 0.0,
+        "strength": 1.25,
+        "first_seen": "2026-01-01T05:15:00+00:00",
+        "last_touched": "2026-01-01T06:45:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T06:45:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 105.641,
+        "type": "midpoint",
+        "timeframe_source": "15m",
+        "touch_count": 3,
+        "recency": 0.0,
+        "strength": 2.125,
+        "first_seen": "2026-01-01T05:15:00+00:00",
+        "last_touched": "2026-01-01T07:00:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T07:00:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 109.1359,
+        "type": "range_high",
+        "timeframe_source": "15m",
+        "touch_count": 1,
+        "recency": 0.0,
+        "strength": 1.25,
+        "first_seen": "2026-01-01T05:15:00+00:00",
+        "last_touched": "2026-01-01T07:00:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T07:00:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 102.1461,
+        "type": "range_low",
+        "timeframe_source": "15m",
+        "touch_count": 1,
+        "recency": 0.0,
+        "strength": 1.25,
+        "first_seen": "2026-01-01T05:15:00+00:00",
+        "last_touched": "2026-01-01T07:00:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T07:00:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 105.641,
+        "type": "midpoint",
+        "timeframe_source": "15m",
+        "touch_count": 3,
+        "recency": 0.0,
+        "strength": 2.125,
+        "first_seen": "2026-01-01T05:15:00+00:00",
+        "last_touched": "2026-01-01T07:15:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T07:15:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 109.1359,
+        "type": "range_high",
+        "timeframe_source": "15m",
+        "touch_count": 1,
+        "recency": 0.0,
+        "strength": 1.25,
+        "first_seen": "2026-01-01T05:15:00+00:00",
+        "last_touched": "2026-01-01T07:15:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T07:15:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 102.1461,
+        "type": "range_low",
+        "timeframe_source": "15m",
+        "touch_count": 2,
+        "recency": 0.0,
+        "strength": 1.6875,
+        "first_seen": "2026-01-01T05:15:00+00:00",
+        "last_touched": "2026-01-01T07:15:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T07:15:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 102.1461,
+        "type": "support",
+        "timeframe_source": "15m",
+        "touch_count": 2,
+        "recency": 1.0,
+        "strength": 1.6873,
+        "first_seen": "2026-01-01T07:00:00+00:00",
+        "last_touched": "2026-01-01T07:00:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T07:00:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 105.641,
+        "type": "midpoint",
+        "timeframe_source": "15m",
+        "touch_count": 4,
+        "recency": 0.0,
+        "strength": 2.5625,
+        "first_seen": "2026-01-01T05:15:00+00:00",
+        "last_touched": "2026-01-01T07:30:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T07:30:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 109.1359,
+        "type": "range_high",
+        "timeframe_source": "15m",
+        "touch_count": 1,
+        "recency": 0.0,
+        "strength": 1.25,
+        "first_seen": "2026-01-01T05:15:00+00:00",
+        "last_touched": "2026-01-01T07:30:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T07:30:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 102.1461,
+        "type": "range_low",
+        "timeframe_source": "15m",
+        "touch_count": 2,
+        "recency": 0.0,
+        "strength": 1.6875,
+        "first_seen": "2026-01-01T05:15:00+00:00",
+        "last_touched": "2026-01-01T07:30:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T07:30:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 105.641,
+        "type": "midpoint",
+        "timeframe_source": "15m",
+        "touch_count": 4,
+        "recency": 0.0,
+        "strength": 2.5625,
+        "first_seen": "2026-01-01T05:15:00+00:00",
+        "last_touched": "2026-01-01T07:45:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T07:45:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 109.1359,
+        "type": "range_high",
+        "timeframe_source": "15m",
+        "touch_count": 1,
+        "recency": 0.0,
+        "strength": 1.25,
+        "first_seen": "2026-01-01T05:15:00+00:00",
+        "last_touched": "2026-01-01T07:45:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T07:45:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 102.1461,
+        "type": "range_low",
+        "timeframe_source": "15m",
+        "touch_count": 2,
+        "recency": 0.0,
+        "strength": 1.6875,
+        "first_seen": "2026-01-01T05:15:00+00:00",
+        "last_touched": "2026-01-01T07:45:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T07:45:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 105.641,
+        "type": "midpoint",
+        "timeframe_source": "15m",
+        "touch_count": 4,
+        "recency": 0.0,
+        "strength": 2.5625,
+        "first_seen": "2026-01-01T05:15:00+00:00",
+        "last_touched": "2026-01-01T08:00:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T08:00:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 109.1359,
+        "type": "range_high",
+        "timeframe_source": "15m",
+        "touch_count": 1,
+        "recency": 0.0,
+        "strength": 1.25,
+        "first_seen": "2026-01-01T05:15:00+00:00",
+        "last_touched": "2026-01-01T08:00:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T08:00:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 102.1461,
+        "type": "range_low",
+        "timeframe_source": "15m",
+        "touch_count": 2,
+        "recency": 0.0,
+        "strength": 1.6875,
+        "first_seen": "2026-01-01T05:15:00+00:00",
+        "last_touched": "2026-01-01T08:00:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T08:00:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 105.4461,
+        "type": "midpoint",
+        "timeframe_source": "15m",
+        "touch_count": 4,
+        "recency": 0.0,
+        "strength": 2.5625,
+        "first_seen": "2026-01-01T05:30:00+00:00",
+        "last_touched": "2026-01-01T08:15:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T08:15:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 108.7461,
+        "type": "range_high",
+        "timeframe_source": "15m",
+        "touch_count": 1,
+        "recency": 0.0,
+        "strength": 1.25,
+        "first_seen": "2026-01-01T05:30:00+00:00",
+        "last_touched": "2026-01-01T08:15:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T08:15:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 102.1461,
+        "type": "range_low",
+        "timeframe_source": "15m",
+        "touch_count": 2,
+        "recency": 0.0,
+        "strength": 1.6875,
+        "first_seen": "2026-01-01T05:30:00+00:00",
+        "last_touched": "2026-01-01T08:15:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T08:15:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 105.8751,
+        "type": "midpoint",
+        "timeframe_source": "15m",
+        "touch_count": 2,
+        "recency": 0.0,
+        "strength": 1.6875,
+        "first_seen": "2026-01-01T05:45:00+00:00",
+        "last_touched": "2026-01-01T08:30:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T08:30:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 109.6041,
+        "type": "range_high",
+        "timeframe_source": "15m",
+        "touch_count": 1,
+        "recency": 0.0,
+        "strength": 1.25,
+        "first_seen": "2026-01-01T05:45:00+00:00",
+        "last_touched": "2026-01-01T08:30:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T08:30:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 102.1461,
+        "type": "range_low",
+        "timeframe_source": "15m",
+        "touch_count": 2,
+        "recency": 0.0,
+        "strength": 1.6875,
+        "first_seen": "2026-01-01T05:45:00+00:00",
+        "last_touched": "2026-01-01T08:30:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T08:30:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 106.28115,
+        "type": "midpoint",
+        "timeframe_source": "15m",
+        "touch_count": 2,
+        "recency": 0.0,
+        "strength": 1.6875,
+        "first_seen": "2026-01-01T06:00:00+00:00",
+        "last_touched": "2026-01-01T08:45:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T08:45:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 110.4162,
+        "type": "range_high",
+        "timeframe_source": "15m",
+        "touch_count": 1,
+        "recency": 0.0,
+        "strength": 1.25,
+        "first_seen": "2026-01-01T06:00:00+00:00",
+        "last_touched": "2026-01-01T08:45:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T08:45:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 102.1461,
+        "type": "range_low",
+        "timeframe_source": "15m",
+        "touch_count": 2,
+        "recency": 0.0,
+        "strength": 1.6875,
+        "first_seen": "2026-01-01T06:00:00+00:00",
+        "last_touched": "2026-01-01T08:45:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T08:45:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 106.28585,
+        "type": "midpoint",
+        "timeframe_source": "15m",
+        "touch_count": 2,
+        "recency": 0.0,
+        "strength": 1.6875,
+        "first_seen": "2026-01-01T06:15:00+00:00",
+        "last_touched": "2026-01-01T09:00:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T09:00:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 110.4256,
+        "type": "range_high",
+        "timeframe_source": "15m",
+        "touch_count": 2,
+        "recency": 0.0,
+        "strength": 1.6875,
+        "first_seen": "2026-01-01T06:15:00+00:00",
+        "last_touched": "2026-01-01T09:00:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T09:00:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 102.1461,
+        "type": "range_low",
+        "timeframe_source": "15m",
+        "touch_count": 2,
+        "recency": 0.0,
+        "strength": 1.6875,
+        "first_seen": "2026-01-01T06:15:00+00:00",
+        "last_touched": "2026-01-01T09:00:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T09:00:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 106.28585,
+        "type": "midpoint",
+        "timeframe_source": "15m",
+        "touch_count": 2,
+        "recency": 0.0,
+        "strength": 1.6875,
+        "first_seen": "2026-01-01T06:30:00+00:00",
+        "last_touched": "2026-01-01T09:15:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T09:15:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 110.4256,
+        "type": "range_high",
+        "timeframe_source": "15m",
+        "touch_count": 3,
+        "recency": 0.0,
+        "strength": 2.125,
+        "first_seen": "2026-01-01T06:30:00+00:00",
+        "last_touched": "2026-01-01T09:15:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T09:15:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 102.1461,
+        "type": "range_low",
+        "timeframe_source": "15m",
+        "touch_count": 2,
+        "recency": 0.0,
+        "strength": 1.6875,
+        "first_seen": "2026-01-01T06:30:00+00:00",
+        "last_touched": "2026-01-01T09:15:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T09:15:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 110.4256,
+        "type": "resistance",
+        "timeframe_source": "15m",
+        "touch_count": 3,
+        "recency": 1.0,
+        "strength": 2.1248,
+        "first_seen": "2026-01-01T09:00:00+00:00",
+        "last_touched": "2026-01-01T09:00:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T09:00:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 106.50245,
+        "type": "midpoint",
+        "timeframe_source": "15m",
+        "touch_count": 2,
+        "recency": 0.0,
+        "strength": 1.6875,
+        "first_seen": "2026-01-01T06:45:00+00:00",
+        "last_touched": "2026-01-01T09:30:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T09:30:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 110.8588,
+        "type": "range_high",
+        "timeframe_source": "15m",
+        "touch_count": 1,
+        "recency": 0.0,
+        "strength": 1.25,
+        "first_seen": "2026-01-01T06:45:00+00:00",
+        "last_touched": "2026-01-01T09:30:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T09:30:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 102.1461,
+        "type": "range_low",
+        "timeframe_source": "15m",
+        "touch_count": 2,
+        "recency": 0.0,
+        "strength": 1.6875,
+        "first_seen": "2026-01-01T06:45:00+00:00",
+        "last_touched": "2026-01-01T09:30:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T09:30:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 109.559,
+        "type": "support",
+        "timeframe_source": "15m",
+        "touch_count": 4,
+        "recency": 1.0,
+        "strength": 2.5623,
+        "first_seen": "2026-01-01T09:15:00+00:00",
+        "last_touched": "2026-01-01T09:15:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T09:15:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 106.9375,
+        "type": "midpoint",
+        "timeframe_source": "15m",
+        "touch_count": 1,
+        "recency": 0.0,
+        "strength": 1.25,
+        "first_seen": "2026-01-01T07:00:00+00:00",
+        "last_touched": "2026-01-01T09:45:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T09:45:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 111.7289,
+        "type": "range_high",
+        "timeframe_source": "15m",
+        "touch_count": 1,
+        "recency": 0.0,
+        "strength": 1.25,
+        "first_seen": "2026-01-01T07:00:00+00:00",
+        "last_touched": "2026-01-01T09:45:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T09:45:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 102.1461,
+        "type": "range_low",
+        "timeframe_source": "15m",
+        "touch_count": 2,
+        "recency": 0.0,
+        "strength": 1.6875,
+        "first_seen": "2026-01-01T07:00:00+00:00",
+        "last_touched": "2026-01-01T09:45:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T09:45:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 106.98755,
+        "type": "midpoint",
+        "timeframe_source": "15m",
+        "touch_count": 1,
+        "recency": 0.0,
+        "strength": 1.25,
+        "first_seen": "2026-01-01T07:15:00+00:00",
+        "last_touched": "2026-01-01T10:00:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T10:00:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 111.8204,
+        "type": "range_high",
+        "timeframe_source": "15m",
+        "touch_count": 2,
+        "recency": 0.0,
+        "strength": 1.6875,
+        "first_seen": "2026-01-01T07:15:00+00:00",
+        "last_touched": "2026-01-01T10:00:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T10:00:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 102.1547,
+        "type": "range_low",
+        "timeframe_source": "15m",
+        "touch_count": 2,
+        "recency": 0.0,
+        "strength": 1.6875,
+        "first_seen": "2026-01-01T07:15:00+00:00",
+        "last_touched": "2026-01-01T10:00:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T10:00:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 107.82175,
+        "type": "midpoint",
+        "timeframe_source": "15m",
+        "touch_count": 1,
+        "recency": 0.0,
+        "strength": 1.25,
+        "first_seen": "2026-01-01T07:30:00+00:00",
+        "last_touched": "2026-01-01T10:15:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T10:15:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 111.8204,
+        "type": "range_high",
+        "timeframe_source": "15m",
+        "touch_count": 3,
+        "recency": 0.0,
+        "strength": 2.125,
+        "first_seen": "2026-01-01T07:30:00+00:00",
+        "last_touched": "2026-01-01T10:15:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T10:15:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 103.8231,
+        "type": "range_low",
+        "timeframe_source": "15m",
+        "touch_count": 1,
+        "recency": 0.0,
+        "strength": 1.25,
+        "first_seen": "2026-01-01T07:30:00+00:00",
+        "last_touched": "2026-01-01T10:15:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T10:15:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 111.8204,
+        "type": "resistance",
+        "timeframe_source": "15m",
+        "touch_count": 3,
+        "recency": 1.0,
+        "strength": 2.1248,
+        "first_seen": "2026-01-01T10:00:00+00:00",
+        "last_touched": "2026-01-01T10:00:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T10:00:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 108.61155,
+        "type": "midpoint",
+        "timeframe_source": "15m",
+        "touch_count": 1,
+        "recency": 0.0,
+        "strength": 1.25,
+        "first_seen": "2026-01-01T07:45:00+00:00",
+        "last_touched": "2026-01-01T10:30:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T10:30:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 111.8204,
+        "type": "range_high",
+        "timeframe_source": "15m",
+        "touch_count": 3,
+        "recency": 0.0,
+        "strength": 2.125,
+        "first_seen": "2026-01-01T07:45:00+00:00",
+        "last_touched": "2026-01-01T10:30:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T10:30:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 105.4027,
+        "type": "range_low",
+        "timeframe_source": "15m",
+        "touch_count": 4,
+        "recency": 0.0,
+        "strength": 2.5625,
+        "first_seen": "2026-01-01T07:45:00+00:00",
+        "last_touched": "2026-01-01T10:30:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T10:30:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 109.35265,
+        "type": "midpoint",
+        "timeframe_source": "15m",
+        "touch_count": 3,
+        "recency": 0.0,
+        "strength": 2.125,
+        "first_seen": "2026-01-01T08:00:00+00:00",
+        "last_touched": "2026-01-01T10:45:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T10:45:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 112.8193,
+        "type": "range_high",
+        "timeframe_source": "15m",
+        "touch_count": 1,
+        "recency": 0.0,
+        "strength": 1.25,
+        "first_seen": "2026-01-01T08:00:00+00:00",
+        "last_touched": "2026-01-01T10:45:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T10:45:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 105.886,
+        "type": "range_low",
+        "timeframe_source": "15m",
+        "touch_count": 2,
+        "recency": 0.0,
+        "strength": 1.6875,
+        "first_seen": "2026-01-01T08:00:00+00:00",
+        "last_touched": "2026-01-01T10:45:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T10:45:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 110.5912,
+        "type": "support",
+        "timeframe_source": "15m",
+        "touch_count": 3,
+        "recency": 1.0,
+        "strength": 2.1248,
+        "first_seen": "2026-01-01T10:30:00+00:00",
+        "last_touched": "2026-01-01T10:30:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T10:30:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 110.08975,
+        "type": "midpoint",
+        "timeframe_source": "15m",
+        "touch_count": 3,
+        "recency": 0.0,
+        "strength": 2.125,
+        "first_seen": "2026-01-01T08:15:00+00:00",
+        "last_touched": "2026-01-01T11:00:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T11:00:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 113.9684,
+        "type": "range_high",
+        "timeframe_source": "15m",
+        "touch_count": 1,
+        "recency": 0.0,
+        "strength": 1.25,
+        "first_seen": "2026-01-01T08:15:00+00:00",
+        "last_touched": "2026-01-01T11:00:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T11:00:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 106.2111,
+        "type": "range_low",
+        "timeframe_source": "15m",
+        "touch_count": 2,
+        "recency": 0.0,
+        "strength": 1.6875,
+        "first_seen": "2026-01-01T08:15:00+00:00",
+        "last_touched": "2026-01-01T11:00:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T11:00:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 110.8747,
+        "type": "midpoint",
+        "timeframe_source": "15m",
+        "touch_count": 3,
+        "recency": 0.0,
+        "strength": 2.125,
+        "first_seen": "2026-01-01T08:30:00+00:00",
+        "last_touched": "2026-01-01T11:15:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T11:15:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 114.2283,
+        "type": "range_high",
+        "timeframe_source": "15m",
+        "touch_count": 2,
+        "recency": 0.0,
+        "strength": 1.6875,
+        "first_seen": "2026-01-01T08:30:00+00:00",
+        "last_touched": "2026-01-01T11:15:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T11:15:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 107.5211,
+        "type": "range_low",
+        "timeframe_source": "15m",
+        "touch_count": 1,
+        "recency": 0.0,
+        "strength": 1.25,
+        "first_seen": "2026-01-01T08:30:00+00:00",
+        "last_touched": "2026-01-01T11:15:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T11:15:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 111.9354,
+        "type": "midpoint",
+        "timeframe_source": "15m",
+        "touch_count": 2,
+        "recency": 0.0,
+        "strength": 1.6875,
+        "first_seen": "2026-01-01T08:45:00+00:00",
+        "last_touched": "2026-01-01T11:30:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T11:30:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 114.6357,
+        "type": "range_high",
+        "timeframe_source": "15m",
+        "touch_count": 1,
+        "recency": 0.0,
+        "strength": 1.25,
+        "first_seen": "2026-01-01T08:45:00+00:00",
+        "last_touched": "2026-01-01T11:30:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T11:30:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 109.2351,
+        "type": "range_low",
+        "timeframe_source": "15m",
+        "touch_count": 2,
+        "recency": 0.0,
+        "strength": 1.6875,
+        "first_seen": "2026-01-01T08:45:00+00:00",
+        "last_touched": "2026-01-01T11:30:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T11:30:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 112.8716,
+        "type": "midpoint",
+        "timeframe_source": "15m",
+        "touch_count": 1,
+        "recency": 0.0,
+        "strength": 1.25,
+        "first_seen": "2026-01-01T09:00:00+00:00",
+        "last_touched": "2026-01-01T11:45:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T11:45:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 116.1842,
+        "type": "range_high",
+        "timeframe_source": "15m",
+        "touch_count": 1,
+        "recency": 0.0,
+        "strength": 1.25,
+        "first_seen": "2026-01-01T09:00:00+00:00",
+        "last_touched": "2026-01-01T11:45:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T11:45:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 109.559,
+        "type": "range_low",
+        "timeframe_source": "15m",
+        "touch_count": 4,
+        "recency": 0.0,
+        "strength": 2.5625,
+        "first_seen": "2026-01-01T09:00:00+00:00",
+        "last_touched": "2026-01-01T11:45:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T11:45:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 113.8202,
+        "type": "midpoint",
+        "timeframe_source": "15m",
+        "touch_count": 2,
+        "recency": 0.0,
+        "strength": 1.6875,
+        "first_seen": "2026-01-01T09:15:00+00:00",
+        "last_touched": "2026-01-01T12:00:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T12:00:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 118.0814,
+        "type": "range_high",
+        "timeframe_source": "15m",
+        "touch_count": 1,
+        "recency": 0.0,
+        "strength": 1.25,
+        "first_seen": "2026-01-01T09:15:00+00:00",
+        "last_touched": "2026-01-01T12:00:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T12:00:00+00:00"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "price": 109.559,
+        "type": "range_low",
+        "timeframe_source": "15m",
+        "touch_count": 4,
+        "recency": 0.0,
+        "strength": 2.5625,
+        "first_seen": "2026-01-01T09:15:00+00:00",
+        "last_touched": "2026-01-01T12:00:00+00:00",
+        "display_only": true,
+        "research_flag": true,
+        "no_future_data": true,
+        "timestamp": "2026-01-01T12:00:00+00:00"
+      }
+    ],
+    "liquidity_rows": [
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-01-01T06:45:00+00:00",
+        "price": 104.1571,
+        "type": "retest_after_breakdown",
+        "side_implication": "short",
+        "source_timeframe": "15m",
+        "confidence": 0.5,
+        "no_future_data": true
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-01-01T07:00:00+00:00",
+        "price": 102.7489,
+        "type": "retest_after_breakdown",
+        "side_implication": "short",
+        "source_timeframe": "15m",
+        "confidence": 0.5,
+        "no_future_data": true
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-01-01T07:45:00+00:00",
+        "price": 105.7368,
+        "type": "retest_after_breakout",
+        "side_implication": "long",
+        "source_timeframe": "15m",
+        "confidence": 0.5,
+        "no_future_data": true
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-01-01T08:00:00+00:00",
+        "price": 106.2605,
+        "type": "retest_after_breakout",
+        "side_implication": "long",
+        "source_timeframe": "15m",
+        "confidence": 0.5,
+        "no_future_data": true
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-01-01T08:15:00+00:00",
+        "price": 106.5839,
+        "type": "retest_after_breakout",
+        "side_implication": "long",
+        "source_timeframe": "15m",
+        "confidence": 0.5,
+        "no_future_data": true
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-01-01T08:30:00+00:00",
+        "price": 107.8519,
+        "type": "retest_after_breakout",
+        "side_implication": "long",
+        "source_timeframe": "15m",
+        "confidence": 0.5,
+        "no_future_data": true
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-01-01T08:45:00+00:00",
+        "price": 109.6041,
+        "type": "retest_after_breakout",
+        "side_implication": "long",
+        "source_timeframe": "15m",
+        "confidence": 0.5,
+        "no_future_data": true
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-01-01T09:00:00+00:00",
+        "price": 110.4162,
+        "type": "failed_breakout",
+        "side_implication": "short",
+        "source_timeframe": "15m",
+        "confidence": 0.68,
+        "no_future_data": true
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-01-01T09:00:00+00:00",
+        "price": 110.4256,
+        "type": "sweep_high",
+        "side_implication": "short",
+        "source_timeframe": "15m",
+        "confidence": 0.72,
+        "no_future_data": true
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-01-01T09:30:00+00:00",
+        "price": 110.4256,
+        "type": "retest_after_breakout",
+        "side_implication": "long",
+        "source_timeframe": "15m",
+        "confidence": 0.5,
+        "no_future_data": true
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-01-01T09:45:00+00:00",
+        "price": 110.8588,
+        "type": "retest_after_breakout",
+        "side_implication": "long",
+        "source_timeframe": "15m",
+        "confidence": 0.5,
+        "no_future_data": true
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-01-01T10:00:00+00:00",
+        "price": 111.7289,
+        "type": "failed_breakout",
+        "side_implication": "short",
+        "source_timeframe": "15m",
+        "confidence": 0.68,
+        "no_future_data": true
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-01-01T10:00:00+00:00",
+        "price": 111.8204,
+        "type": "sweep_high",
+        "side_implication": "short",
+        "source_timeframe": "15m",
+        "confidence": 0.72,
+        "no_future_data": true
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-01-01T10:45:00+00:00",
+        "price": 111.8204,
+        "type": "retest_after_breakout",
+        "side_implication": "long",
+        "source_timeframe": "15m",
+        "confidence": 0.5,
+        "no_future_data": true
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-01-01T11:00:00+00:00",
+        "price": 112.8193,
+        "type": "retest_after_breakout",
+        "side_implication": "long",
+        "source_timeframe": "15m",
+        "confidence": 0.5,
+        "no_future_data": true
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-01-01T11:15:00+00:00",
+        "price": 113.9684,
+        "type": "retest_after_breakout",
+        "side_implication": "long",
+        "source_timeframe": "15m",
+        "confidence": 0.5,
+        "no_future_data": true
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-01-01T11:30:00+00:00",
+        "price": 114.2283,
+        "type": "retest_after_breakout",
+        "side_implication": "long",
+        "source_timeframe": "15m",
+        "confidence": 0.5,
+        "no_future_data": true
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-01-01T11:45:00+00:00",
+        "price": 114.6357,
+        "type": "retest_after_breakout",
+        "side_implication": "long",
+        "source_timeframe": "15m",
+        "confidence": 0.5,
+        "no_future_data": true
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-01-01T12:00:00+00:00",
+        "price": 116.1842,
+        "type": "retest_after_breakout",
+        "side_implication": "long",
+        "source_timeframe": "15m",
+        "confidence": 0.5,
+        "no_future_data": true
+      }
+    ],
+    "cooldown_rows": [],
+    "pyramiding_rows": []
+  },
+  "seen_levels": [
+    [
+      "midpoint",
+      "2026-01-01T05:15:00+00:00",
+      108.7808
+    ],
+    [
+      "midpoint",
+      "2026-01-01T05:30:00+00:00",
+      108.0187
+    ],
+    [
+      "midpoint",
+      "2026-01-01T05:45:00+00:00",
+      107.29255
+    ],
+    [
+      "midpoint",
+      "2026-01-01T06:00:00+00:00",
+      107.08235
+    ],
+    [
+      "midpoint",
+      "2026-01-01T06:15:00+00:00",
+      107.06525
+    ],
+    [
+      "midpoint",
+      "2026-01-01T06:30:00+00:00",
+      106.6465
+    ],
+    [
+      "midpoint",
+      "2026-01-01T06:45:00+00:00",
+      105.9424
+    ],
+    [
+      "midpoint",
+      "2026-01-01T07:00:00+00:00",
+      105.641
+    ],
+    [
+      "midpoint",
+      "2026-01-01T07:15:00+00:00",
+      105.641
+    ],
+    [
+      "midpoint",
+      "2026-01-01T07:30:00+00:00",
+      105.641
+    ],
+    [
+      "midpoint",
+      "2026-01-01T07:45:00+00:00",
+      105.641
+    ],
+    [
+      "midpoint",
+      "2026-01-01T08:00:00+00:00",
+      105.641
+    ],
+    [
+      "midpoint",
+      "2026-01-01T08:15:00+00:00",
+      105.4461
+    ],
+    [
+      "midpoint",
+      "2026-01-01T08:30:00+00:00",
+      105.8751
+    ],
+    [
+      "midpoint",
+      "2026-01-01T08:45:00+00:00",
+      106.28115
+    ],
+    [
+      "midpoint",
+      "2026-01-01T09:00:00+00:00",
+      106.28585
+    ],
+    [
+      "midpoint",
+      "2026-01-01T09:15:00+00:00",
+      106.28585
+    ],
+    [
+      "midpoint",
+      "2026-01-01T09:30:00+00:00",
+      106.50245
+    ],
+    [
+      "midpoint",
+      "2026-01-01T09:45:00+00:00",
+      106.9375
+    ],
+    [
+      "midpoint",
+      "2026-01-01T10:00:00+00:00",
+      106.98755
+    ],
+    [
+      "midpoint",
+      "2026-01-01T10:15:00+00:00",
+      107.82175
+    ],
+    [
+      "midpoint",
+      "2026-01-01T10:30:00+00:00",
+      108.61155
+    ],
+    [
+      "midpoint",
+      "2026-01-01T10:45:00+00:00",
+      109.35265
+    ],
+    [
+      "midpoint",
+      "2026-01-01T11:00:00+00:00",
+      110.08975
+    ],
+    [
+      "midpoint",
+      "2026-01-01T11:15:00+00:00",
+      110.8747
+    ],
+    [
+      "midpoint",
+      "2026-01-01T11:30:00+00:00",
+      111.9354
+    ],
+    [
+      "midpoint",
+      "2026-01-01T11:45:00+00:00",
+      112.8716
+    ],
+    [
+      "midpoint",
+      "2026-01-01T12:00:00+00:00",
+      113.8202
+    ],
+    [
+      "range_high",
+      "2026-01-01T05:15:00+00:00",
+      109.1359
+    ],
+    [
+      "range_high",
+      "2026-01-01T05:30:00+00:00",
+      109.1359
+    ],
+    [
+      "range_high",
+      "2026-01-01T05:45:00+00:00",
+      109.1359
+    ],
+    [
+      "range_high",
+      "2026-01-01T06:00:00+00:00",
+      109.1359
+    ],
+    [
+      "range_high",
+      "2026-01-01T06:15:00+00:00",
+      109.1359
+    ],
+    [
+      "range_high",
+      "2026-01-01T06:30:00+00:00",
+      109.1359
+    ],
+    [
+      "range_high",
+      "2026-01-01T06:45:00+00:00",
+      109.1359
+    ],
+    [
+      "range_high",
+      "2026-01-01T07:00:00+00:00",
+      109.1359
+    ],
+    [
+      "range_high",
+      "2026-01-01T07:15:00+00:00",
+      109.1359
+    ],
+    [
+      "range_high",
+      "2026-01-01T07:30:00+00:00",
+      109.1359
+    ],
+    [
+      "range_high",
+      "2026-01-01T07:45:00+00:00",
+      109.1359
+    ],
+    [
+      "range_high",
+      "2026-01-01T08:00:00+00:00",
+      109.1359
+    ],
+    [
+      "range_high",
+      "2026-01-01T08:15:00+00:00",
+      108.7461
+    ],
+    [
+      "range_high",
+      "2026-01-01T08:30:00+00:00",
+      109.6041
+    ],
+    [
+      "range_high",
+      "2026-01-01T08:45:00+00:00",
+      110.4162
+    ],
+    [
+      "range_high",
+      "2026-01-01T09:00:00+00:00",
+      110.4256
+    ],
+    [
+      "range_high",
+      "2026-01-01T09:15:00+00:00",
+      110.4256
+    ],
+    [
+      "range_high",
+      "2026-01-01T09:30:00+00:00",
+      110.8588
+    ],
+    [
+      "range_high",
+      "2026-01-01T09:45:00+00:00",
+      111.7289
+    ],
+    [
+      "range_high",
+      "2026-01-01T10:00:00+00:00",
+      111.8204
+    ],
+    [
+      "range_high",
+      "2026-01-01T10:15:00+00:00",
+      111.8204
+    ],
+    [
+      "range_high",
+      "2026-01-01T10:30:00+00:00",
+      111.8204
+    ],
+    [
+      "range_high",
+      "2026-01-01T10:45:00+00:00",
+      112.8193
+    ],
+    [
+      "range_high",
+      "2026-01-01T11:00:00+00:00",
+      113.9684
+    ],
+    [
+      "range_high",
+      "2026-01-01T11:15:00+00:00",
+      114.2283
+    ],
+    [
+      "range_high",
+      "2026-01-01T11:30:00+00:00",
+      114.6357
+    ],
+    [
+      "range_high",
+      "2026-01-01T11:45:00+00:00",
+      116.1842
+    ],
+    [
+      "range_high",
+      "2026-01-01T12:00:00+00:00",
+      118.0814
+    ],
+    [
+      "range_low",
+      "2026-01-01T05:15:00+00:00",
+      108.4257
+    ],
+    [
+      "range_low",
+      "2026-01-01T05:30:00+00:00",
+      106.9015
+    ],
+    [
+      "range_low",
+      "2026-01-01T05:45:00+00:00",
+      105.4492
+    ],
+    [
+      "range_low",
+      "2026-01-01T06:00:00+00:00",
+      105.0288
+    ],
+    [
+      "range_low",
+      "2026-01-01T06:15:00+00:00",
+      104.9946
+    ],
+    [
+      "range_low",
+      "2026-01-01T06:30:00+00:00",
+      104.1571
+    ],
+    [
+      "range_low",
+      "2026-01-01T06:45:00+00:00",
+      102.7489
+    ],
+    [
+      "range_low",
+      "2026-01-01T07:00:00+00:00",
+      102.1461
+    ],
+    [
+      "range_low",
+      "2026-01-01T07:15:00+00:00",
+      102.1461
+    ],
+    [
+      "range_low",
+      "2026-01-01T07:30:00+00:00",
+      102.1461
+    ],
+    [
+      "range_low",
+      "2026-01-01T07:45:00+00:00",
+      102.1461
+    ],
+    [
+      "range_low",
+      "2026-01-01T08:00:00+00:00",
+      102.1461
+    ],
+    [
+      "range_low",
+      "2026-01-01T08:15:00+00:00",
+      102.1461
+    ],
+    [
+      "range_low",
+      "2026-01-01T08:30:00+00:00",
+      102.1461
+    ],
+    [
+      "range_low",
+      "2026-01-01T08:45:00+00:00",
+      102.1461
+    ],
+    [
+      "range_low",
+      "2026-01-01T09:00:00+00:00",
+      102.1461
+    ],
+    [
+      "range_low",
+      "2026-01-01T09:15:00+00:00",
+      102.1461
+    ],
+    [
+      "range_low",
+      "2026-01-01T09:30:00+00:00",
+      102.1461
+    ],
+    [
+      "range_low",
+      "2026-01-01T09:45:00+00:00",
+      102.1461
+    ],
+    [
+      "range_low",
+      "2026-01-01T10:00:00+00:00",
+      102.1547
+    ],
+    [
+      "range_low",
+      "2026-01-01T10:15:00+00:00",
+      103.8231
+    ],
+    [
+      "range_low",
+      "2026-01-01T10:30:00+00:00",
+      105.4027
+    ],
+    [
+      "range_low",
+      "2026-01-01T10:45:00+00:00",
+      105.886
+    ],
+    [
+      "range_low",
+      "2026-01-01T11:00:00+00:00",
+      106.2111
+    ],
+    [
+      "range_low",
+      "2026-01-01T11:15:00+00:00",
+      107.5211
+    ],
+    [
+      "range_low",
+      "2026-01-01T11:30:00+00:00",
+      109.2351
+    ],
+    [
+      "range_low",
+      "2026-01-01T11:45:00+00:00",
+      109.559
+    ],
+    [
+      "range_low",
+      "2026-01-01T12:00:00+00:00",
+      109.559
+    ],
+    [
+      "resistance",
+      "2026-01-01T09:00:00+00:00",
+      110.4256
+    ],
+    [
+      "resistance",
+      "2026-01-01T10:00:00+00:00",
+      111.8204
+    ],
+    [
+      "support",
+      "2026-01-01T07:00:00+00:00",
+      102.1461
+    ],
+    [
+      "support",
+      "2026-01-01T09:15:00+00:00",
+      109.559
+    ],
+    [
+      "support",
+      "2026-01-01T10:30:00+00:00",
+      110.5912
+    ]
+  ],
+  "seen_liquidity": [
+    [
+      "failed_breakout",
+      "2026-01-01T09:00:00+00:00",
+      110.4162
+    ],
+    [
+      "failed_breakout",
+      "2026-01-01T10:00:00+00:00",
+      111.7289
+    ],
+    [
+      "retest_after_breakdown",
+      "2026-01-01T06:45:00+00:00",
+      104.1571
+    ],
+    [
+      "retest_after_breakdown",
+      "2026-01-01T07:00:00+00:00",
+      102.7489
+    ],
+    [
+      "retest_after_breakout",
+      "2026-01-01T07:45:00+00:00",
+      105.7368
+    ],
+    [
+      "retest_after_breakout",
+      "2026-01-01T08:00:00+00:00",
+      106.2605
+    ],
+    [
+      "retest_after_breakout",
+      "2026-01-01T08:15:00+00:00",
+      106.5839
+    ],
+    [
+      "retest_after_breakout",
+      "2026-01-01T08:30:00+00:00",
+      107.8519
+    ],
+    [
+      "retest_after_breakout",
+      "2026-01-01T08:45:00+00:00",
+      109.6041
+    ],
+    [
+      "retest_after_breakout",
+      "2026-01-01T09:30:00+00:00",
+      110.4256
+    ],
+    [
+      "retest_after_breakout",
+      "2026-01-01T09:45:00+00:00",
+      110.8588
+    ],
+    [
+      "retest_after_breakout",
+      "2026-01-01T10:45:00+00:00",
+      111.8204
+    ],
+    [
+      "retest_after_breakout",
+      "2026-01-01T11:00:00+00:00",
+      112.8193
+    ],
+    [
+      "retest_after_breakout",
+      "2026-01-01T11:15:00+00:00",
+      113.9684
+    ],
+    [
+      "retest_after_breakout",
+      "2026-01-01T11:30:00+00:00",
+      114.2283
+    ],
+    [
+      "retest_after_breakout",
+      "2026-01-01T11:45:00+00:00",
+      114.6357
+    ],
+    [
+      "retest_after_breakout",
+      "2026-01-01T12:00:00+00:00",
+      116.1842
+    ],
+    [
+      "sweep_high",
+      "2026-01-01T09:00:00+00:00",
+      110.4256
+    ],
+    [
+      "sweep_high",
+      "2026-01-01T10:00:00+00:00",
+      111.8204
+    ]
+  ]
+}

@@ -41,6 +41,19 @@ type IndicatorPoint = {
   value: number;
 };
 
+type OverlayLine = {
+  price: number;
+  label: string;
+  kind: string;
+  color: string;
+  lineStyle?: number;
+  strength?: number;
+  timeframe_source?: string;
+  touch_count?: number;
+  confidence?: number;
+  side_implication?: string;
+};
+
 type TradeEvent = {
   kind: "trade";
   trade_id?: string;
@@ -110,6 +123,8 @@ type CandlePayload = {
     ema_50: IndicatorPoint[];
     vwap_display: IndicatorPoint[];
   };
+  structure_levels?: OverlayLine[];
+  liquidity_levels?: OverlayLine[];
   replay_checkpoint_timestamp?: string | null;
   window_start_timestamp?: string | null;
   window_end_timestamp?: string | null;
@@ -227,22 +242,29 @@ export function CandlePanel({
   untilTime,
   runId,
   mode = "paper",
+  endpointPath = "/api/candles",
+  panelLabel = "Replay Decision Chart",
 }: {
   symbol: string;
   timeframe: string;
   apiUrl: string;
   untilTime?: number | null;
   runId?: string | null;
-  mode?: "paper" | "backtest" | "live";
+  mode?: string;
+  endpointPath?: string;
+  panelLabel?: string;
 }) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showIndicators, setShowIndicators] = useState(true);
   const [showVolume, setShowVolume] = useState(true);
   const [showTrades, setShowTrades] = useState(true);
   const [showRejected, setShowRejected] = useState(true);
+  const [showStructure, setShowStructure] = useState(true);
+  const [showLiquidity, setShowLiquidity] = useState(true);
   const [followReplay, setFollowReplay] = useState(true);
   const [lookback, setLookback] = useState(1000);
   const [lockPriceScale, setLockPriceScale] = useState(false);
+  const [verticalScaleMode, setVerticalScaleMode] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [hoverCandle, setHoverCandle] = useState<CandleRow | null>(null);
 
@@ -261,6 +283,7 @@ export function CandlePanel({
   const timelineEventsRef = useRef<TimelineEvent[]>([]);
   const lockPriceScaleRef = useRef(false);
   const priceScaleDragCleanupRef = useRef<(() => void) | null>(null);
+  const autoFitFrameRef = useRef<number | null>(null);
 
   const url = useMemo(() => {
     const params = new URLSearchParams({
@@ -275,8 +298,8 @@ export function CandlePanel({
     if (typeof untilTime === "number" && !Number.isNaN(untilTime)) {
       params.set("until_time", String(untilTime));
     }
-    return `${apiUrl}/api/candles?${params.toString()}`;
-  }, [apiUrl, lookback, mode, runId, symbol, timeframe, untilTime]);
+    return `${apiUrl}${endpointPath}?${params.toString()}`;
+  }, [apiUrl, endpointPath, lookback, mode, runId, symbol, timeframe, untilTime]);
 
   const { data, error, isLoading, mutate } = useSWR<CandlePayload>(url, fetcher, {
     refreshInterval: 10000,
@@ -361,9 +384,6 @@ export function CandlePanel({
               _internal_panes?: () => any[];
               _internal_defaultVisiblePriceScale?: () => any;
               _internal_findPriceScale?: (id: string) => { _internal_priceScale: any } | null;
-              _internal_startScalePrice?: (pane: any, priceScale: any, coordinate: number) => void;
-              _internal_scalePriceTo?: (pane: any, priceScale: any, coordinate: number) => void;
-              _internal_endScalePrice?: (pane: any, priceScale: any) => void;
               _internal_resetPriceScale?: (priceScale: any) => void;
               _internal_lightUpdate?: () => void;
             };
@@ -383,6 +403,111 @@ export function CandlePanel({
     return { chartWidget, model, pane, priceScale };
   };
 
+  const getVisibleCandles = () => {
+    const candles = candlesRef.current;
+    if (!candles.length) {
+      return [] as CandleRow[];
+    }
+    const logicalRange = chartRef.current?.timeScale().getVisibleLogicalRange();
+    if (!logicalRange) {
+      return candles;
+    }
+    const from = Math.max(0, Math.floor(logicalRange.from));
+    const to = Math.min(candles.length - 1, Math.ceil(logicalRange.to));
+    if (to < from) {
+      return candles;
+    }
+    return candles.slice(from, to + 1);
+  };
+
+  const setManualPriceRange = (minValue: number, maxValue: number, shouldLock = true) => {
+    const handles = getInternalPriceScaleHandles();
+    const priceScaleApi = chartRef.current?.priceScale("right");
+    const currentRange = handles?.priceScale?._internal_priceRange?.();
+    const RangeConstructor = currentRange?.constructor;
+    if (!handles || !priceScaleApi || !currentRange || typeof RangeConstructor !== "function") {
+      return false;
+    }
+    const span = Math.max(maxValue - minValue, Math.abs(maxValue || minValue) * 0.001, 1e-9);
+    const nextRange = new RangeConstructor(minValue, minValue + span);
+    priceScaleApi.applyOptions({ autoScale: false });
+    handles.priceScale._internal_setPriceRange?.(nextRange, true);
+    handles.model._internal_lightUpdate?.();
+    if (shouldLock && !lockPriceScaleRef.current) {
+      setLockPriceScale(true);
+    }
+    return true;
+  };
+
+  const fitPriceRangeToCandles = (candles: CandleRow[], lockAfterFit = false) => {
+    if (!candles.length) {
+      return false;
+    }
+    let minValue = Number.POSITIVE_INFINITY;
+    let maxValue = Number.NEGATIVE_INFINITY;
+    for (const candle of candles) {
+      if (Number.isFinite(candle.low)) {
+        minValue = Math.min(minValue, candle.low);
+      }
+      if (Number.isFinite(candle.high)) {
+        maxValue = Math.max(maxValue, candle.high);
+      }
+    }
+    if (!Number.isFinite(minValue) || !Number.isFinite(maxValue)) {
+      return false;
+    }
+    const span = Math.max(maxValue - minValue, Math.abs(maxValue || minValue) * 0.004, 1e-6);
+    const padding = Math.max(span * 0.08, Math.abs(maxValue || minValue) * 0.001, 1e-6);
+    const applied = setManualPriceRange(minValue - padding, maxValue + padding, lockAfterFit);
+    if (!applied && !lockAfterFit) {
+      chartRef.current?.priceScale("right").applyOptions({ autoScale: true });
+    }
+    return applied;
+  };
+
+  const fitVisiblePriceRange = (lockAfterFit = false) => {
+    const visibleCandles = getVisibleCandles();
+    return fitPriceRangeToCandles(visibleCandles.length ? visibleCandles : candlesRef.current, lockAfterFit);
+  };
+
+  const scalePriceRange = (deltaY: number, anchorY?: number) => {
+    const handles = getInternalPriceScaleHandles();
+    const currentRange = handles?.priceScale?._internal_priceRange?.();
+    const priceScaleApi = chartRef.current?.priceScale("right");
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!handles || !currentRange || !priceScaleApi || !rect) {
+      return;
+    }
+    const minValue = currentRange._internal_minValue?.();
+    const maxValue = currentRange._internal_maxValue?.();
+    if (!Number.isFinite(minValue) || !Number.isFinite(maxValue)) {
+      return;
+    }
+    const height = Math.max(rect.height, 1);
+    const anchorRatio = anchorY === undefined ? 0.5 : Math.max(0.05, Math.min(0.95, anchorY / height));
+    const anchorPrice = maxValue - (maxValue - minValue) * anchorRatio;
+    const scaleCoeff = Math.max(0.15, Math.min(6, Math.exp(deltaY * 0.0065)));
+    const nextMin = anchorPrice - (anchorPrice - minValue) * scaleCoeff;
+    const nextMax = anchorPrice + (maxValue - anchorPrice) * scaleCoeff;
+    priceScaleApi.applyOptions({ autoScale: false });
+    if (setManualPriceRange(nextMin, nextMax, true)) {
+      handles.model._internal_lightUpdate?.();
+    }
+  };
+
+  const queueVisibleAutoFit = () => {
+    if (lockPriceScaleRef.current) {
+      return;
+    }
+    if (autoFitFrameRef.current !== null) {
+      cancelAnimationFrame(autoFitFrameRef.current);
+    }
+    autoFitFrameRef.current = requestAnimationFrame(() => {
+      autoFitFrameRef.current = null;
+      void fitVisiblePriceRange(false);
+    });
+  };
+
   const setPriceScaleLocked = (nextLocked: boolean) => {
     const priceScaleApi = chartRef.current?.priceScale("right");
     if (!priceScaleApi) {
@@ -392,50 +517,37 @@ export function CandlePanel({
     if (nextLocked) {
       priceScaleApi.applyOptions({ autoScale: false });
     } else {
-      priceScaleApi.applyOptions({ autoScale: true });
-      const handles = getInternalPriceScaleHandles();
-      handles?.model._internal_resetPriceScale?.(handles.priceScale);
-      handles?.model._internal_lightUpdate?.();
+      priceScaleApi.applyOptions({ autoScale: false });
     }
     setLockPriceScale(nextLocked);
+    if (!nextLocked) {
+      queueVisibleAutoFit();
+    }
   };
 
-  const resetPriceScale = (preserveLock = false) => {
+  const resetPriceScale = (preserveLock = false, visibleOnly = false) => {
     const handles = getInternalPriceScaleHandles();
     const priceScaleApi = chartRef.current?.priceScale("right");
     if (!handles || !priceScaleApi) {
       return;
     }
     const shouldRelock = preserveLock && lockPriceScaleRef.current;
-    priceScaleApi.applyOptions({ autoScale: true });
-    handles.model._internal_resetPriceScale?.(handles.priceScale);
+    priceScaleApi.applyOptions({ autoScale: false });
+    if (visibleOnly) {
+      fitVisiblePriceRange(shouldRelock);
+    } else {
+      handles.model._internal_resetPriceScale?.(handles.priceScale);
+    }
     if (shouldRelock) {
       priceScaleApi.applyOptions({ autoScale: false });
+    } else if (!visibleOnly) {
+      fitVisiblePriceRange(false);
     }
     handles.model._internal_lightUpdate?.();
-  };
-
-  const beginPriceScaleDrag = (anchorY: number) => {
-    const handles = getInternalPriceScaleHandles();
-    if (!handles) {
-      return null;
-    }
-    chartRef.current?.priceScale("right").applyOptions({ autoScale: false });
-    handles.model._internal_startScalePrice?.(handles.pane, handles.priceScale, anchorY);
-    return handles;
   };
 
   const performPriceScaleZoom = (anchorY: number, nextY: number) => {
-    const handles = beginPriceScaleDrag(anchorY);
-    if (!handles) {
-      return;
-    }
-    handles.model._internal_scalePriceTo?.(handles.pane, handles.priceScale, nextY);
-    handles.model._internal_endScalePrice?.(handles.pane, handles.priceScale);
-    handles.model._internal_lightUpdate?.();
-    if (!lockPriceScaleRef.current) {
-      setLockPriceScale(true);
-    }
+    scalePriceRange(nextY - anchorY, anchorY);
   };
 
   const handleChartWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
@@ -448,7 +560,7 @@ export function CandlePanel({
     }
     event.preventDefault();
     const localY = Math.max(0, Math.min(rect.height, event.clientY - rect.top));
-    const scaleOffset = Math.max(-180, Math.min(180, event.deltaY)) * 0.9;
+    const scaleOffset = Math.max(-180, Math.min(180, event.deltaY));
     performPriceScaleZoom(localY, localY + scaleOffset);
   };
 
@@ -460,7 +572,7 @@ export function CandlePanel({
     event.preventDefault();
     event.stopPropagation();
     const localY = Math.max(0, Math.min(rect.height, event.clientY - rect.top));
-    const scaleOffset = Math.max(-180, Math.min(180, event.deltaY)) * 0.9;
+    const scaleOffset = Math.max(-180, Math.min(180, event.deltaY));
     performPriceScaleZoom(localY, localY + scaleOffset);
   };
 
@@ -473,10 +585,6 @@ export function CandlePanel({
     event.stopPropagation();
     priceScaleDragCleanupRef.current?.();
     const initialY = Math.max(0, Math.min(rect.height, event.clientY - rect.top));
-    const handles = beginPriceScaleDrag(initialY);
-    if (!handles) {
-      return;
-    }
     if (!lockPriceScaleRef.current) {
       setLockPriceScale(true);
     }
@@ -486,18 +594,52 @@ export function CandlePanel({
         return;
       }
       const localY = Math.max(0, Math.min(currentRect.height, moveEvent.clientY - currentRect.top));
-      handles.model._internal_scalePriceTo?.(handles.pane, handles.priceScale, localY);
-      handles.model._internal_lightUpdate?.();
+      scalePriceRange(localY - initialY, initialY);
     };
     const onUp = () => {
-      handles.model._internal_endScalePrice?.(handles.pane, handles.priceScale);
-      handles.model._internal_lightUpdate?.();
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
       priceScaleDragCleanupRef.current = null;
     };
     priceScaleDragCleanupRef.current = () => {
-      handles.model._internal_endScalePrice?.(handles.pane, handles.priceScale);
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      priceScaleDragCleanupRef.current = null;
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
+  const handleChartMouseDown = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (!verticalScaleMode && !event.altKey) {
+      return;
+    }
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    priceScaleDragCleanupRef.current?.();
+    const initialY = Math.max(0, Math.min(rect.height, event.clientY - rect.top));
+    if (!lockPriceScaleRef.current) {
+      setLockPriceScale(true);
+    }
+    const onMove = (moveEvent: MouseEvent) => {
+      const currentRect = containerRef.current?.getBoundingClientRect();
+      if (!currentRect) {
+        return;
+      }
+      moveEvent.preventDefault();
+      const localY = Math.max(0, Math.min(currentRect.height, moveEvent.clientY - currentRect.top));
+      scalePriceRange(localY - initialY, initialY);
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      priceScaleDragCleanupRef.current = null;
+    };
+    priceScaleDragCleanupRef.current = () => {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
       priceScaleDragCleanupRef.current = null;
@@ -619,6 +761,11 @@ export function CandlePanel({
       }
     });
 
+    const handleVisibleRangeChange = () => {
+      queueVisibleAutoFit();
+    };
+    chart.timeScale().subscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
+
     const resizeObserver = new ResizeObserver(() => {
       if (containerRef.current && chartRef.current) {
         chartRef.current.applyOptions({
@@ -631,6 +778,7 @@ export function CandlePanel({
 
     return () => {
       resizeObserver.disconnect();
+      chart.timeScale().unsubscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
       chart.remove();
       chartRef.current = null;
       candleSeriesRef.current = null;
@@ -640,6 +788,10 @@ export function CandlePanel({
       vwapSeriesRef.current = null;
       priceLinesRef.current = [];
       priceScaleDragCleanupRef.current?.();
+      if (autoFitFrameRef.current !== null) {
+        cancelAnimationFrame(autoFitFrameRef.current);
+        autoFitFrameRef.current = null;
+      }
     };
   }, []);
 
@@ -700,6 +852,7 @@ export function CandlePanel({
       viewKeyRef.current = nextViewKey;
     }
     lastClipRef.current = untilTime ?? null;
+    queueVisibleAutoFit();
   }, [
     data?.indicators?.ema_20,
     data?.indicators?.ema_50,
@@ -730,55 +883,79 @@ export function CandlePanel({
     }
     priceLinesRef.current = [];
 
-    if (!selectedEvent || selectedEvent.type === "decision") {
-      return;
+    const series = candleSeriesRef.current;
+    const maybeLines: Array<Record<string, unknown>> = [];
+    if (selectedEvent && selectedEvent.type !== "decision") {
+      const { trade } = selectedEvent;
+      maybeLines.push(
+        ...[
+          trade.entry_price
+            ? {
+                price: trade.entry_price,
+                color: "rgba(56, 189, 248, 0.95)",
+                lineStyle: 0,
+                axisLabelVisible: true,
+                title: "ENTRY",
+              }
+            : null,
+          trade.stop_price
+            ? {
+                price: trade.stop_price,
+                color: "rgba(239, 68, 68, 0.95)",
+                lineStyle: 2,
+                axisLabelVisible: true,
+                title: "STOP",
+              }
+            : null,
+          trade.active_stop_price && trade.active_stop_price !== trade.stop_price
+            ? {
+                price: trade.active_stop_price,
+                color: "rgba(245, 158, 11, 0.95)",
+                lineStyle: 1,
+                axisLabelVisible: true,
+                title: "TRAIL",
+              }
+            : null,
+          trade.exit_price
+            ? {
+                price: trade.exit_price,
+                color: "rgba(34, 197, 94, 0.95)",
+                lineStyle: 2,
+                axisLabelVisible: true,
+                title: "EXIT",
+              }
+            : null,
+        ].filter(Boolean) as Array<Record<string, unknown>>,
+      );
     }
 
-    const { trade } = selectedEvent;
-    const series = candleSeriesRef.current;
-    const maybeLines = [
-      trade.entry_price
-        ? {
-            price: trade.entry_price,
-            color: "rgba(56, 189, 248, 0.95)",
-            lineStyle: 0,
-            axisLabelVisible: true,
-            title: "ENTRY",
-          }
-        : null,
-      trade.stop_price
-        ? {
-            price: trade.stop_price,
-            color: "rgba(239, 68, 68, 0.95)",
-            lineStyle: 2,
-            axisLabelVisible: true,
-            title: "STOP",
-          }
-        : null,
-      trade.active_stop_price && trade.active_stop_price !== trade.stop_price
-        ? {
-            price: trade.active_stop_price,
-            color: "rgba(245, 158, 11, 0.95)",
-            lineStyle: 1,
-            axisLabelVisible: true,
-            title: "TRAIL",
-          }
-        : null,
-      trade.exit_price
-        ? {
-            price: trade.exit_price,
-            color: "rgba(34, 197, 94, 0.95)",
-            lineStyle: 2,
-            axisLabelVisible: true,
-            title: "EXIT",
-          }
-        : null,
-    ].filter(Boolean);
+    if (showStructure) {
+      for (const line of (data?.structure_levels ?? []).slice(0, 8)) {
+        maybeLines.push({
+          price: line.price,
+          color: line.color,
+          lineStyle: line.lineStyle ?? 1,
+          axisLabelVisible: true,
+          title: String(line.kind ?? "LEVEL").slice(0, 12).toUpperCase(),
+        });
+      }
+    }
+    if (showLiquidity) {
+      for (const line of (data?.liquidity_levels ?? []).slice(0, 6)) {
+        maybeLines.push({
+          price: line.price,
+          color: line.color,
+          lineStyle: line.lineStyle ?? 0,
+          axisLabelVisible: true,
+          title: String(line.kind ?? "POOL").slice(0, 12).toUpperCase(),
+        });
+      }
+    }
 
     for (const config of maybeLines) {
       priceLinesRef.current.push(series.createPriceLine(config as any));
     }
-  }, [selectedEvent]);
+  }, [data?.liquidity_levels, data?.structure_levels, selectedEvent, showLiquidity, showStructure]);
 
   const statusLabel = error
     ? "chart error"
@@ -792,17 +969,17 @@ export function CandlePanel({
 
   const resetView = () => {
     chartRef.current?.timeScale().fitContent();
-    resetPriceScale(false);
+    resetPriceScale(false, true);
     setLockPriceScale(false);
     setFollowReplay(true);
   };
 
   const fitVisible = () => {
-    resetPriceScale(true);
+    fitVisiblePriceRange(lockPriceScaleRef.current);
   };
 
   const autoPriceScale = () => {
-    resetPriceScale(false);
+    fitVisiblePriceRange(false);
     setLockPriceScale(false);
   };
 
@@ -819,7 +996,7 @@ export function CandlePanel({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <div className="text-[11px] uppercase tracking-[0.28em] text-cyan-200/75">
-              Replay Decision Chart
+              {panelLabel}
             </div>
             <div className="mt-1 text-sm text-white/70">
               {symbol} / {timeframe} / {statusLabel}
@@ -881,6 +1058,28 @@ export function CandlePanel({
             >
               rejects
             </button>
+            <button
+              type="button"
+              onClick={() => setShowStructure((value) => !value)}
+              className={`rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.2em] ${
+                showStructure
+                  ? "border-emerald-300/24 bg-emerald-400/12 text-emerald-100"
+                  : "border-white/10 bg-white/5 text-white/65"
+              }`}
+            >
+              structure
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowLiquidity((value) => !value)}
+              className={`rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.2em] ${
+                showLiquidity
+                  ? "border-fuchsia-300/24 bg-fuchsia-400/12 text-fuchsia-100"
+                  : "border-white/10 bg-white/5 text-white/65"
+              }`}
+            >
+              liquidity
+            </button>
             <label className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-white/72">
               lookback
               <select
@@ -921,6 +1120,17 @@ export function CandlePanel({
             </button>
             <button
               type="button"
+              onClick={() => setVerticalScaleMode((value) => !value)}
+              className={`rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.2em] ${
+                verticalScaleMode
+                  ? "border-fuchsia-300/24 bg-fuchsia-400/12 text-fuchsia-100"
+                  : "border-white/10 bg-white/5 text-white/75"
+              }`}
+            >
+              vertical scale mode
+            </button>
+            <button
+              type="button"
               onClick={() => setPriceScaleLocked(!lockPriceScale)}
               className={`rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.2em] ${
                 lockPriceScale
@@ -949,14 +1159,11 @@ export function CandlePanel({
           </div>
         </div>
         <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-white/50">
-          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
-            wheel on chart = time zoom
-          </span>
-          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
-            ctrl + wheel = vertical price zoom
-          </span>
-          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
-            drag right price scale = stretch candles
+          <span
+            className="rounded-full border border-white/10 bg-white/5 px-3 py-1"
+            title="Scroll = time zoom, drag = pan, Ctrl+scroll = price zoom, Alt+drag = price scale, price axis drag = price scale"
+          >
+            Scroll = time zoom, drag = pan, Ctrl+scroll = price zoom, Alt+drag = price scale, price axis drag = price scale
           </span>
         </div>
 
@@ -973,7 +1180,7 @@ export function CandlePanel({
             </div>
           </div>
           <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-xs uppercase tracking-[0.18em] text-white/60">
-            Candles {String(data?.debug?.["candle_count"] ?? 0)} / trades {String(data?.debug?.["trade_events_count"] ?? 0)} / decisions {String(data?.debug?.["decision_events_count"] ?? 0)} / rejected {String(data?.debug?.["rejected_events_count"] ?? 0)}
+            Candles {String(data?.debug?.["candle_count"] ?? 0)} / trades {String(data?.debug?.["trade_events_count"] ?? 0)} / decisions {String(data?.debug?.["decision_events_count"] ?? 0)} / structure {String(data?.debug?.["structure_level_count"] ?? 0)} / liquidity {String(data?.debug?.["liquidity_level_count"] ?? 0)} / rejected {String(data?.debug?.["rejected_events_count"] ?? 0)}
           </div>
         </div>
       </div>
@@ -983,6 +1190,7 @@ export function CandlePanel({
           <div
             className={isFullscreen ? "relative h-[calc(100vh-156px)] w-full" : "relative h-[760px] w-full"}
             onWheel={handleChartWheel}
+            onMouseDown={handleChartMouseDown}
           >
             <div ref={containerRef} className="h-full w-full" />
             <div

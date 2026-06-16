@@ -1,0 +1,127 @@
+{
+  "name": "structural_compounding_lab_validation_ladder_v2",
+  "research_only": true,
+  "auto_run_expensive_stages": false,
+  "stages": [
+    {
+      "stage": "plan_spec",
+      "symbol_scope": [
+        "BTCUSDT"
+      ],
+      "auto_run": false
+    },
+    {
+      "stage": "unit_tests",
+      "symbol_scope": [
+        "BTCUSDT"
+      ],
+      "auto_run": false
+    },
+    {
+      "stage": "smoke_window",
+      "symbol_scope": [
+        "BTCUSDT"
+      ],
+      "start": "2026-05-31",
+      "end": "2026-06-13",
+      "auto_run": false
+    },
+    {
+      "stage": "diagnostic_fast_window",
+      "symbol_scope": [
+        "BTCUSDT"
+      ],
+      "start": "2025-12-14",
+      "end": "2026-06-13",
+      "auto_run": false
+    },
+    {
+      "stage": "stress_bull_window",
+      "symbol_scope": [
+        "BTCUSDT"
+      ],
+      "start": "2020-10-01",
+      "end": "2021-05-31",
+      "auto_run": false
+    },
+    {
+      "stage": "stress_bear_window",
+      "symbol_scope": [
+        "BTCUSDT"
+      ],
+      "start": "2022-04-01",
+      "end": "2022-07-31",
+      "auto_run": false
+    },
+    {
+      "stage": "stress_chop_window",
+      "symbol_scope": [
+        "BTCUSDT"
+      ],
+      "start": "2024-10-01",
+      "end": "2025-03-31",
+      "auto_run": false
+    },
+    {
+      "stage": "recent_holdout",
+      "symbol_scope": [
+        "BTCUSDT"
+      ],
+      "start": "2025-06-14",
+      "end": "2026-06-13",
+      "auto_run": false
+    },
+    {
+      "stage": "execution_cost_sensitivity",
+      "symbol_scope": [
+        "BTCUSDT"
+      ],
+      "auto_run": false
+    },
+    {
+      "stage": "full_history_confirmation",
+      "symbol_scope": [
+        "BTCUSDT"
+      ],
+      "start": "2018-01-01",
+      "end": "2026-06-13",
+      "auto_run": false
+    },
+    {
+      "stage": "monte_carlo",
+      "symbol_scope": [
+        "BTCUSDT"
+      ],
+      "auto_run": false
+    },
+    {
+      "stage": "paper_candidate_later",
+      "symbol_scope": [
+        "BTCUSDT"
+      ],
+      "auto_run": false
+    },
+    {
+      "stage": "manual_promotion_review",
+      "symbol_scope": [
+        "BTCUSDT"
+      ],
+      "auto_run": false
+    }
+  ],
+  "acceptance_criteria": [
+    "holdout must remain positive after research-only costs",
+    "average R should improve or remain stable",
+    "drawdown must not worsen materially",
+    "missed-winner rate from waiting for pullback must remain bounded",
+    "candidate remains non-authoritative until manual promotion review"
+  ],
+  "no_go_rules": [
+    "no live or paper runtime mutation",
+    "no full-history auto-run on import",
+    "no hard gating from MACD/Bollinger by default",
+    "no automatic promotion",
+    "no 6H enablement",
+    "no real-money permissions"
+  ]
+}

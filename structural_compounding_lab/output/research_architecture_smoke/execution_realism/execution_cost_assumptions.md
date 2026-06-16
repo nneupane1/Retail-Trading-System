@@ -1,0 +1,8 @@
+# Execution Cost Assumptions
+
+Research-only fee, spread, slippage, and stop-stress assumptions for structural-compounding validation.
+
+- `low_cost`: {'fee_bps': 4.0, 'slippage_bps': 2.0, 'spread_bps': 1.0, 'stop_stress_bps': 4.0}
+- `normal_cost`: {'fee_bps': 8.0, 'slippage_bps': 5.0, 'spread_bps': 2.0, 'stop_stress_bps': 8.0}
+- `high_cost`: {'fee_bps': 12.0, 'slippage_bps': 8.0, 'spread_bps': 3.5, 'stop_stress_bps': 12.0}
+- `stress_cost`: {'fee_bps': 16.0, 'slippage_bps': 14.0, 'spread_bps': 5.0, 'stop_stress_bps': 18.0}

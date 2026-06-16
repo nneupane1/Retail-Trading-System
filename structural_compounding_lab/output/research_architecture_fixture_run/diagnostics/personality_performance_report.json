@@ -1,0 +1,12 @@
+{
+  "PULLBACK_CONTINUATION": {
+    "count": 1,
+    "win_rate": 1.0,
+    "total_pnl": 94.76494023904048,
+    "avg_r": 0.3981720178110945,
+    "median_r_proxy": 0.3981720178110945,
+    "profit_factor_proxy": 1.0,
+    "average_holding_time": 2.0,
+    "add_on_candidate_frequency": 0.0
+  }
+}

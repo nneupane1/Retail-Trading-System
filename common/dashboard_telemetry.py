@@ -12,6 +12,12 @@ import pandas as pd
 from capital.phase1_diagnostics import diagnostics_report_paths
 from capital.phase1_evidence_review import review_report_paths
 from config import AppConfig
+from common.structural_lab_locator import (
+    load_structural_lab_settings_data,
+    structural_lab_output_root as resolve_structural_lab_output_root,
+    structural_lab_package_root as resolve_structural_lab_package_root,
+    structural_lab_settings_paths,
+)
 from data.downloader import load_from_csv
 from data.resampler import TimeframeBuilder
 from common.runtime_readiness import build_runtime_readiness
@@ -1128,6 +1134,665 @@ def load_live_dashboard_snapshot(
         "replay_status": {},
         "replay_checkpoint": {},
         "validation_window": {},
+    }
+
+
+def structural_compounding_lab_root(root_dir: Path | None = None) -> Path:
+    return resolve_structural_lab_package_root(root_dir)
+
+
+def structural_compounding_lab_output_root(root_dir: Path | None = None) -> Path:
+    return resolve_structural_lab_output_root(root_dir)
+
+
+def _read_text(path: Path, default: str = "") -> str:
+    if not path.exists():
+        return default
+    try:
+        return path.read_text(encoding="utf-8")
+    except Exception:
+        return default
+
+
+def _structural_artifact_paths(root_dir: Path | None = None) -> dict[str, Path]:
+    output_root = structural_compounding_lab_output_root(root_dir)
+    lab_root = structural_compounding_lab_root(root_dir)
+    settings_paths = structural_lab_settings_paths(root_dir)
+    return {
+        "summary": output_root / "summary.json",
+        "master_lab_plan": output_root / "master_lab_plan.md",
+        "candidate_registry": output_root / "candidate_registry.json",
+        "feature_flags": output_root / "feature_flags.json",
+        "equity": output_root / "equity.csv",
+        "trades": output_root / "trades.csv",
+        "setup_log": output_root / "setup_log.csv",
+        "level_log": output_root / "level_log.csv",
+        "liquidity_events": output_root / "liquidity_events.csv",
+        "profit_vault": output_root / "profit_vault.json",
+        "cooldown_log": output_root / "cooldown_log.csv",
+        "pyramiding_log": output_root / "pyramiding_log.csv",
+        "report": output_root / "report.md",
+        "entry_quality_report": output_root / "diagnostics" / "entry_quality_report.json",
+        "pullback_quality_report": output_root / "diagnostics" / "pullback_quality_report.json",
+        "pullback_type_performance_report": output_root / "diagnostics" / "pullback_type_performance_report.json",
+        "personality_performance_report": output_root / "diagnostics" / "personality_performance_report.json",
+        "indicator_confluence_report": output_root / "diagnostics" / "indicator_confluence_report.json",
+        "pullback_compounding_readiness_report": output_root / "diagnostics" / "pullback_compounding_readiness_report.json",
+        "promotion_packet": output_root / "reports" / "promotion_packet.json",
+        "settings": settings_paths["json"],
+        "symbols": settings_paths["symbols"],
+        "package_root": lab_root,
+    }
+
+
+def _structural_has_run(paths: dict[str, Path]) -> bool:
+    return any(
+        paths[key].exists()
+        for key in (
+            "summary",
+            "equity",
+            "trades",
+            "setup_log",
+            "level_log",
+            "liquidity_events",
+            "profit_vault",
+            "cooldown_log",
+            "pyramiding_log",
+            "report",
+        )
+    )
+
+
+def _structural_row_time(row: dict[str, Any], *candidates: str) -> pd.Timestamp | None:
+    for key in candidates:
+        value = row.get(key)
+        if value is None or str(value).strip() == "":
+            continue
+        parsed = _row_timestamp(value)
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _structural_rows_by_symbol(rows: list[dict[str, Any]], symbol: str) -> list[dict[str, Any]]:
+    symbol_key = str(symbol).upper()
+    return [row for row in rows if str(row.get("symbol", symbol_key)).upper() == symbol_key]
+
+
+def _structural_point_series(rows: list[dict[str, Any]], value_keys: tuple[str, ...]) -> list[dict[str, Any]]:
+    points: list[dict[str, Any]] = []
+    for row in rows:
+        timestamp = _structural_row_time(row, "timestamp", "time", "datetime", "date")
+        if timestamp is None:
+            continue
+        value: float | None = None
+        for key in value_keys:
+            raw_value = row.get(key)
+            if raw_value is None or str(raw_value).strip() == "":
+                continue
+            try:
+                value = float(raw_value)
+                break
+            except (TypeError, ValueError):
+                continue
+        if value is None:
+            continue
+        points.append({"label": timestamp.isoformat(), "value": value})
+    return points[-240:]
+
+
+def _structural_available_symbols(
+    symbols_config: dict[str, Any],
+    *row_groups: list[dict[str, Any]],
+) -> list[str]:
+    discovered = {
+        str(row.get("symbol", "")).upper()
+        for rows in row_groups
+        for row in rows
+        if row.get("symbol")
+    }
+    configured = {
+        str(symbol).upper()
+        for symbol in symbols_config.get("symbols", []) or symbols_config.get("primary", []) or []
+    }
+    fallback = {"BTCUSDT"}
+    return sorted(discovered | configured | fallback)
+
+
+def _structural_available_timeframes(settings: dict[str, Any]) -> list[str]:
+    configured = settings.get("visual_timeframes") or settings.get("timeframes") or settings.get("research_timeframes")
+    if isinstance(configured, list) and configured:
+        return [str(value) for value in configured]
+    return ["1h", "4h", "12h", "1d"]
+
+
+def load_structural_lab_snapshot(
+    *,
+    root_dir: Path | None = None,
+) -> dict[str, Any]:
+    lab_root = structural_compounding_lab_root(root_dir)
+    output_root = structural_compounding_lab_output_root(root_dir)
+    paths = _structural_artifact_paths(root_dir)
+
+    settings = _read_json(paths["settings"], {})
+    symbols_config = _read_json(paths["symbols"], {})
+    summary = _read_json(paths["summary"], {})
+    candidate_registry = _read_json(paths["candidate_registry"], {})
+    feature_flags = _read_json(paths["feature_flags"], {})
+    profit_vault = _read_json(paths["profit_vault"], {})
+    entry_quality_report = _read_json(paths["entry_quality_report"], {})
+    pullback_quality_report = _read_json(paths["pullback_quality_report"], {})
+    pullback_type_performance_report = _read_json(paths["pullback_type_performance_report"], {})
+    personality_performance_report = _read_json(paths["personality_performance_report"], {})
+    indicator_confluence_report = _read_json(paths["indicator_confluence_report"], {})
+    pullback_compounding_readiness_report = _read_json(paths["pullback_compounding_readiness_report"], {})
+    promotion_packet = _read_json(paths["promotion_packet"], {})
+    trades = _read_csv_rows(paths["trades"])
+    setup_log = _read_csv_rows(paths["setup_log"])
+    level_log = _read_csv_rows(paths["level_log"])
+    liquidity_events = _read_csv_rows(paths["liquidity_events"])
+    cooldown_log = _read_csv_rows(paths["cooldown_log"])
+    pyramiding_log = _read_csv_rows(paths["pyramiding_log"])
+    equity_rows = _read_csv_rows(paths["equity"])
+    report_markdown = _read_text(paths["report"], "")
+    has_run = _structural_has_run(paths)
+
+    available_symbols = _structural_available_symbols(
+        symbols_config,
+        trades,
+        setup_log,
+        level_log,
+        liquidity_events,
+        cooldown_log,
+        pyramiding_log,
+    )
+    available_timeframes = _structural_available_timeframes(settings)
+
+    current_equity = _safe_float(
+        summary.get("current_equity")
+        or summary.get("ending_equity")
+        or summary.get("final_equity")
+        or (equity_rows[-1].get("equity") if equity_rows else None),
+        default=_safe_float(settings.get("base_capital"), default=20000.0),
+    )
+    base_capital = _safe_float(
+        profit_vault.get("base_capital") or settings.get("base_capital"),
+        default=20000.0,
+    )
+    locked_profit = _safe_float(
+        profit_vault.get("locked_profit") or summary.get("locked_profit"),
+        default=0.0,
+    )
+    active_trading_capital = _safe_float(
+        profit_vault.get("active_trading_capital") or summary.get("active_trading_capital"),
+        default=base_capital,
+    )
+    floating_profit = _safe_float(
+        profit_vault.get("floating_profit") or summary.get("floating_profit"),
+        default=max(0.0, current_equity - base_capital - locked_profit),
+    )
+
+    summary_metrics = summary.get("metrics", {}) if isinstance(summary.get("metrics"), dict) else {}
+    profit_lock_count = _safe_int(summary.get("profit_lock_count"), default=sum(1 for row in pyramiding_log if str(row.get("event_type")) == "profit_lock"))
+    add_on_event_count = _safe_int(
+        summary.get("add_on_event_count"),
+        default=sum(1 for row in pyramiding_log if str(row.get("event_type") or row.get("add_type")) != "profit_lock"),
+    )
+    cooldown_release_count = sum(1 for row in cooldown_log if str(row.get("event_type")) == "cooldown_release")
+    artifact_freshness = {
+        key: _artifact_status(path, stale_after_seconds=24 * 60 * 60)
+        for key, path in paths.items()
+    }
+    warnings: list[str] = []
+    if not has_run:
+        warnings.append("No structural backtest run found yet.")
+    if not artifact_freshness["summary"]["exists"]:
+        warnings.append("No summary.json found yet.")
+    if not artifact_freshness["profit_vault"]["exists"]:
+        warnings.append("No profit vault state yet.")
+
+    return {
+        "lab": {
+            "name": "Structural Compounding Lab",
+            "root_path": str(lab_root),
+            "output_path": str(output_root),
+            "has_run": has_run,
+            "empty_state": "No structural backtest run found yet." if not has_run else None,
+        },
+        "summary": summary,
+        "summary_metrics": summary_metrics,
+        "settings": settings,
+        "symbols_config": symbols_config,
+        "candidate_registry": candidate_registry,
+        "feature_flags": feature_flags,
+        "profit_vault": profit_vault,
+        "report_markdown": report_markdown,
+        "artifact_freshness": artifact_freshness,
+        "available_symbols": available_symbols,
+        "available_timeframes": available_timeframes,
+        "trade_rows": trades,
+        "setup_rows": setup_log,
+        "level_rows": level_log,
+        "liquidity_rows": liquidity_events,
+        "cooldown_rows": cooldown_log,
+        "pyramiding_rows": pyramiding_log,
+        "equity_rows": equity_rows,
+        "research_reports": {
+            "entry_quality_report": entry_quality_report,
+            "pullback_quality_report": pullback_quality_report,
+            "pullback_type_performance_report": pullback_type_performance_report,
+            "personality_performance_report": personality_performance_report,
+            "indicator_confluence_report": indicator_confluence_report,
+            "pullback_compounding_readiness_report": pullback_compounding_readiness_report,
+            "promotion_packet": promotion_packet,
+        },
+        "overview": {
+            "base_capital": base_capital,
+            "active_trading_capital": active_trading_capital,
+            "locked_profit": locked_profit,
+            "floating_profit": floating_profit,
+            "current_equity": current_equity,
+            "current_compounding_cycle": profit_vault.get("current_compounding_cycle_id")
+            or summary.get("current_compounding_cycle")
+            or "cycle-0",
+            "cooldown_state": (
+                "active"
+                if str(
+                    profit_vault.get("cooldown_active")
+                    or summary.get("cooldown_active")
+                    or False
+                ).lower()
+                == "true"
+                else "inactive"
+            ),
+            "total_return_pct": _safe_float(
+                summary_metrics.get("total_return_pct") or summary.get("total_return_pct"),
+                default=((current_equity + locked_profit - base_capital) / base_capital) if base_capital else 0.0,
+            ),
+            "max_drawdown_pct": _safe_float(
+                summary_metrics.get("max_drawdown_pct") or summary.get("max_drawdown_pct"),
+                default=0.0,
+            ),
+            "win_rate": _safe_float(summary_metrics.get("win_rate") or summary.get("win_rate"), default=0.0),
+            "profit_factor": _safe_float(
+                summary_metrics.get("profit_factor") or summary.get("profit_factor"),
+                default=0.0,
+            ),
+            "profit_lock_count": profit_lock_count,
+            "add_on_event_count": add_on_event_count,
+            "cooldown_release_count": cooldown_release_count,
+            "r_multiple_summary": summary_metrics.get("r_multiple_summary")
+            or summary.get("r_multiple_summary")
+            or "No R-multiple summary yet.",
+        },
+        "structural_state": {
+            "latest_trade": trades[-1] if trades else {},
+            "latest_setup": setup_log[-1] if setup_log else {},
+            "latest_cooldown_event": cooldown_log[-1] if cooldown_log else {},
+            "latest_pyramiding_event": pyramiding_log[-1] if pyramiding_log else {},
+        },
+        "chart_points": {
+            "equity": _structural_point_series(equity_rows, ("equity", "balance", "active_equity")),
+            "locked_profit": _structural_point_series(pyramiding_log, ("locked_profit", "profit_locked", "vault_after")),
+        },
+        "warnings": warnings,
+    }
+
+
+def _build_structural_markers(
+    trades: list[dict[str, Any]],
+    pyramiding_rows: list[dict[str, Any]],
+    cooldown_rows: list[dict[str, Any]],
+    *,
+    symbol: str,
+) -> list[dict[str, Any]]:
+    markers: list[dict[str, Any]] = []
+    for row in _structural_rows_by_symbol(trades, symbol):
+        entry_time = _structural_row_time(row, "entry_time", "entry_timestamp", "opened_at")
+        exit_time = _structural_row_time(row, "exit_time", "exit_timestamp", "closed_at")
+        side = str(row.get("side", "long")).lower()
+        if entry_time is not None:
+            markers.append(
+                {
+                    "time": int(entry_time.timestamp()),
+                    "position": "belowBar" if side == "long" else "aboveBar",
+                    "color": "#22c55e" if side == "long" else "#f97316",
+                    "shape": "arrowUp" if side == "long" else "arrowDown",
+                    "text": f"{row.get('setup_class', 'entry')} entry",
+                }
+            )
+        if exit_time is not None:
+            pnl_value = _safe_float(row.get("pnl") or row.get("pnl_value"), default=0.0)
+            markers.append(
+                {
+                    "time": int(exit_time.timestamp()),
+                    "position": "aboveBar" if side == "long" else "belowBar",
+                    "color": "#22c55e" if pnl_value >= 0.0 else "#ef4444",
+                    "shape": "circle",
+                    "text": f"{row.get('exit_reason', 'exit')} {pnl_value:.2f}",
+                }
+            )
+    for row in _structural_rows_by_symbol(pyramiding_rows, symbol):
+        event_time = _structural_row_time(row, "timestamp", "event_time", "added_at")
+        if event_time is None:
+            continue
+        event_type = str(row.get("event_type") or row.get("add_type") or "add-on")
+        markers.append(
+            {
+                "time": int(event_time.timestamp()),
+                "position": "aboveBar" if event_type == "profit_lock" else "belowBar",
+                "color": "#f59e0b" if event_type == "profit_lock" else "#38bdf8",
+                "shape": "circle",
+                "text": event_type,
+            }
+        )
+    for row in _structural_rows_by_symbol(cooldown_rows, symbol):
+        event_time = _structural_row_time(row, "timestamp", "cooldown_start", "event_time")
+        if event_time is None:
+            continue
+        markers.append(
+            {
+                "time": int(event_time.timestamp()),
+                "position": "aboveBar",
+                "color": "#f59e0b",
+                "shape": "circle",
+                "text": row.get("reason") or "cooldown",
+            }
+        )
+    return markers
+
+
+def _build_structural_trade_events(trades: list[dict[str, Any]], *, symbol: str) -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
+    for row in _structural_rows_by_symbol(trades, symbol):
+        entry_time = _structural_row_time(row, "entry_time", "entry_timestamp", "opened_at")
+        exit_time = _structural_row_time(row, "exit_time", "exit_timestamp", "closed_at")
+        side = str(row.get("side", "long")).lower()
+        events.append(
+            {
+                "kind": "trade",
+                "trade_id": row.get("trade_id") or row.get("id"),
+                "symbol": row.get("symbol", symbol),
+                "side": side,
+                "strategy_type": row.get("setup_type") or row.get("setup_class") or "structural_compounding",
+                "timeframe_band": row.get("execution_timeframe") or row.get("timeframe") or "1h",
+                "entry_time": entry_time.isoformat() if entry_time is not None else row.get("entry_time"),
+                "entry_time_unix": int(entry_time.timestamp()) if entry_time is not None else None,
+                "exit_time": exit_time.isoformat() if exit_time is not None else row.get("exit_time"),
+                "exit_time_unix": int(exit_time.timestamp()) if exit_time is not None else None,
+                "entry_price": _safe_float(row.get("entry_price")),
+                "exit_price": _safe_float(row.get("exit_price")),
+                "stop_price": _safe_float(row.get("initial_stop") or row.get("stop_price")),
+                "active_stop_price": _safe_float(row.get("trail_stop") or row.get("active_stop_price")),
+                "score": _safe_float(row.get("entry_score") or row.get("score")),
+                "score_bucket": row.get("setup_class"),
+                "capital_lane": row.get("cycle_id") or row.get("compounding_cycle"),
+                "risk_group": row.get("risk_profile") or "structural",
+                "pnl": _safe_float(row.get("pnl") or row.get("pnl_value")),
+                "pnl_r": _safe_float(row.get("r_multiple") or row.get("pnl_r")),
+                "exit_reason": row.get("exit_reason"),
+                "trail_state": row.get("trailing_state") or row.get("trail_state"),
+                "convexity_state": row.get("moonshot_state") or row.get("extension_state"),
+                "pyramid_level": _safe_int(row.get("add_on_count") or row.get("pyramid_level")),
+                "holding_bars": _safe_int(row.get("holding_bars") or row.get("bars_held")),
+                "risk_multiplier": _safe_float(row.get("risk_multiplier"), default=1.0),
+                "cooldown_fast_clear_eligible": str(row.get("cooldown_fast_clear_eligible", "")).lower() == "true",
+                "explanation": (
+                    row.get("entry_reason")
+                    or "Structural-compounding trade. Detailed entry reasoning will appear once setup_log.csv is populated."
+                ),
+            }
+        )
+    return events
+
+
+def _build_structural_setup_events(setup_rows: list[dict[str, Any]], *, symbol: str) -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
+    for row in _structural_rows_by_symbol(setup_rows, symbol):
+        timestamp = _structural_row_time(row, "timestamp", "decision_time", "setup_time")
+        if timestamp is None:
+            continue
+        accepted_text = str(row.get("accepted") or row.get("opened") or row.get("selected") or "").lower()
+        accepted = accepted_text == "true" or str(row.get("classification", "")).upper() in {"A", "B", "C"}
+        structure_score = _safe_float(row.get("structure_score"), default=0.0)
+        liquidity_score = _safe_float(row.get("liquidity_score"), default=0.0)
+        ema_score = _safe_float(row.get("ema_score"), default=0.0)
+        htf_score = _safe_float(row.get("htf_score") or row.get("htf_confirmation_score"), default=0.0)
+        volatility_score = _safe_float(row.get("volatility_score"), default=0.0)
+        rr_score = _safe_float(row.get("rr_score") or row.get("risk_reward_score"), default=0.0)
+        events.append(
+            {
+                "kind": "decision",
+                "timestamp": timestamp.isoformat(),
+                "time_unix": int(timestamp.timestamp()),
+                "symbol": row.get("symbol", symbol),
+                "side": str(row.get("side", "long")).lower(),
+                "strategy_type": row.get("setup_type") or "structural_compounding",
+                "timeframe_band": row.get("execution_timeframe") or row.get("timeframe") or "1h",
+                "accepted": accepted,
+                "final_reason": row.get("decision") or row.get("status") or ("opened" if accepted else "review_only"),
+                "score": _safe_float(row.get("total_score") or row.get("score")),
+                "score_bucket": row.get("classification") or row.get("setup_class"),
+                "threshold": _safe_float(row.get("threshold"), default=0.0),
+                "capital_lane": row.get("cycle_id") or row.get("compounding_cycle"),
+                "allocation_rank": row.get("ranking") or row.get("priority"),
+                "allocation_priority": _safe_float(row.get("priority"), default=0.0),
+                "blocking_constraint": row.get("blocking_reason") or "",
+                "risk_multiplier": _safe_float(row.get("risk_multiplier"), default=1.0),
+                "convexity_label": row.get("convexity_label"),
+                "conditions": [
+                    {"label": "structure", "value": f"{structure_score:.2f}", "passed": structure_score > 0.0},
+                    {"label": "liquidity", "value": f"{liquidity_score:.2f}", "passed": liquidity_score > 0.0},
+                    {"label": "ema", "value": f"{ema_score:.2f}", "passed": ema_score > 0.0},
+                    {"label": "htf", "value": f"{htf_score:.2f}", "passed": htf_score > 0.0},
+                    {"label": "volatility", "value": f"{volatility_score:.2f}", "passed": volatility_score > 0.0},
+                    {"label": "risk_reward", "value": f"{rr_score:.2f}", "passed": rr_score > 0.0},
+                ],
+                "explanation": (
+                    row.get("explanation")
+                    or row.get("entry_reason")
+                    or "Structural setup candidate. Research explanations will become richer once setup_log.csv is populated."
+                ),
+            }
+        )
+    return events
+
+
+def _structural_overlay_levels(
+    level_rows: list[dict[str, Any]],
+    *,
+    symbol: str,
+    limit: int = 10,
+) -> list[dict[str, Any]]:
+    ranked: list[dict[str, Any]] = []
+    for row in _structural_rows_by_symbol(level_rows, symbol):
+        price = _safe_float(row.get("price"))
+        if price <= 0:
+            continue
+        kind = str(row.get("type") or row.get("level_type") or "level")
+        if "support" in kind:
+            color = "#22c55e"
+        elif "resistance" in kind:
+            color = "#ef4444"
+        elif "mid" in kind:
+            color = "#94a3b8"
+        else:
+            color = "#38bdf8"
+        ranked.append(
+            {
+                "price": price,
+                "label": f"{kind} {price:.2f}",
+                "kind": kind,
+                "color": color,
+                "lineStyle": 2 if "prev_" in kind or "range_" in kind else 1,
+                "strength": _safe_float(row.get("strength"), default=0.0),
+                "timeframe_source": row.get("timeframe_source") or row.get("timeframe") or "1h",
+                "touch_count": _safe_int(row.get("touch_count"), default=1),
+            }
+        )
+    ranked.sort(key=lambda item: (item["strength"], item["touch_count"]), reverse=True)
+    return ranked[:limit]
+
+
+def _structural_overlay_liquidity(
+    liquidity_rows: list[dict[str, Any]],
+    *,
+    symbol: str,
+    limit: int = 8,
+) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for row in _structural_rows_by_symbol(liquidity_rows, symbol):
+        price = _safe_float(row.get("price"))
+        if price <= 0:
+            continue
+        kind = str(row.get("type") or row.get("event_type") or "liquidity")
+        side_implication = str(row.get("side_implication") or row.get("side") or "")
+        color = "#f59e0b" if side_implication in {"long", "bullish_if_swept"} else "#c084fc"
+        items.append(
+            {
+                "price": price,
+                "label": f"{kind} {price:.2f}",
+                "kind": kind,
+                "color": color,
+                "lineStyle": 0,
+                "confidence": _safe_float(row.get("confidence"), default=0.0),
+                "side_implication": side_implication,
+                "timestamp": row.get("timestamp") or row.get("event_time"),
+            }
+        )
+    items.sort(key=lambda item: (item["confidence"], str(item["timestamp"] or "")), reverse=True)
+    return items[:limit]
+
+
+def load_structural_lab_candles(
+    symbol: str,
+    *,
+    timeframe: str = "1h",
+    limit: int = 500,
+    config: AppConfig | None = None,
+    root_dir: Path | None = None,
+    until_time: Any = None,
+) -> dict[str, Any]:
+    config = config or AppConfig.load()
+    structural_cfg = load_structural_lab_settings_data(root_dir)
+    symbol = str(symbol).upper()
+    data_block = structural_cfg.get("data", {}) if isinstance(structural_cfg, dict) else {}
+    interval = str(data_block.get("default_interval", "1m"))
+    data_base_path_value = data_block.get("base_path")
+    if not data_base_path_value:
+        raise FileNotFoundError("Structural lab data.base_path is not configured.")
+    data_base_path = Path(str(data_base_path_value))
+    if not data_base_path.is_absolute():
+        data_base_path = (structural_compounding_lab_root(root_dir) / data_base_path).resolve()
+    folder = data_base_path / symbol / interval
+    source_path = _resolve_history_file(
+        folder,
+        symbol=symbol,
+        interval=interval,
+        start_date=str(data_block.get("history_start_date", "2018-01-01")),
+        end_date=str(data_block.get("history_end_date", "2026-06-13")),
+    )
+    if source_path is None:
+        raise FileNotFoundError(f"No base history found for {symbol}.")
+
+    df_1m = _load_cached_source_frame(source_path)
+    resample_rule = _normalized_resample_rule(timeframe)
+    if str(timeframe).lower() in {"1m", "1min"}:
+        frame = df_1m.copy()
+    else:
+        frame = _load_cached_resampled_frame(source_path, resample_rule, config).copy()
+
+    if until_time is not None and str(until_time).strip() != "":
+        try:
+            if isinstance(until_time, (int, float)):
+                cutoff = pd.Timestamp(float(until_time), unit="s", tz="UTC")
+            else:
+                text_value = str(until_time).strip()
+                if text_value.replace(".", "", 1).isdigit():
+                    cutoff = pd.Timestamp(float(text_value), unit="s", tz="UTC")
+                else:
+                    cutoff = _to_utc_timestamp(text_value)
+            frame_index = pd.DatetimeIndex(frame.index)
+            if frame_index.tz is None:
+                frame_index = frame_index.tz_localize("UTC")
+            else:
+                frame_index = frame_index.tz_convert("UTC")
+            frame = frame.loc[frame_index <= cutoff]
+        except Exception:
+            pass
+
+    if limit:
+        frame = frame.tail(int(limit))
+
+    display_frame = frame.copy()
+    if not display_frame.empty:
+        typical_price = (display_frame["high"] + display_frame["low"] + display_frame["close"]) / 3.0
+        display_frame["ema_20"] = display_frame["close"].ewm(span=20, adjust=False).mean()
+        display_frame["ema_50"] = display_frame["close"].ewm(span=50, adjust=False).mean()
+        display_frame["vwap_display"] = (typical_price * display_frame["volume"]).cumsum() / display_frame["volume"].cumsum().replace(0, pd.NA)
+
+    candles: list[dict[str, Any]] = []
+    for timestamp, row in frame.iterrows():
+        candles.append(
+            {
+                "time": int(pd.Timestamp(timestamp).timestamp()),
+                "timestamp": str(pd.Timestamp(timestamp)),
+                "open": _safe_float(row.get("open")),
+                "high": _safe_float(row.get("high")),
+                "low": _safe_float(row.get("low")),
+                "close": _safe_float(row.get("close")),
+                "volume": _safe_float(row.get("volume")),
+            }
+        )
+
+    paths = _structural_artifact_paths(root_dir)
+    summary = _read_json(paths["summary"], {})
+    trades = _read_csv_rows(paths["trades"])
+    setups = _read_csv_rows(paths["setup_log"])
+    level_rows = _read_csv_rows(paths["level_log"])
+    liquidity_rows = _read_csv_rows(paths["liquidity_events"])
+    cooldown_rows = _read_csv_rows(paths["cooldown_log"])
+    pyramiding_rows = _read_csv_rows(paths["pyramiding_log"])
+    trade_events = _build_structural_trade_events(trades, symbol=symbol)
+    decision_events = _build_structural_setup_events(setups, symbol=symbol)
+    markers = _build_structural_markers(trades, pyramiding_rows, cooldown_rows, symbol=symbol)
+    structure_levels = _structural_overlay_levels(level_rows, symbol=symbol)
+    liquidity_levels = _structural_overlay_liquidity(liquidity_rows, symbol=symbol)
+    replay_checkpoint_timestamp = (
+        summary.get("replay_checkpoint_timestamp")
+        or summary.get("latest_replay_timestamp")
+        or (candles[-1]["timestamp"] if candles else None)
+    )
+    return {
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "source_path": str(source_path),
+        "candles": candles,
+        "markers": markers,
+        "trade_events": trade_events,
+        "decision_events": decision_events,
+        "structure_levels": structure_levels,
+        "liquidity_levels": liquidity_levels,
+        "indicators": {
+            "ema_20": _display_indicator_points(display_frame, "ema_20"),
+            "ema_50": _display_indicator_points(display_frame, "ema_50"),
+            "vwap_display": _display_indicator_points(display_frame, "vwap_display"),
+        },
+        "replay_checkpoint_timestamp": replay_checkpoint_timestamp,
+        "window_start_timestamp": candles[0]["timestamp"] if candles else None,
+        "window_end_timestamp": candles[-1]["timestamp"] if candles else None,
+        "debug": {
+            "selected_symbol": symbol,
+            "selected_timeframe": timeframe,
+            "candle_count": len(candles),
+            "source_path": str(source_path),
+            "lab_root": str(structural_compounding_lab_root(root_dir)),
+            "has_structural_run": _structural_has_run(paths),
+            "trade_events_count": len(trade_events),
+            "decision_events_count": len(decision_events),
+            "structure_level_count": len(structure_levels),
+            "liquidity_level_count": len(liquidity_levels),
+        },
     }
 
 

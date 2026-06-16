@@ -1,0 +1,9 @@
+{
+  "base_capital": 20000.0,
+  "active_trading_capital": 20094.76494023904,
+  "locked_profit": 0.0,
+  "floating_profit": 0.0,
+  "cooldown_active": false,
+  "cooldown_until": null,
+  "current_compounding_cycle_id": "cycle-0"
+}

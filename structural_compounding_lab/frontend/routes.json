@@ -1,0 +1,13 @@
+{
+  "base_route": "/structural-lab",
+  "views": [
+    "overview",
+    "market-replay",
+    "structure-map",
+    "profit-vault",
+    "trade-review",
+    "settings"
+  ],
+  "read_only": true,
+  "artifact_source": "structural_compounding_lab/output"
+}
