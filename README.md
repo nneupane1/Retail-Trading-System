@@ -31,8 +31,10 @@ The codebase now has two equally important surfaces:
 - [Current Production-Like Stack](#current-production-like-stack)
 - [System Roles At A Glance](#system-roles-at-a-glance)
 - [Validation Ladder](#validation-ladder)
+- [Research Validation Ladder](#research-validation-ladder)
 - [Promotion Status](#promotion-status)
 - [Future Market-Structure Refactor Scaffold](#future-market-structure-refactor-scaffold)
+- [Structural Compounding Research Lab](#structural-compounding-research-lab)
 - [Command Center Modes](#command-center-modes)
 - [Cockpit Surface Map](#cockpit-surface-map)
 - [Repository Map](#repository-map)
@@ -128,6 +130,40 @@ same job.
 | Capital Phase 1 evidence review | Has diagnostics output been converted into a passive Phase 2 decision memo? | Completed |
 | Full paper-runtime maturation | Is the system ready for prolonged 24/7 paper ops? | Current active gate |
 
+## Research Validation Ladder
+
+The production validation gate is not the same thing as the default research
+loop. Future allocator and structural refactors should not blindly replay the
+entire `2018-2026` archive for every small hypothesis. The default ladder is
+now formalized under:
+
+`backtest/output/research_validation_ladder/`
+
+The intended sequence is:
+
+1. `smoke`
+2. `diagnostic_fast`
+3. `stress_windows`
+4. `holdout_recent`
+5. `full_history_confirmation`
+6. `robustness`
+
+The philosophy is strict:
+
+- fast windows can justify continued research
+- fast windows cannot justify promotion
+- curated stress windows reduce one-regime overfitting
+- trailing holdout must be supportive before full-history confirmation
+- full-history replay is the final expensive gate, not the default loop
+- no runtime promotion is allowed without full-history confirmation and paper soak
+
+For Retail Phase 3 capital-refactor work, this means the next candidate should
+hit trailing holdout and curated stress windows first, and only earn a
+full-history replay if those earlier stages remain supportive. For the
+Structural Compounding Lab, the same philosophy applies even more conservatively:
+`BTCUSDT` first, checkpointed baseline first, recent holdout next, stress
+windows next, and only then full-history or multi-symbol expansion.
+
 ## Promotion Status
 
 The current operational truth is intentionally conservative.
@@ -184,6 +220,85 @@ Any future attempt to make market-structure context authoritative must go
 through its own backtest, holdout, Monte Carlo, and paper-soak validation
 before it is allowed anywhere near promotion.
 
+## Structural Compounding Research Lab
+
+The repository now also includes a separate experimental project root:
+
+`C:\Users\v25946b\Structural-Compounding-Lab`
+
+Retail Trading System now treats that external project root as the authoritative
+structural research project. The main repo keeps only read-only telemetry and
+cockpit bridges. This is not a branch of the active routed engine. It is a separate research lab
+for a future support/resistance + liquidity + EMA + pyramiding + cooldown +
+profit-vault compounding concept.
+
+Current boundaries are strict:
+
+- it is read-only from the dashboard side
+- it does not share runtime state with paper or live execution
+- it does not modify allocator, risk, sizing, entry, exit, threshold, or sleeve behavior
+- it does not depend on the active Phase 2 capital-lane replay
+- it reads only future structural artifacts written under `structural_compounding_lab/output/`
+
+The first frontend shell is available through the dashboard route family:
+
+- `/structural-lab`
+- `/structural-lab/market-replay`
+- `/structural-lab/structure-map`
+- `/structural-lab/profit-vault`
+- `/structural-lab/trade-review`
+- `/structural-lab/settings`
+
+This gives the lab a future-ready cockpit surface now, while keeping the active
+production-like cockpit routes unchanged.
+
+### Current Structural Research State
+
+The Structural Compounding Lab remains research-only. It now has two meaningful
+read-only evidence layers on top of the base backtest artifacts:
+
+1. a daily structural opportunity refinement layer that asks whether the lab is
+   becoming too tight or too noisy
+2. a five-year full-active-capital compounding audit that asks whether the
+   observed long/short trade sequence can actually carry aggressive compounding
+   geometry without withdrawals
+
+The current five-year audit is written under:
+
+`structural_compounding_lab/output/five_year_compounding_audit_001/`
+
+and is intentionally framed as extrapolation rather than proof. The current
+artifact truth is:
+
+| Field | Current reading | Interpretation |
+| --- | --- | --- |
+| Starting capital | `€20,000` | Fixed research base for the audit |
+| Observed ending capital | `€26,286.93` | Raw structural output over the observed sample |
+| Ending capital under full-active model | `€26,071.97` | Capital path after compounding each trade at `1%` active-capital risk |
+| Drawdown | `20.65%` / `€6,489.29` | Aggressive enough to matter, not catastrophic, but still too meaningful to ignore |
+| Trade count | `1093` | The engine is active enough; more entry logic is not the current problem |
+| Long total `R` | `-27.12R` | Long side is currently a drag in this audit |
+| Short total `R` | `+28.51R` | Short side is carrying the observed edge |
+| Win rate | `37.69%` | Low raw hit rate is acceptable only if payoff asymmetry is real |
+| Profit factor | `1.0037` | Barely above flat after sequence compounding |
+| High-`R` wins | `18` | Large winners do exist |
+| Moonshot `5R+` | `6` | Convex winners are present but sparse |
+| Classification | `READY_FOR_SMALL_COMPOUNDING` | Research-positive, promotion-negative |
+
+The important interpretation is not that aggressive compounding is now
+"approved." It is not. The important interpretation is that the current
+structural engine survives the observed long/short sequence, but it does so
+with thin margin and heavy dependence on asymmetric winners, especially on the
+short side. That means the right next step is still research tightening around
+structural opportunity quality, participation routing, and directional
+contribution, not a runtime promotion.
+
+The audit also makes two strategic facts explicit:
+
+- the lab is no longer suffering from "too few trades"
+- compounding quality is currently more constrained by expectancy shape than by
+  raw opportunity flow
+
 ### Capital Refactor Status
 
 The capital refactor is still deliberately non-invasive. Phase 0 remains the
@@ -216,6 +331,22 @@ Phase 1 also now includes a passive evidence review under:
 These review artifacts summarize what the diagnostics actually support and what
 they still do not prove. They are a decision memo only. They do not authorize
 Phase 2 by themselves, and they do not change live or paper behavior.
+
+Phase 2 has now completed and failed promotion. Its holdout improvement was
+useful research, but the full-history profile was not supportive enough to make
+the candidate authoritative. Phase 3 therefore starts as a narrow backtest-only
+research iteration under the validation ladder rather than as a broad allocator
+rewrite. The Phase 3 hypothesis is guarded `12H` structural relief while
+protecting `core` and `swing_moonshot`, and it does not begin with a fresh
+full-history replay. No runtime behavior is changed by this planning layer.
+
+The capital-refactor house is also now scaffolded as a full research
+architecture under `capital/`, with candidate registry, validation ladder,
+promotion governance, rollback contracts, and execution-realism artifacts. This
+extends the refactor from diagnostics-only thinking into a controlled research
+framework, but it is still disabled by default: `real_money_allowed=false`,
+`behavior_change_allowed=false`, `capital_refactor.enabled=false`, `6H`
+disabled, and `1H` short override preserved.
 
 ## Command Center Modes
 
@@ -941,7 +1072,13 @@ python backtest/review_capital_phase1_diagnostics.py
 python run_live_cockpit.py
 ```
 
-### 7. Open the main command center
+### 9. Run the structural full-capital compounding audit
+
+```powershell
+python -m structural_compounding_lab.diagnostics.five_year_compounding_audit
+```
+
+### 10. Open the main command center
 
 ```text
 http://127.0.0.1:3000/

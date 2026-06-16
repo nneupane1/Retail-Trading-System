@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { CandlePanel } from "@/components/candle-panel";
 import { MiniLineChart } from "@/components/mini-line-chart";
+import { TradeFrequencyPnlPanel, type TradeFrequencyPnlPayload } from "@/components/trade-frequency-pnl-panel";
 
 type StructuralView =
   | "overview"
@@ -47,6 +48,7 @@ type StructuralSnapshot = {
   available_symbols: string[];
   available_timeframes: string[];
   trade_rows: Row[];
+  trade_frequency_pnl?: TradeFrequencyPnlPayload;
   setup_rows: Row[];
   level_rows: Row[];
   liquidity_rows: Row[];
@@ -79,6 +81,33 @@ type StructuralSnapshot = {
   chart_points: {
     equity: Array<{ label?: string; value: number }>;
     locked_profit: Array<{ label?: string; value: number }>;
+  };
+  daily_structural_opportunity?: {
+    summary?: Record<string, any>;
+    status?: Record<string, any>;
+    top_opportunity_by_day?: Row[];
+    candidate_rows?: Row[];
+    participation_distribution?: Record<string, any>;
+    sr_zone_report?: Record<string, any>;
+    breakout_retest_report?: Record<string, any>;
+    missed_report?: Record<string, any>;
+    too_tight_report?: Record<string, any>;
+    noise_chasing_report?: Record<string, any>;
+    high_r_report?: Record<string, any>;
+    next_research_recommendation?: Record<string, any>;
+    metadata?: Record<string, any>;
+  };
+  five_year_full_capital_audit?: {
+    summary?: Record<string, any>;
+    status?: Record<string, any>;
+    report_markdown?: string;
+    long_short_breakdown?: Row[];
+    monthly_summary?: Row[];
+    asymmetric_payoff?: Record<string, any>;
+    moonshot_contribution?: Record<string, any>;
+    scaling_safety?: Record<string, any>;
+    failure_modes?: Record<string, any>;
+    metadata?: Record<string, any>;
   };
   warnings: string[];
 };
@@ -300,6 +329,17 @@ export function StructuralLabShell({
   const latestSetup = setupRows[setupRows.length - 1] ?? null;
   const latestCooldownEvent = data?.structural_state?.latest_cooldown_event ?? null;
   const latestPyramidingEvent = data?.structural_state?.latest_pyramiding_event ?? null;
+  const dailyOpportunity = data?.daily_structural_opportunity;
+  const dailyOpportunitySummary = dailyOpportunity?.summary ?? {};
+  const dailyOpportunityRows = dailyOpportunity?.top_opportunity_by_day ?? [];
+  const dailyOpportunityMetadata = dailyOpportunity?.metadata ?? {};
+  const fiveYearAudit = data?.five_year_full_capital_audit;
+  const fiveYearSummary = fiveYearAudit?.summary ?? {};
+  const fiveYearMetadata = fiveYearAudit?.metadata ?? {};
+  const fiveYearBreakdown = fiveYearAudit?.long_short_breakdown ?? [];
+  const fiveYearMoonshot = fiveYearAudit?.moonshot_contribution ?? {};
+  const fiveYearScalingSafety = fiveYearAudit?.scaling_safety ?? {};
+  const fiveYearFailureModes = fiveYearAudit?.failure_modes ?? {};
 
   const latestArtifacts = useMemo(() => {
     const freshness = data?.artifact_freshness ?? {};
@@ -384,6 +424,253 @@ export function StructuralLabShell({
           </div>
         </Section>
       </div>
+
+      <Section eyebrow="5-Year Full Capital Audit" title="Long/Short Full Active Capital Compounding">
+        {Object.keys(fiveYearSummary).length ? (
+          <div className="grid gap-5">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+              <MetricCard
+                label="Classification"
+                value={String(fiveYearSummary.compounding_readiness_classification ?? "n/a")}
+                subtext={fiveYearMetadata.classification ?? "research-only"}
+                tone={
+                  String(fiveYearSummary.compounding_readiness_classification ?? "").includes("NOT_READY")
+                    ? "orange"
+                    : "green"
+                }
+              />
+              <MetricCard
+                label="Ending capital"
+                value={formatMoney(fiveYearSummary.ending_capital_under_full_active_capital_model)}
+                subtext={`Start ${formatMoney(fiveYearSummary.starting_capital)}`}
+                tone="green"
+              />
+              <MetricCard
+                label="5Y conservative"
+                value={formatMoney(fiveYearSummary.projected_5_year_capital_conservative)}
+                subtext="40% of observed average monthly return"
+              />
+              <MetricCard
+                label="5Y base case"
+                value={formatMoney(fiveYearSummary.projected_5_year_capital_base_case)}
+                subtext="Observed median monthly return"
+                tone="green"
+              />
+              <MetricCard
+                label="5Y aggressive"
+                value={formatMoney(fiveYearSummary.projected_5_year_capital_aggressive)}
+                subtext={fiveYearSummary.projection_is_extrapolation ? "extrapolation, not proof" : "research projection"}
+                tone="orange"
+              />
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+              <MetricCard label="Max drawdown" value={formatPct(fiveYearSummary.max_drawdown_pct)} subtext={formatMoney(fiveYearSummary.max_drawdown_eur)} tone="orange" />
+              <MetricCard label="Worst day" value={formatMoney(fiveYearSummary.worst_day_pnl)} subtext={`${Number(fiveYearSummary.worst_day_R ?? 0).toFixed(2)}R`} tone="orange" />
+              <MetricCard label="Best day" value={formatMoney(fiveYearSummary.best_day_pnl)} subtext={`${Number(fiveYearSummary.best_day_R ?? 0).toFixed(2)}R`} tone="green" />
+              <MetricCard label="Trades / active day" value={String(Number(fiveYearSummary.average_trades_per_active_day ?? 0).toFixed(2))} subtext={`${String(fiveYearSummary.average_trades_per_day ?? 0)} per day`} />
+              <MetricCard label="Moonshots 5R+" value={String(fiveYearSummary.moonshot_5R_plus_count ?? 0)} subtext={`${String(fiveYearSummary.moonshot_8R_plus_count ?? 0)} / ${String(fiveYearSummary.moonshot_10R_plus_count ?? 0)} at 8R+ / 10R+`} tone="green" />
+              <MetricCard label="3 wins cover 7 losses" value={fiveYearSummary.can_3_winners_cover_7_losers ? "yes" : "no"} subtext={`moonshot pct ${formatPct(fiveYearSummary.moonshot_profit_contribution_pct)}`} tone={fiveYearSummary.can_3_winners_cover_7_losers ? "green" : "orange"} />
+            </div>
+
+            <div className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
+              <Section eyebrow="Direction contribution" title="Long / Short Expectancy Split" className="p-0">
+                {fiveYearBreakdown.length ? (
+                  <div className="overflow-x-auto px-5 py-5">
+                    <table className="min-w-full text-left text-sm">
+                      <thead className="text-white/45">
+                        <tr>
+                          <th className="pb-3 pr-4 font-medium">Side</th>
+                          <th className="pb-3 pr-4 font-medium">Trades</th>
+                          <th className="pb-3 pr-4 font-medium">Win rate</th>
+                          <th className="pb-3 pr-4 font-medium">Avg R</th>
+                          <th className="pb-3 pr-4 font-medium">Total R</th>
+                          <th className="pb-3 pr-4 font-medium">PF</th>
+                          <th className="pb-3 pr-4 font-medium">5R+ / 8R+ / 10R+</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {fiveYearBreakdown.map((row, index) => (
+                          <tr key={`${row.side ?? index}`} className="border-t border-white/6">
+                            <td className="py-3 pr-4 font-medium text-white">{String(row.side ?? "n/a").toUpperCase()}</td>
+                            <td className="py-3 pr-4 text-white/68">{row.trade_count ?? "0"}</td>
+                            <td className="py-3 pr-4 text-white/68">{formatPct(row.win_rate)}</td>
+                            <td className="py-3 pr-4 text-white/68">{Number(row.avg_R ?? 0).toFixed(3)}</td>
+                            <td className="py-3 pr-4 text-white/68">{Number(row.total_R ?? 0).toFixed(3)}</td>
+                            <td className="py-3 pr-4 text-white/68">{Number(row.profit_factor ?? 0).toFixed(2)}</td>
+                            <td className="py-3 pr-4 text-white/68">
+                              {String(row.moonshot_5R_plus_count ?? 0)} / {String(row.moonshot_8R_plus_count ?? 0)} / {String(row.moonshot_10R_plus_count ?? 0)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <TableEmpty message="No 5-year long/short compounding breakdown available yet." />
+                )}
+              </Section>
+
+              <div className="grid gap-5">
+                <Section eyebrow="Compounding safety" title="Survival / Vault / Cooldown">
+                  <div className="grid gap-3">
+                    <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/68">
+                      full-capital survival: <span className="font-medium text-white">{fiveYearSummary.whether_full_active_capital_model_survives_observed_trade_sequence ? "true" : "false"}</span>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/68">
+                      cooldown count: <span className="font-medium text-white">{String(fiveYearSummary.cooldown_count ?? 0)}</span> | profit locks: <span className="font-medium text-white">{String(fiveYearSummary.profit_lock_count ?? 0)}</span>
+                    </div>
+                    <div className="rounded-2xl border border-cyan-400/18 bg-cyan-400/10 px-4 py-3 text-sm text-cyan-100">
+                      profit vault delta vs no-vault: {formatMoney(fiveYearScalingSafety.profit_vault_delta_vs_no_vault_eur ?? 0)} | no-vault ending {formatMoney(fiveYearScalingSafety.ending_equity_without_profit_vault ?? 0)}
+                    </div>
+                    <div className="rounded-2xl border border-orange-400/18 bg-orange-400/10 px-4 py-3 text-sm text-orange-100">
+                      longest loss streak {String(fiveYearScalingSafety.longest_loss_streak ?? 0)} | longest stop streak {String(fiveYearScalingSafety.longest_stop_streak ?? 0)}
+                    </div>
+                  </div>
+                </Section>
+
+                <Section eyebrow="Payoff geometry" title="Few Winners Vs Many Losses">
+                  <div className="grid gap-3">
+                    <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/68">
+                      moonshot contribution: <span className="font-medium text-white">{formatPct(fiveYearMoonshot.moonshot_profit_contribution_pct ?? fiveYearSummary.moonshot_profit_contribution_pct)}</span>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/68">
+                      few winners covered many losses: <span className="font-medium text-white">{String(fiveYearAudit?.asymmetric_payoff?.few_winners_cover_many_losses_count ?? 0)}</span>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/68">
+                      moonshot-saved blocks: <span className="font-medium text-white">{String(fiveYearAudit?.asymmetric_payoff?.moonshot_saved_block_count ?? 0)}</span>
+                    </div>
+                    <div className="rounded-2xl border border-orange-400/18 bg-orange-400/10 px-4 py-3 text-sm text-orange-100">
+                      failure warnings: {(fiveYearFailureModes.warnings ?? []).length ? String((fiveYearFailureModes.warnings ?? []).join(" | ")) : "none"}
+                    </div>
+                  </div>
+                </Section>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <EmptyState
+            title="No 5-year full-capital audit found yet"
+            body="Once `five_year_compounding_audit_001` exists, this section will show the full active-capital long/short replay curve, directional contribution, moonshot dependence, and whether a few high-R winners can overpower frequent -1R losses."
+          />
+        )}
+      </Section>
+
+      <Section eyebrow="Daily Opportunity Engine" title="BTC Structural Opportunity Truth">
+        {dailyOpportunityRows.length ? (
+          <div className="grid gap-5">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+              <MetricCard label="Days analyzed" value={String(dailyOpportunitySummary.days_analyzed ?? 0)} subtext={dailyOpportunityMetadata.classification ?? "research-only"} />
+              <MetricCard label="Valid days" value={String(dailyOpportunitySummary.valid_opportunity_days ?? 0)} subtext="daily structural opportunities" tone="green" />
+              <MetricCard label="Strong hills" value={String(dailyOpportunitySummary.strong_structural_hill_days ?? 0)} subtext="high-conviction market structure" tone="green" />
+              <MetricCard
+                label="Actual trades"
+                value={String(dailyOpportunitySummary.actual_trade_frequency?.actual_trade_count ?? 0)}
+                subtext={`${String(dailyOpportunitySummary.actual_trade_frequency?.actual_trade_days ?? 0)} active trade days`}
+                tone="green"
+              />
+              <MetricCard label="Noise avoided" value={String(dailyOpportunitySummary.noise_chasing_avoided_count ?? 0)} subtext="tiny wiggles correctly ignored" />
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+              <MetricCard label="No-opportunity days" value={String(dailyOpportunitySummary.no_opportunity_days ?? 0)} subtext="flat or unrewarding structure" />
+              <MetricCard label="True missed high-R" value={String(dailyOpportunitySummary.missed_high_R_opportunity_count ?? 0)} subtext="qualified high-R days with no actual trade" tone="orange" />
+              <MetricCard label="High-R probe days" value={String(dailyOpportunitySummary.high_R_probe_day_count ?? 0)} subtext="strong days intentionally kept probe-only" />
+              <MetricCard label="Full-size" value={String(dailyOpportunitySummary.full_size_count ?? 0)} subtext="strongest participation days" tone="green" />
+              <MetricCard label="Too-tight days" value={String(dailyOpportunitySummary.too_tight_day_count ?? 0)} subtext="good structure, weak participation" tone="orange" />
+              <MetricCard label="Reject-invalid" value={String(dailyOpportunitySummary.reject_invalid_count ?? 0)} subtext="broken or impossible geometry" tone="orange" />
+            </div>
+
+            <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
+              <Section eyebrow="Top opportunity by day" title="Daily Structural Opportunity Tape" className="p-0">
+                <div className="overflow-x-auto px-5 py-5">
+                  <table className="min-w-full text-left text-sm">
+                    <thead className="text-white/45">
+                      <tr>
+                        <th className="pb-3 pr-4 font-medium">Date</th>
+                        <th className="pb-3 pr-4 font-medium">Side</th>
+                        <th className="pb-3 pr-4 font-medium">Label</th>
+                        <th className="pb-3 pr-4 font-medium">Score</th>
+                        <th className="pb-3 pr-4 font-medium">Archetype</th>
+                        <th className="pb-3 pr-4 font-medium">Personality</th>
+                        <th className="pb-3 pr-4 font-medium">Participation</th>
+                        <th className="pb-3 pr-4 font-medium">Actual Trades</th>
+                        <th className="pb-3 pr-4 font-medium">Opened Setups</th>
+                        <th className="pb-3 pr-4 font-medium">Expected R</th>
+                        <th className="pb-3 pr-4 font-medium">High-R Audit</th>
+                        <th className="pb-3 pr-4 font-medium">Room</th>
+                        <th className="pb-3 pr-4 font-medium">Danger</th>
+                        <th className="pb-3 pr-4 font-medium">Explanation</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dailyOpportunityRows.slice(0, 40).map((row, index) => (
+                        <tr key={`${row.date ?? row.timestamp ?? index}`} className="border-t border-white/6 align-top">
+                          <td className="py-3 pr-4 text-white/68">{row.date ?? "n/a"}</td>
+                          <td className="py-3 pr-4 text-white/68">{row.side ?? "flat"}</td>
+                          <td className="py-3 pr-4 font-medium text-white">{row.opportunity_label ?? "n/a"}</td>
+                          <td className="py-3 pr-4 text-white/68">{Number(row.opportunity_score ?? 0).toFixed(1)}</td>
+                          <td className="py-3 pr-4 text-white/68">{row.best_archetype ?? "n/a"}</td>
+                          <td className="py-3 pr-4 text-white/68">{row.best_personality ?? "n/a"}</td>
+                          <td className="py-3 pr-4 text-white/68">{row.participation_mode ?? "n/a"}</td>
+                          <td className="py-3 pr-4 text-white/68">{row.actual_trade_count ?? "0"}</td>
+                          <td className="py-3 pr-4 text-white/68">{row.opened_setup_count ?? "0"}</td>
+                          <td className="py-3 pr-4 text-white/68">{Number(row.expected_R_potential ?? 0).toFixed(2)}</td>
+                          <td className="py-3 pr-4 text-white/68">{row.missed_high_r_audit_category ?? "n/a"}</td>
+                          <td className="py-3 pr-4 text-white/68">{Number(row.room_to_target_score ?? 0).toFixed(2)}</td>
+                          <td className="py-3 pr-4 text-white/68">{Number(row.danger_score ?? 0).toFixed(2)}</td>
+                          <td className="py-3 pr-4 text-white/55">{row.explanation ?? "n/a"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Section>
+
+              <div className="grid gap-5">
+                <Section eyebrow="Support / resistance intelligence" title="Zone Quality / Breakout / Retest">
+                  <div className="grid gap-3">
+                    <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/68">
+                      breakout-retest hold days: <span className="font-medium text-white">{String(dailyOpportunity?.sr_zone_report?.breakout_retest_hold_days ?? 0)}</span>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/68">
+                      failed breakout days: <span className="font-medium text-white">{String(dailyOpportunity?.sr_zone_report?.failed_breakout_days ?? 0)}</span>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/68">
+                      average zone quality: <span className="font-medium text-white">{Number(dailyOpportunity?.sr_zone_report?.average_zone_quality_score ?? 0).toFixed(2)}</span>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/68">
+                      source updated: <span className="font-medium text-white">{formatTime(dailyOpportunityMetadata.last_updated)}</span>
+                    </div>
+                  </div>
+                </Section>
+
+                <Section eyebrow="Too tight vs wiggle chasing" title="Participation Guardrails">
+                  <div className="grid gap-3">
+                    <div className="rounded-2xl border border-orange-400/18 bg-orange-400/10 px-4 py-3 text-sm text-orange-100">
+                      too-tight days: {String(dailyOpportunitySummary.too_tight_day_count ?? 0)} | missed valid: {String(dailyOpportunitySummary.missed_valid_opportunity_count ?? 0)}
+                    </div>
+                    <div className="rounded-2xl border border-cyan-400/18 bg-cyan-400/10 px-4 py-3 text-sm text-cyan-100">
+                      noise-chasing avoided: {String(dailyOpportunitySummary.noise_chasing_avoided_count ?? 0)} | tiny wiggles: {String(dailyOpportunity?.noise_chasing_report?.tiny_wiggle_flag_count ?? 0)}
+                    </div>
+                    <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/68">
+                      next step: <span className="font-medium text-white">{dailyOpportunity?.next_research_recommendation?.next_step ?? "n/a"}</span>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/68">
+                      read-only source files: <span className="font-medium text-white">{String((dailyOpportunityMetadata.source_files ?? []).length)}</span>
+                    </div>
+                  </div>
+                </Section>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <EmptyState
+            title="No daily structural opportunity artifact found yet"
+            body="Once `daily_structural_opportunity_001` exists, this section will show day-level structural opportunity labels, participation routing, support/resistance intelligence, and the too-tight versus wiggle-chasing balance."
+          />
+        )}
+      </Section>
 
       <Section eyebrow="Operator truth" title="Artifact Freshness And Empty-State Honesty">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -610,8 +897,17 @@ export function StructuralLabShell({
   );
 
   const tradeReviewContent = (
-    <div className="grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
-      <Section eyebrow="Trade ledger" title="All Structural Trades">
+    <div className="grid gap-5">
+      <Section eyebrow="Trading activity KPIs" title="Trade Frequency & PnL">
+        <TradeFrequencyPnlPanel
+          payload={data?.trade_frequency_pnl}
+          title="Trading Activity KPIs"
+          subtitle="Structural realized trade aggregation by day, week, month, and year"
+        />
+      </Section>
+
+      <div className="grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
+        <Section eyebrow="Trade ledger" title="All Structural Trades">
         {tradeRows.length ? (
           <div className="overflow-x-auto">
             <table className="min-w-full text-left text-sm">
@@ -642,9 +938,9 @@ export function StructuralLabShell({
         ) : (
           <TableEmpty message="No trades available." />
         )}
-      </Section>
+        </Section>
 
-      <Section eyebrow="Setup tape" title="Decision Forensics">
+        <Section eyebrow="Setup tape" title="Decision Forensics">
         {setupRows.length ? (
           <div className="space-y-3">
             {setupRows.slice(-18).reverse().map((row, index) => (
@@ -665,7 +961,8 @@ export function StructuralLabShell({
         ) : (
           <TableEmpty message="No setup reviews available yet." />
         )}
-      </Section>
+        </Section>
+      </div>
     </div>
   );
 

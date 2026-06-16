@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import json
+from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +29,10 @@ ROOT_PATH = Path(__file__).resolve().parents[1]
 _RAW_CANDLE_CACHE: dict[tuple[str, int], pd.DataFrame] = {}
 _RESAMPLED_CANDLE_CACHE: dict[tuple[str, int, str], pd.DataFrame] = {}
 _CSV_ROWS_CACHE: dict[tuple[str, int], list[dict[str, Any]]] = {}
+
+
+def _capital_refactor_output_root(config: AppConfig) -> Path:
+    return Path(config.require("backtest", "output_dir")) / "capital_refactor"
 
 
 def _safe_float(value: Any, default: float = 0.0) -> float:
@@ -261,6 +266,219 @@ def _read_csv_rows(path: Path) -> list[dict[str, Any]]:
     with path.open("r", encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle)
         return list(reader)
+
+
+def _safe_number_or_none(value: Any) -> float | None:
+    if value is None or str(value).strip() == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _first_present(row: dict[str, Any], keys: tuple[str, ...]) -> Any:
+    for key in keys:
+        if key in row and row.get(key) not in (None, ""):
+            return row.get(key)
+    return None
+
+
+def _trade_frequency_period(timestamp: pd.Timestamp, period: str) -> str:
+    normalized = str(period).lower()
+    if normalized == "daily":
+        return timestamp.strftime("%Y-%m-%d")
+    if normalized == "weekly":
+        iso = timestamp.isocalendar()
+        return f"{int(iso.year):04d}-W{int(iso.week):02d}"
+    if normalized == "monthly":
+        return timestamp.strftime("%Y-%m")
+    return timestamp.strftime("%Y")
+
+
+def _top_group_by_pnl(rows: list[dict[str, Any]], key: str) -> str:
+    totals: dict[str, float] = defaultdict(float)
+    for row in rows:
+        label = str(row.get(key) or "n/a")
+        totals[label] += float(row["realized_pnl"])
+    if not totals:
+        return "N/A"
+    return max(totals.items(), key=lambda item: (item[1], item[0]))[0]
+
+
+def build_trade_frequency_pnl(
+    trade_rows: list[dict[str, Any]],
+    *,
+    source_files: list[str] | None = None,
+) -> dict[str, Any]:
+    source_files = source_files or []
+    normalized_rows: list[dict[str, Any]] = []
+    missing_fields: set[str] = set()
+    excluded_open_or_unrealized = 0
+
+    for row in trade_rows:
+        close_time = _first_present(row, ("exit_time", "closed_at", "exit_timestamp", "close_time"))
+        entry_time = _first_present(row, ("entry_time", "opened_at", "entry_timestamp", "timestamp", "time"))
+        timestamp = _row_timestamp(close_time or entry_time)
+        if timestamp is None:
+            missing_fields.add("timestamp")
+            continue
+
+        realized_pnl = _safe_number_or_none(_first_present(row, ("realized_pnl", "pnl", "pnl_value")))
+        unrealized_pnl = _safe_number_or_none(_first_present(row, ("unrealized_pnl", "open_pnl")))
+        is_open = str(_first_present(row, ("status", "position_status")) or "").lower() in {"open", "active"}
+        if realized_pnl is None and unrealized_pnl is not None:
+            excluded_open_or_unrealized += 1
+            continue
+        if is_open and close_time is None and realized_pnl is None:
+            excluded_open_or_unrealized += 1
+            continue
+        if realized_pnl is None:
+            missing_fields.add("realized_pnl")
+            continue
+
+        net_pnl = _safe_number_or_none(_first_present(row, ("net_pnl", "realized_net_pnl")))
+        pnl_r = _safe_number_or_none(_first_present(row, ("r_multiple", "pnl_r", "pnl_R", "pnl_R_initial")))
+        side = str(_first_present(row, ("side",)) or "").lower()
+        strategy = str(_first_present(row, ("strategy_type", "sleeve", "setup_type", "setup_class")) or "N/A")
+        reason = str(_first_present(row, ("exit_reason", "entry_reason", "selection_reason")) or "N/A")
+
+        if side == "":
+            missing_fields.add("side")
+        if net_pnl is None:
+            missing_fields.add("net_pnl")
+        if pnl_r is None:
+            missing_fields.add("r_multiple")
+        if strategy == "N/A":
+            missing_fields.add("strategy_type")
+        if reason == "N/A":
+            missing_fields.add("trade_reason")
+
+        normalized_rows.append(
+            {
+                "timestamp": timestamp,
+                "period_anchor": timestamp,
+                "symbol": str(_first_present(row, ("symbol",)) or "N/A").upper(),
+                "side": side or "n/a",
+                "strategy": strategy,
+                "reason": reason,
+                "realized_pnl": realized_pnl,
+                "net_pnl": net_pnl,
+                "pnl_r": pnl_r,
+            }
+        )
+
+    if not normalized_rows:
+        now = pd.Timestamp.now("UTC")
+        return {
+            "summary": {
+                "current_day_trade_count": 0,
+                "current_week_trade_count": 0,
+                "current_month_trade_count": 0,
+                "current_year_trade_count": 0,
+                "avg_pnl_per_trade": 0.0,
+                "avg_r_per_trade": None,
+                "win_rate": 0.0,
+                "best_trade_pnl": None,
+                "worst_trade_pnl": None,
+            },
+            "daily": [],
+            "weekly": [],
+            "monthly": [],
+            "yearly": [],
+            "metadata": {
+                "source_files": source_files,
+                "last_updated": now.isoformat(),
+                "row_count": 0,
+                "missing_fields": sorted(missing_fields),
+                "excluded_open_or_unrealized_rows": excluded_open_or_unrealized,
+                "pnl_basis": "realized_only",
+                "read_only": True,
+            },
+        }
+
+    normalized_rows.sort(key=lambda item: item["timestamp"])
+    anchor = normalized_rows[-1]["timestamp"]
+
+    def build_period_rows(period: str) -> list[dict[str, Any]]:
+        grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for row in normalized_rows:
+            grouped[_trade_frequency_period(row["period_anchor"], period)].append(row)
+        rows_out: list[dict[str, Any]] = []
+        for period_key, rows_for_period in sorted(grouped.items()):
+            pnl_values = [float(item["realized_pnl"]) for item in rows_for_period]
+            net_values = [float(item["net_pnl"]) for item in rows_for_period if item["net_pnl"] is not None]
+            r_values = [float(item["pnl_r"]) for item in rows_for_period if item["pnl_r"] is not None]
+            winning = [value for value in pnl_values if value > 0]
+            losing = [value for value in pnl_values if value < 0]
+            rows_out.append(
+                {
+                    "period": period_key,
+                    "trade_count": len(rows_for_period),
+                    "winning_trades": len(winning),
+                    "losing_trades": len(losing),
+                    "win_rate": (len(winning) / len(rows_for_period)) if rows_for_period else 0.0,
+                    "gross_pnl": sum(pnl_values),
+                    "net_pnl": sum(net_values) if net_values else None,
+                    "avg_pnl_per_trade": (sum(pnl_values) / len(rows_for_period)) if rows_for_period else 0.0,
+                    "median_pnl_per_trade": float(pd.Series(pnl_values).median()) if pnl_values else 0.0,
+                    "total_R": sum(r_values) if r_values else None,
+                    "avg_R": (sum(r_values) / len(r_values)) if r_values else None,
+                    "best_trade_pnl": max(pnl_values) if pnl_values else None,
+                    "worst_trade_pnl": min(pnl_values) if pnl_values else None,
+                    "top_symbol": _top_group_by_pnl(rows_for_period, "symbol"),
+                    "top_strategy_or_sleeve": _top_group_by_pnl(rows_for_period, "strategy"),
+                    "top_trade_reason": _top_group_by_pnl(rows_for_period, "reason"),
+                    "long_count": sum(1 for item in rows_for_period if item["side"] == "long"),
+                    "short_count": sum(1 for item in rows_for_period if item["side"] == "short"),
+                }
+            )
+        return rows_out
+
+    daily = build_period_rows("daily")
+    weekly = build_period_rows("weekly")
+    monthly = build_period_rows("monthly")
+    yearly = build_period_rows("yearly")
+
+    pnl_values = [float(item["realized_pnl"]) for item in normalized_rows]
+    r_values = [float(item["pnl_r"]) for item in normalized_rows if item["pnl_r"] is not None]
+    current_day = _trade_frequency_period(anchor, "daily")
+    current_week = _trade_frequency_period(anchor, "weekly")
+    current_month = _trade_frequency_period(anchor, "monthly")
+    current_year = _trade_frequency_period(anchor, "yearly")
+
+    def current_trade_count(period_rows: list[dict[str, Any]], period_key: str) -> int:
+        for row in period_rows:
+            if row["period"] == period_key:
+                return int(row["trade_count"])
+        return 0
+
+    return {
+        "summary": {
+            "current_day_trade_count": current_trade_count(daily, current_day),
+            "current_week_trade_count": current_trade_count(weekly, current_week),
+            "current_month_trade_count": current_trade_count(monthly, current_month),
+            "current_year_trade_count": current_trade_count(yearly, current_year),
+            "avg_pnl_per_trade": (sum(pnl_values) / len(pnl_values)) if pnl_values else 0.0,
+            "avg_r_per_trade": (sum(r_values) / len(r_values)) if r_values else None,
+            "win_rate": (sum(1 for value in pnl_values if value > 0) / len(pnl_values)) if pnl_values else 0.0,
+            "best_trade_pnl": max(pnl_values) if pnl_values else None,
+            "worst_trade_pnl": min(pnl_values) if pnl_values else None,
+        },
+        "daily": daily,
+        "weekly": weekly,
+        "monthly": monthly,
+        "yearly": yearly,
+        "metadata": {
+            "source_files": source_files,
+            "last_updated": anchor.isoformat(),
+            "row_count": len(normalized_rows),
+            "missing_fields": sorted(missing_fields),
+            "excluded_open_or_unrealized_rows": excluded_open_or_unrealized,
+            "pnl_basis": "realized_only",
+            "read_only": True,
+        },
+    }
 
 
 def _tail_csv_rows(path: Path, limit: int = 200) -> list[dict[str, Any]]:
@@ -590,6 +808,7 @@ def _build_backtest_artifact_freshness(
     scenario_root: Path,
     parent_root: Path,
     readiness: dict[str, Any],
+    config: AppConfig,
 ) -> dict[str, dict[str, Any]]:
     summary_path = Path(readiness["summary_path"]) if readiness.get("summary_path") else parent_root / "missing_summary.json"
     report_path = (
@@ -599,6 +818,7 @@ def _build_backtest_artifact_freshness(
     )
     checkpoint = _read_latest_checkpoint(parent_root)
     checkpoint_path = Path(checkpoint["path"]) if checkpoint.get("path") else parent_root / "_checkpoints" / "missing.checkpoint.json"
+    capital_root = _capital_refactor_output_root(config)
     return {
         "backtest_portfolio_status": _artifact_status(scenario_root / "portfolio_status.json", stale_after_seconds=120.0),
         "backtest_portfolio_runtime_state": _artifact_status(scenario_root / "portfolio_runtime_state.json", stale_after_seconds=120.0),
@@ -612,6 +832,13 @@ def _build_backtest_artifact_freshness(
         "backtest_phase_checkpoint": _artifact_status(checkpoint_path, stale_after_seconds=120.0),
         "production_gate_summary": _artifact_status(summary_path, stale_after_seconds=7 * 24 * 3600.0),
         "promotion_readiness_report": _artifact_status(report_path, stale_after_seconds=7 * 24 * 3600.0),
+        "capital_refactor_master_plan": _artifact_status(capital_root / "master_capital_refactor_plan.json", stale_after_seconds=7 * 24 * 3600.0),
+        "capital_refactor_candidate_registry": _artifact_status(capital_root / "candidate_registry.json", stale_after_seconds=7 * 24 * 3600.0),
+        "capital_refactor_validation_ladder": _artifact_status(capital_root / "validation_ladder.json", stale_after_seconds=7 * 24 * 3600.0),
+        "capital_refactor_promotion_governance": _artifact_status(capital_root / "promotion_governance.json", stale_after_seconds=7 * 24 * 3600.0),
+        "capital_refactor_execution_cost_research": _artifact_status(capital_root / "execution_cost_research.json", stale_after_seconds=7 * 24 * 3600.0),
+        "capital_refactor_execution_cost_model": _artifact_status(capital_root / "execution_realism" / "execution_cost_model.json", stale_after_seconds=7 * 24 * 3600.0),
+        "capital_refactor_execution_cost_sensitivity": _artifact_status(capital_root / "execution_realism" / "execution_cost_sensitivity.json", stale_after_seconds=7 * 24 * 3600.0),
     }
 
 
@@ -711,6 +938,11 @@ def _empty_snapshot_payload(readiness: dict[str, Any], artifact_freshness: dict[
         "capital_refactor_scaffold_inventory": {},
         "capital_refactor_phase1_diagnostics": {},
         "capital_refactor_phase1_evidence_review": {},
+        "capital_refactor_master_plan": {},
+        "capital_refactor_candidate_registry": {},
+        "capital_refactor_validation_ladder": {},
+        "capital_refactor_promotion_governance": {},
+        "capital_refactor_execution_realism": {},
         "validation_truth": _build_validation_truth(readiness),
         "artifact_freshness": artifact_freshness,
         "last_runtime_event": {},
@@ -722,6 +954,7 @@ def _empty_snapshot_payload(readiness: dict[str, Any], artifact_freshness: dict[
         "allocator_decision_rows": [],
         "daily_summary_rows": [],
         "trade_rows": [],
+        "trade_frequency_pnl": build_trade_frequency_pnl([], source_files=[]),
         "signal_rows": [],
         "engine_heartbeat": {},
         "engine_cycle_rows": [],
@@ -771,6 +1004,10 @@ def _load_backtest_dashboard_snapshot(
     signal_rows = _tail_csv_rows(scenario_root / "signals.csv", limit=signal_limit)
     latest_trade = trade_rows[-1] if trade_rows else None
     latest_signal = signal_rows[-1] if signal_rows else None
+    trade_frequency_pnl = build_trade_frequency_pnl(
+        trade_rows,
+        source_files=[str(scenario_root / "trades.csv")],
+    )
     available_symbols = sorted(
         {
             str(row.get("symbol", "")).upper()
@@ -792,7 +1029,7 @@ def _load_backtest_dashboard_snapshot(
         signal_rows,
     )
     symbol_pipeline_rows = _build_backtest_symbol_pipeline_rows(available_symbols, checkpoint, signal_rows)
-    artifact_freshness = _build_backtest_artifact_freshness(scenario_root, parent_root, readiness)
+    artifact_freshness = _build_backtest_artifact_freshness(scenario_root, parent_root, readiness, config)
     operator_warning_list = _build_operator_warning_list(readiness, {}, artifact_freshness)
     if str(replay_status.get("stage") or "") == "running":
         operator_warning_list.append("backtest_replay_running")
@@ -817,6 +1054,11 @@ def _load_backtest_dashboard_snapshot(
         "capital_refactor_scaffold_inventory": {},
         "capital_refactor_phase1_diagnostics": {},
         "capital_refactor_phase1_evidence_review": {},
+        "capital_refactor_master_plan": _read_json(_capital_refactor_output_root(config) / "master_capital_refactor_plan.json", {}),
+        "capital_refactor_candidate_registry": _read_json(_capital_refactor_output_root(config) / "candidate_registry.json", {}),
+        "capital_refactor_validation_ladder": _read_json(_capital_refactor_output_root(config) / "validation_ladder.json", {}),
+        "capital_refactor_promotion_governance": _read_json(_capital_refactor_output_root(config) / "promotion_governance.json", {}),
+        "capital_refactor_execution_realism": _read_json(_capital_refactor_output_root(config) / "execution_cost_research.json", {}),
         "validation_truth": _build_validation_truth(readiness),
         "artifact_freshness": artifact_freshness,
         "last_runtime_event": {},
@@ -828,6 +1070,7 @@ def _load_backtest_dashboard_snapshot(
         "allocator_decision_rows": allocator_decision_rows,
         "daily_summary_rows": daily_summary_rows,
         "trade_rows": trade_rows,
+        "trade_frequency_pnl": trade_frequency_pnl,
         "signal_rows": signal_rows,
         "engine_heartbeat": engine_heartbeat,
         "engine_cycle_rows": [],
@@ -901,6 +1144,7 @@ def _build_artifact_freshness(
     )
     phase1_paths = diagnostics_report_paths(config)
     phase1_review_paths = review_report_paths(config)
+    capital_root = _capital_refactor_output_root(config)
     artifacts = {
         "baseline_freeze_snapshot": _artifact_status(root / "baseline_freeze_snapshot.json", stale_after_seconds=24 * 3600.0),
         "market_structure_scaffold_inventory": _artifact_status(
@@ -948,6 +1192,13 @@ def _build_artifact_freshness(
             stale_after_seconds=7 * 24 * 3600.0,
         ),
         "capital_refactor_scaffold_inventory": _artifact_status(root / "capital_refactor" / "scaffold_inventory.json", stale_after_seconds=24 * 3600.0),
+        "capital_refactor_master_plan": _artifact_status(capital_root / "master_capital_refactor_plan.json", stale_after_seconds=7 * 24 * 3600.0),
+        "capital_refactor_candidate_registry": _artifact_status(capital_root / "candidate_registry.json", stale_after_seconds=7 * 24 * 3600.0),
+        "capital_refactor_validation_ladder": _artifact_status(capital_root / "validation_ladder.json", stale_after_seconds=7 * 24 * 3600.0),
+        "capital_refactor_promotion_governance": _artifact_status(capital_root / "promotion_governance.json", stale_after_seconds=7 * 24 * 3600.0),
+        "capital_refactor_execution_cost_research": _artifact_status(capital_root / "execution_cost_research.json", stale_after_seconds=7 * 24 * 3600.0),
+        "capital_refactor_execution_cost_model": _artifact_status(capital_root / "execution_realism" / "execution_cost_model.json", stale_after_seconds=7 * 24 * 3600.0),
+        "capital_refactor_execution_cost_sensitivity": _artifact_status(capital_root / "execution_realism" / "execution_cost_sensitivity.json", stale_after_seconds=7 * 24 * 3600.0),
         "paper_soak_daily_report": _artifact_status(root / "paper_soak_daily_report.json", stale_after_seconds=24 * 3600.0),
         "paper_soak_review": _artifact_status(root / "paper_soak_review.json", stale_after_seconds=24 * 3600.0),
         "paper_soak_review_history": _artifact_status(root / "paper_soak_review_history.jsonl", stale_after_seconds=24 * 3600.0),
@@ -1064,6 +1315,12 @@ def load_live_dashboard_snapshot(
         review_report_paths(config)["json"],
         {},
     )
+    capital_refactor_root = _capital_refactor_output_root(config)
+    capital_refactor_master_plan = _read_json(capital_refactor_root / "master_capital_refactor_plan.json", {})
+    capital_refactor_candidate_registry = _read_json(capital_refactor_root / "candidate_registry.json", {})
+    capital_refactor_validation_ladder = _read_json(capital_refactor_root / "validation_ladder.json", {})
+    capital_refactor_promotion_governance = _read_json(capital_refactor_root / "promotion_governance.json", {})
+    capital_refactor_execution_realism = _read_json(capital_refactor_root / "execution_cost_research.json", {})
     if isinstance(paper_soak_status, dict) and paper_soak_status:
         paper_soak_status["display_warning_list"] = _display_soak_warnings(root, paper_soak_status)
     validation_truth = _build_validation_truth(readiness)
@@ -1082,6 +1339,10 @@ def load_live_dashboard_snapshot(
     daily_summary_rows = _read_csv_rows(root / "daily_summary.csv")
     trade_rows = _tail_csv_rows(root / "trades.csv", limit=trade_limit)
     signal_rows = _tail_csv_rows(root / "signals.csv", limit=signal_limit)
+    trade_frequency_pnl = build_trade_frequency_pnl(
+        trade_rows,
+        source_files=[str(root / "trades.csv")],
+    )
     engine_heartbeat = _read_json(root / "engine_heartbeat.json", {})
     engine_cycle_rows = _tail_csv_rows(root / "engine_cycle_history.csv", limit=120)
     symbol_pipeline_rows = _read_csv_rows(root / "symbol_pipeline_status.csv")
@@ -1113,6 +1374,11 @@ def load_live_dashboard_snapshot(
         "capital_refactor_scaffold_inventory": capital_refactor_scaffold_inventory,
         "capital_refactor_phase1_diagnostics": capital_refactor_phase1_diagnostics,
         "capital_refactor_phase1_evidence_review": capital_refactor_phase1_evidence_review,
+        "capital_refactor_master_plan": capital_refactor_master_plan,
+        "capital_refactor_candidate_registry": capital_refactor_candidate_registry,
+        "capital_refactor_validation_ladder": capital_refactor_validation_ladder,
+        "capital_refactor_promotion_governance": capital_refactor_promotion_governance,
+        "capital_refactor_execution_realism": capital_refactor_execution_realism,
         "validation_truth": validation_truth,
         "artifact_freshness": artifact_freshness,
         "last_runtime_event": last_runtime_event,
@@ -1124,6 +1390,7 @@ def load_live_dashboard_snapshot(
         "allocator_decision_rows": allocator_decision_rows,
         "daily_summary_rows": daily_summary_rows,
         "trade_rows": trade_rows,
+        "trade_frequency_pnl": trade_frequency_pnl,
         "signal_rows": signal_rows,
         "engine_heartbeat": engine_heartbeat,
         "engine_cycle_rows": engine_cycle_rows,
@@ -1154,10 +1421,20 @@ def _read_text(path: Path, default: str = "") -> str:
         return default
 
 
+def _prefer_existing_structural_artifact(*candidates: Path) -> Path:
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
+
+
 def _structural_artifact_paths(root_dir: Path | None = None) -> dict[str, Path]:
     output_root = structural_compounding_lab_output_root(root_dir)
     lab_root = structural_compounding_lab_root(root_dir)
     settings_paths = structural_lab_settings_paths(root_dir)
+    refined_root = output_root / "daily_opportunity_definition_refinement_001"
+    legacy_root = output_root / "daily_structural_opportunity_001"
+    five_year_root = output_root / "five_year_compounding_audit_001"
     return {
         "summary": output_root / "summary.json",
         "master_lab_plan": output_root / "master_lab_plan.md",
@@ -1179,6 +1456,67 @@ def _structural_artifact_paths(root_dir: Path | None = None) -> dict[str, Path]:
         "indicator_confluence_report": output_root / "diagnostics" / "indicator_confluence_report.json",
         "pullback_compounding_readiness_report": output_root / "diagnostics" / "pullback_compounding_readiness_report.json",
         "promotion_packet": output_root / "reports" / "promotion_packet.json",
+        "five_year_compounding_status": five_year_root / "status.json",
+        "five_year_compounding_summary": five_year_root / "five_year_compounding_summary.json",
+        "five_year_compounding_report": five_year_root / "five_year_compounding_report.md",
+        "five_year_compounding_long_short_breakdown": five_year_root / "diagnostics" / "long_short_compounding_breakdown.csv",
+        "five_year_compounding_monthly_summary": five_year_root / "diagnostics" / "monthly_compounding_summary.csv",
+        "five_year_compounding_asymmetric_payoff": five_year_root / "diagnostics" / "asymmetric_payoff_report.json",
+        "five_year_compounding_moonshot_contribution": five_year_root / "diagnostics" / "moonshot_contribution_report.json",
+        "five_year_compounding_scaling_safety": five_year_root / "diagnostics" / "scaling_safety_report.json",
+        "five_year_compounding_failure_modes": five_year_root / "diagnostics" / "failure_modes_report.json",
+        "daily_structural_opportunity_status": _prefer_existing_structural_artifact(
+            refined_root / "status.json",
+            legacy_root / "status.json",
+        ),
+        "daily_structural_opportunity_summary": _prefer_existing_structural_artifact(
+            refined_root / "definition_refinement_summary.json",
+            legacy_root / "daily_structural_opportunity_summary.json",
+        ),
+        "daily_structural_opportunity_report": _prefer_existing_structural_artifact(
+            refined_root / "definition_refinement_report.md",
+            legacy_root / "daily_structural_opportunity_report.md",
+        ),
+        "daily_structural_opportunity_top_rows": _prefer_existing_structural_artifact(
+            refined_root / "diagnostics" / "top_opportunity_by_day.csv",
+            legacy_root / "diagnostics" / "top_opportunity_by_day.csv",
+        ),
+        "daily_structural_opportunity_candidates": _prefer_existing_structural_artifact(
+            refined_root / "diagnostics" / "participation_routed_daily_candidates.csv",
+            legacy_root / "diagnostics" / "participation_routed_daily_candidates.csv",
+        ),
+        "daily_structural_opportunity_participation_distribution": _prefer_existing_structural_artifact(
+            refined_root / "diagnostics" / "participation_mode_distribution.json",
+            legacy_root / "diagnostics" / "participation_mode_distribution.json",
+        ),
+        "daily_structural_opportunity_sr_zone_report": _prefer_existing_structural_artifact(
+            refined_root / "diagnostics" / "sr_zone_opportunity_report.json",
+            legacy_root / "diagnostics" / "sr_zone_opportunity_report.json",
+        ),
+        "daily_structural_opportunity_breakout_report": _prefer_existing_structural_artifact(
+            refined_root / "diagnostics" / "breakout_retest_report.json",
+            legacy_root / "diagnostics" / "breakout_retest_report.json",
+        ),
+        "daily_structural_opportunity_missed_report": _prefer_existing_structural_artifact(
+            refined_root / "diagnostics" / "missed_daily_opportunity_report.json",
+            legacy_root / "diagnostics" / "missed_daily_opportunity_report.json",
+        ),
+        "daily_structural_opportunity_too_tight_report": _prefer_existing_structural_artifact(
+            refined_root / "diagnostics" / "too_tight_inactivity_report.json",
+            legacy_root / "diagnostics" / "too_tight_inactivity_report.json",
+        ),
+        "daily_structural_opportunity_noise_report": _prefer_existing_structural_artifact(
+            refined_root / "diagnostics" / "noise_chasing_guard_report.json",
+            legacy_root / "diagnostics" / "noise_chasing_guard_report.json",
+        ),
+        "daily_structural_opportunity_high_r_report": _prefer_existing_structural_artifact(
+            refined_root / "diagnostics" / "high_r_opportunity_report.json",
+            legacy_root / "diagnostics" / "high_r_opportunity_report.json",
+        ),
+        "daily_structural_opportunity_next_step": _prefer_existing_structural_artifact(
+            refined_root / "reports" / "next_research_recommendation.json",
+            legacy_root / "reports" / "next_research_recommendation.json",
+        ),
         "settings": settings_paths["json"],
         "symbols": settings_paths["symbols"],
         "package_root": lab_root,
@@ -1287,6 +1625,24 @@ def load_structural_lab_snapshot(
     indicator_confluence_report = _read_json(paths["indicator_confluence_report"], {})
     pullback_compounding_readiness_report = _read_json(paths["pullback_compounding_readiness_report"], {})
     promotion_packet = _read_json(paths["promotion_packet"], {})
+    five_year_compounding_status = _read_json(paths["five_year_compounding_status"], {})
+    five_year_compounding_summary = _read_json(paths["five_year_compounding_summary"], {})
+    five_year_compounding_asymmetric_payoff = _read_json(paths["five_year_compounding_asymmetric_payoff"], {})
+    five_year_compounding_moonshot_contribution = _read_json(paths["five_year_compounding_moonshot_contribution"], {})
+    five_year_compounding_scaling_safety = _read_json(paths["five_year_compounding_scaling_safety"], {})
+    five_year_compounding_failure_modes = _read_json(paths["five_year_compounding_failure_modes"], {})
+    daily_structural_opportunity_summary = _read_json(paths["daily_structural_opportunity_summary"], {})
+    daily_structural_opportunity_status = _read_json(paths["daily_structural_opportunity_status"], {})
+    daily_structural_opportunity_participation_distribution = _read_json(
+        paths["daily_structural_opportunity_participation_distribution"], {}
+    )
+    daily_structural_opportunity_sr_zone_report = _read_json(paths["daily_structural_opportunity_sr_zone_report"], {})
+    daily_structural_opportunity_breakout_report = _read_json(paths["daily_structural_opportunity_breakout_report"], {})
+    daily_structural_opportunity_missed_report = _read_json(paths["daily_structural_opportunity_missed_report"], {})
+    daily_structural_opportunity_too_tight_report = _read_json(paths["daily_structural_opportunity_too_tight_report"], {})
+    daily_structural_opportunity_noise_report = _read_json(paths["daily_structural_opportunity_noise_report"], {})
+    daily_structural_opportunity_high_r_report = _read_json(paths["daily_structural_opportunity_high_r_report"], {})
+    daily_structural_opportunity_next_step = _read_json(paths["daily_structural_opportunity_next_step"], {})
     trades = _read_csv_rows(paths["trades"])
     setup_log = _read_csv_rows(paths["setup_log"])
     level_log = _read_csv_rows(paths["level_log"])
@@ -1294,8 +1650,17 @@ def load_structural_lab_snapshot(
     cooldown_log = _read_csv_rows(paths["cooldown_log"])
     pyramiding_log = _read_csv_rows(paths["pyramiding_log"])
     equity_rows = _read_csv_rows(paths["equity"])
+    daily_structural_opportunity_top_rows = _read_csv_rows(paths["daily_structural_opportunity_top_rows"])
+    daily_structural_opportunity_candidates = _read_csv_rows(paths["daily_structural_opportunity_candidates"])
+    five_year_compounding_long_short_breakdown = _read_csv_rows(paths["five_year_compounding_long_short_breakdown"])
+    five_year_compounding_monthly_summary = _read_csv_rows(paths["five_year_compounding_monthly_summary"])
     report_markdown = _read_text(paths["report"], "")
+    five_year_compounding_report = _read_text(paths["five_year_compounding_report"], "")
     has_run = _structural_has_run(paths)
+    trade_frequency_pnl = build_trade_frequency_pnl(
+        trades,
+        source_files=[str(paths["trades"])],
+    )
 
     available_symbols = _structural_available_symbols(
         symbols_config,
@@ -1371,6 +1736,7 @@ def load_structural_lab_snapshot(
         "available_symbols": available_symbols,
         "available_timeframes": available_timeframes,
         "trade_rows": trades,
+        "trade_frequency_pnl": trade_frequency_pnl,
         "setup_rows": setup_log,
         "level_rows": level_log,
         "liquidity_rows": liquidity_events,
@@ -1385,6 +1751,46 @@ def load_structural_lab_snapshot(
             "indicator_confluence_report": indicator_confluence_report,
             "pullback_compounding_readiness_report": pullback_compounding_readiness_report,
             "promotion_packet": promotion_packet,
+        },
+        "five_year_full_capital_audit": {
+            "summary": five_year_compounding_summary,
+            "status": five_year_compounding_status,
+            "report_markdown": five_year_compounding_report,
+            "long_short_breakdown": five_year_compounding_long_short_breakdown,
+            "monthly_summary": five_year_compounding_monthly_summary,
+            "asymmetric_payoff": five_year_compounding_asymmetric_payoff,
+            "moonshot_contribution": five_year_compounding_moonshot_contribution,
+            "scaling_safety": five_year_compounding_scaling_safety,
+            "failure_modes": five_year_compounding_failure_modes,
+            "metadata": {
+                "last_updated": five_year_compounding_summary.get("resolved_at_utc")
+                or five_year_compounding_status.get("resolved_at_utc"),
+                "classification": five_year_compounding_summary.get("compounding_readiness_classification")
+                or five_year_compounding_status.get("classification"),
+                "read_only": True,
+            },
+        },
+        "daily_structural_opportunity": {
+            "summary": daily_structural_opportunity_summary,
+            "status": daily_structural_opportunity_status,
+            "top_opportunity_by_day": daily_structural_opportunity_top_rows,
+            "candidate_rows": daily_structural_opportunity_candidates,
+            "participation_distribution": daily_structural_opportunity_participation_distribution,
+            "sr_zone_report": daily_structural_opportunity_sr_zone_report,
+            "breakout_retest_report": daily_structural_opportunity_breakout_report,
+            "missed_report": daily_structural_opportunity_missed_report,
+            "too_tight_report": daily_structural_opportunity_too_tight_report,
+            "noise_chasing_report": daily_structural_opportunity_noise_report,
+            "high_r_report": daily_structural_opportunity_high_r_report,
+            "next_research_recommendation": daily_structural_opportunity_next_step,
+            "metadata": {
+                "source_files": daily_structural_opportunity_summary.get("source_files", []),
+                "last_updated": daily_structural_opportunity_summary.get("resolved_at_utc")
+                or daily_structural_opportunity_status.get("resolved_at_utc"),
+                "classification": daily_structural_opportunity_summary.get("classification")
+                or daily_structural_opportunity_status.get("classification"),
+                "read_only": True,
+            },
         },
         "overview": {
             "base_capital": base_capital,
