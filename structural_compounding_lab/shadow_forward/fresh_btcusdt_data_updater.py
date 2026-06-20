@@ -15,6 +15,8 @@ import pandas as pd
 import requests
 
 from config import AppConfig
+from structural_compounding_lab.common.project_paths import package_root as resolve_package_root
+from structural_compounding_lab.common.project_paths import resolve_project_path
 from structural_compounding_lab.diagnostics.broad_frozen_patch_validation import RESEARCH_ONLY_FLAGS
 from structural_compounding_lab.shadow_forward.shadow_forward_observer import _resample_closed
 from structural_compounding_lab.shadow_forward.shadow_forward_watchtower import (
@@ -1107,16 +1109,20 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = _parse_args()
-    package_root = Path(__file__).resolve().parents[1]
-    output_root = package_root / "output" / OUTPUT_FOLDER_NAME if args.output_root is None else Path(args.output_root)
+    package_root = resolve_package_root()
+    output_root = (
+        package_root / "output" / OUTPUT_FOLDER_NAME
+        if args.output_root is None
+        else resolve_project_path(args.output_root)
+    )
     result = write_fresh_btcusdt_data_updater(
         FreshBTCUSDTDataUpdaterConfig(
             package_root=package_root,
             output_root=output_root,
             mode=args.mode,
             symbol=args.symbol,
-            source_csv=args.source_csv,
-            canonical_path=args.canonical_path,
+            source_csv=resolve_project_path(args.source_csv) if args.source_csv else None,
+            canonical_path=resolve_project_path(args.canonical_path) if args.canonical_path else None,
             force_rerun=bool(args.force_rerun),
             allow_public_fetch=bool(args.allow_public_fetch),
             max_fetch_minutes=args.max_fetch_minutes,

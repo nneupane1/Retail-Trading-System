@@ -1,6 +1,5 @@
 {
-  "project_root": "C:\\Users\\v25946b\\Structural-Compounding-Lab",
-  "package_root": "C:\\Users\\v25946b\\Structural-Compounding-Lab\\structural_compounding_lab",
-  "runtime_note": "Retail Trading System should treat the external Structural Compounding Lab project as authoritative for read-only structural research artifacts."
+  "project_root": ".",
+  "package_root": "structural_compounding_lab",
+  "runtime_note": "Paths are resolved relative to the detected Git clone root. STRUCTURAL_COMPOUNDING_LAB_ROOT may override the clone root."
 }
-

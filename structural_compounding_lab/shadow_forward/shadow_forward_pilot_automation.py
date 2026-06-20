@@ -15,6 +15,8 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from structural_compounding_lab.diagnostics.broad_frozen_patch_validation import RESEARCH_ONLY_FLAGS  # noqa: E402
+from structural_compounding_lab.common.project_paths import package_root as resolve_package_root  # noqa: E402
+from structural_compounding_lab.common.project_paths import resolve_project_path  # noqa: E402
 from structural_compounding_lab.shadow_forward.fresh_btcusdt_data_updater import (  # noqa: E402
     FreshBTCUSDTDataUpdaterConfig,
     write_fresh_btcusdt_data_updater,
@@ -292,6 +294,20 @@ def _updater_root(package_root: Path) -> Path:
     return package_root / "output" / "fresh_btcusdt_data_updater_001"
 
 
+def _canonical_btcusdt_path(package_root: Path, updater_summary: dict[str, Any]) -> Path:
+    configured_path = str(updater_summary.get("canonical_path") or "").strip()
+    if configured_path:
+        candidate = Path(configured_path).expanduser()
+        return candidate if candidate.is_absolute() else package_root.parent / candidate
+    return (
+        package_root
+        / "data_storage"
+        / "BTCUSDT"
+        / "1m"
+        / "btcusdt_1m_canonical_shadow_forward.csv"
+    )
+
+
 def _load_prior_gate_anchor(package_root: Path, report_path: Path) -> dict[str, Any]:
     updater_root = _updater_root(package_root)
     watchtower_root = _watchtower_root(package_root)
@@ -302,7 +318,7 @@ def _load_prior_gate_anchor(package_root: Path, report_path: Path) -> dict[str, 
     watchtower_safety = _read_json(watchtower_root / "diagnostics" / "safety_guard_report.json", {})
     capital_anchor = _read_json(watchtower_root / "diagnostics" / "future_capital_anchor_plan.json", {})
     supervisor_summary = _read_json(package_root / "output" / "shadow_forward_pilot_supervisor_001" / "shadow_forward_pilot_supervisor_summary.json", {})
-    canonical_path = Path(str(updater_summary.get("canonical_path") or ""))
+    canonical_path = _canonical_btcusdt_path(package_root, updater_summary)
 
     warnings: list[str] = []
     if not updater_summary:
@@ -332,7 +348,7 @@ def _load_prior_gate_anchor(package_root: Path, report_path: Path) -> dict[str, 
         "future_capital_anchor_path": str(watchtower_root / "diagnostics" / "future_capital_anchor_plan.json"),
         "pilot_supervisor_exists": bool(supervisor_summary),
         "pilot_supervisor_summary_path": str(package_root / "output" / "shadow_forward_pilot_supervisor_001" / "shadow_forward_pilot_supervisor_summary.json"),
-        "canonical_path": str(canonical_path) if str(canonical_path) else "",
+        "canonical_path": str(canonical_path),
         "canonical_path_exists": canonical_path.exists(),
         "watchtower_safety_guard_passed": _safe_bool(watchtower_safety.get("passed"), False),
         "forward_clock_started": _safe_bool(updater_summary.get("forward_clock_started"), False) or _safe_int(watchtower_readiness.get("observation_days_completed"), 0) > 0,
@@ -391,7 +407,7 @@ def _scheduler_log_path(output_root: Path) -> Path:
 
 def _self_check(config: ShadowForwardPilotAutomationConfig, settings: dict[str, Any], paths: dict[str, Path], anchor: dict[str, Any]) -> dict[str, Any]:
     effective_config_path = config.config_path or (config.package_root / "config" / "shadow_forward_pilot_automation.yaml")
-    canonical_path = Path(str(anchor.get("canonical_path") or ""))
+    canonical_path = _canonical_btcusdt_path(config.package_root, {"canonical_path": anchor.get("canonical_path")})
     forbidden_hits = _scan_forbidden_strings(config.package_root)
     findings: list[str] = []
     passed = True
@@ -449,7 +465,7 @@ def _self_check(config: ShadowForwardPilotAutomationConfig, settings: dict[str, 
         "project_root": str(_project_root(config.package_root)),
         "project_root_exists": _project_root(config.package_root).exists(),
         "config_exists": effective_config_path.exists(),
-        "canonical_btcusdt_path": str(canonical_path) if str(canonical_path) else "",
+        "canonical_btcusdt_path": str(canonical_path),
         "canonical_btcusdt_path_exists": canonical_path.exists(),
         "fresh_updater_exists": bool(anchor.get("fresh_updater_exists")),
         "watchtower_exists": bool(anchor.get("watchtower_exists")),
@@ -616,7 +632,12 @@ def _generate_scheduler_command(config: ShadowForwardPilotAutomationConfig, path
 
 
 def _scheduler_task_exists() -> bool:
-    result = subprocess.run(["schtasks", "/Query", "/TN", TASK_NAME], capture_output=True, text=True, check=False)
+    if os.name != "nt":
+        return False
+    try:
+        result = subprocess.run(["schtasks", "/Query", "/TN", TASK_NAME], capture_output=True, text=True, check=False)
+    except OSError:
+        return False
     return result.returncode == 0
 
 
@@ -635,6 +656,8 @@ def _install_scheduler(config: ShadowForwardPilotAutomationConfig, paths: dict[s
     command_report = _generate_scheduler_command(config, paths)
     command = str(command_report["command"])
     warnings: list[str] = []
+    if os.name != "nt":
+        warnings.append("windows_task_scheduler_unavailable_on_this_platform")
     if self_check_report.get("classification") != "AUTOMATION_SELF_CHECK_PASSED":
         warnings.append("self_check_failed")
     if any(flag in command.lower() for flag in ("paper", "live", "order")) and "--mode manual_test_run" not in command:
@@ -682,6 +705,19 @@ def _remove_scheduler(config: ShadowForwardPilotAutomationConfig, paths: dict[st
             "explicit_confirmation_received": False,
             "blocked_reason": "explicit_confirmation_required",
             "task_name": TASK_NAME,
+            **RESEARCH_ONLY_FLAGS,
+        }
+        _write_json(paths["scheduler_remove"], report)
+        return report
+    if os.name != "nt":
+        report = {
+            "remove_attempted": False,
+            "remove_success": False,
+            "explicit_confirmation_received": True,
+            "blocked_reason": "windows_task_scheduler_unavailable_on_this_platform",
+            "task_name": TASK_NAME,
+            "warnings": ["windows_task_scheduler_unavailable_on_this_platform"],
+            "classification": "AUTOMATION_INCOMPLETE",
             **RESEARCH_ONLY_FLAGS,
         }
         _write_json(paths["scheduler_remove"], report)
@@ -1174,14 +1210,18 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = _parse_args()
-    package_root = Path(__file__).resolve().parents[1]
-    output_root = package_root / "output" / OUTPUT_FOLDER_NAME if args.output_dir is None else Path(args.output_dir)
+    package_root = resolve_package_root()
+    output_root = (
+        package_root / "output" / OUTPUT_FOLDER_NAME
+        if args.output_dir is None
+        else resolve_project_path(args.output_dir)
+    )
     result = run_shadow_forward_pilot_automation(
         ShadowForwardPilotAutomationConfig(
             package_root=package_root,
             output_root=output_root,
             mode=args.mode,
-            config_path=Path(args.config) if args.config else None,
+            config_path=resolve_project_path(args.config) if args.config else None,
             confirm_install_scheduler=bool(args.confirm_install_scheduler),
             confirm_remove_scheduler=bool(args.confirm_remove_scheduler),
             force_rerun=bool(args.force_rerun),

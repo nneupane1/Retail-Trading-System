@@ -186,7 +186,7 @@ class DashboardTelemetryTests(unittest.TestCase):
                     "r_multiple": 0.8,
                 },
             ],
-            source_files=["C:/tmp/trades.csv"],
+            source_files=[str(Path("/tmp") / "trades.csv")],
         )
 
         self.assertEqual(3, payload["metadata"]["row_count"])
@@ -215,7 +215,7 @@ class DashboardTelemetryTests(unittest.TestCase):
                     "pnl": 12.0,
                 },
             ],
-            source_files=["C:/tmp/trades.csv"],
+            source_files=[str(Path("/tmp") / "trades.csv")],
         )
 
         self.assertEqual(1, payload["metadata"]["row_count"])

@@ -5,6 +5,8 @@
 
 __pycache__/
 *.py[cod]
+.DS_Store
+.venv*/
 
 data_storage/
 
@@ -12,6 +14,7 @@ backtest/output/*
 !backtest/output/.gitkeep
 live_sim/output/*
 !live_sim/output/.gitkeep
+structural_compounding_lab/output/*
 
 dashboard/node_modules/
 dashboard/.next/

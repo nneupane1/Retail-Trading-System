@@ -13,6 +13,8 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from structural_compounding_lab.diagnostics.broad_frozen_patch_validation import RESEARCH_ONLY_FLAGS  # noqa: E402
+from structural_compounding_lab.common.project_paths import package_root as resolve_package_root  # noqa: E402
+from structural_compounding_lab.common.project_paths import resolve_project_path  # noqa: E402
 from structural_compounding_lab.shadow_forward.shadow_forward_observer import (  # noqa: E402
     OUTPUT_FOLDER_NAME as OBSERVER_OUTPUT_FOLDER_NAME,
     ShadowForwardObserverConfig,
@@ -1237,15 +1239,19 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = _parse_args()
-    package_root = Path(__file__).resolve().parents[1]
-    output_root = package_root / "output" / OUTPUT_FOLDER_NAME if args.output_dir is None else Path(args.output_dir)
+    package_root = resolve_package_root()
+    output_root = (
+        package_root / "output" / OUTPUT_FOLDER_NAME
+        if args.output_dir is None
+        else resolve_project_path(args.output_dir)
+    )
     result = _run_watchtower(
         ShadowForwardWatchtowerConfig(
             package_root=package_root,
             output_root=output_root,
             runtime_mode=args.mode,
-            config_path=Path(args.config) if args.config else None,
-            source_csv=args.source_csv,
+            config_path=resolve_project_path(args.config) if args.config else None,
+            source_csv=resolve_project_path(args.source_csv) if args.source_csv else None,
             force_rerun=bool(args.force_rerun),
         )
     )

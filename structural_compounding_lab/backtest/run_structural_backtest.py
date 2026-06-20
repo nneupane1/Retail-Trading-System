@@ -4,6 +4,7 @@ import argparse
 import json
 
 from structural_compounding_lab.backtest.engine import StructuralBacktestEngine
+from structural_compounding_lab.common.project_paths import resolve_project_path
 from structural_compounding_lab.config import load_structural_lab_config
 
 
@@ -20,7 +21,9 @@ def main() -> None:
     args = _parse_args()
     config = load_structural_lab_config(args.config)
     engine = StructuralBacktestEngine(config=config)
-    summary = engine.run(symbol=args.symbol, source_csv=args.source_csv, output_dir=args.output_dir)
+    source_csv = str(resolve_project_path(args.source_csv)) if args.source_csv else None
+    output_dir = str(resolve_project_path(args.output_dir)) if args.output_dir else None
+    summary = engine.run(symbol=args.symbol, source_csv=source_csv, output_dir=output_dir)
     print(json.dumps(summary, indent=2))
 
 

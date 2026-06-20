@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 from pathlib import Path
 from typing import Any
 
 ROOT_PATH = Path(__file__).resolve().parents[1]
 STRUCTURAL_LAB_ENV_VAR = "STRUCTURAL_COMPOUNDING_LAB_ROOT"
 STRUCTURAL_LAB_MANIFEST = Path("config") / "structural_compounding_lab_project.json"
-DEFAULT_EXTERNAL_PROJECT_ROOT = Path.home() / "Structural-Compounding-Lab"
 
 _SETTINGS_DEFAULTS: dict[str, Any] = {
     "lab_name": "Structural Compounding Lab",
@@ -63,28 +63,45 @@ def _manifest_project_root(base_root: Path) -> Path | None:
     return project_root
 
 
+def _git_project_root(start: Path) -> Path | None:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(start), "rev-parse", "--show-toplevel"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return _normalize_project_root(result.stdout.strip())
+
+
 def _candidate_project_roots(root_dir: Path | None = None) -> list[Path]:
     base_root = Path(root_dir) if root_dir is not None else ROOT_PATH
     candidates: list[Path] = []
-    if root_dir is not None and (base_root / "structural_compounding_lab").exists():
-        candidates.append(base_root)
-
-    manifest_root = _manifest_project_root(base_root)
-    if manifest_root is not None:
-        candidates.append(manifest_root)
 
     env_root = _normalize_project_root(os.getenv(STRUCTURAL_LAB_ENV_VAR))
     if env_root is not None:
         candidates.append(env_root)
 
-    candidates.append(DEFAULT_EXTERNAL_PROJECT_ROOT)
+    if root_dir is not None:
+        candidates.append(base_root)
 
-    local_project_root = base_root
-    if (local_project_root / "structural_compounding_lab").exists():
-        candidates.append(local_project_root)
+    git_root = _git_project_root(Path.cwd())
+    if git_root is not None:
+        candidates.append(git_root)
+
+    cwd = Path.cwd().resolve()
+    candidates.extend([cwd, *cwd.parents])
+
+    candidates.append(base_root)
 
     if base_root != ROOT_PATH and (ROOT_PATH / "structural_compounding_lab").exists():
         candidates.append(ROOT_PATH)
+
+    manifest_root = _manifest_project_root(base_root)
+    if manifest_root is not None:
+        candidates.append(manifest_root)
 
     deduped: list[Path] = []
     seen: set[str] = set()

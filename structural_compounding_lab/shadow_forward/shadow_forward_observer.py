@@ -16,6 +16,8 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from structural_compounding_lab.backtest.checkpoint import StructuralCheckpointStore  # noqa: E402
+from structural_compounding_lab.common.project_paths import package_root as resolve_package_root  # noqa: E402
+from structural_compounding_lab.common.project_paths import resolve_project_path  # noqa: E402
 from structural_compounding_lab.config import StructuralLabConfig  # noqa: E402
 from structural_compounding_lab.context import build_htf_context  # noqa: E402
 from structural_compounding_lab.context.trend_regime import classify_trend_regime  # noqa: E402
@@ -1280,15 +1282,20 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = _parse_args()
-    package_root = Path(__file__).resolve().parents[1]
-    output_root = package_root / "output" / OUTPUT_FOLDER_NAME if args.output_dir is None else Path(args.output_dir)
+    package_root = resolve_package_root()
+    output_root = (
+        package_root / "output" / OUTPUT_FOLDER_NAME
+        if args.output_dir is None
+        else resolve_project_path(args.output_dir)
+    )
+    source_csv = resolve_project_path(args.source_csv) if args.source_csv else None
     result = write_shadow_forward_observer(
         ShadowForwardObserverConfig(
             package_root=package_root,
             output_root=output_root,
             runtime_mode=args.mode,
             symbol=args.symbol,
-            source_csv=args.source_csv,
+            source_csv=source_csv,
             force_rerun=bool(args.force_rerun),
             loop_sleep_seconds=int(args.loop_sleep_seconds),
             max_cycles=args.max_cycles,

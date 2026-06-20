@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from structural_compounding_lab.common.project_paths import project_root
+
 
 _DEFAULTS: dict[str, Any] = {
     "lab_name": "Structural Compounding Lab",
@@ -175,11 +177,11 @@ def _load_yaml_fallback(path: Path) -> dict[str, Any]:
 class StructuralLabConfig:
     data: dict[str, Any]
     config_path: Path
-    root_dir: Path = field(default_factory=lambda: Path(__file__).resolve().parents[2])
+    root_dir: Path = field(default_factory=project_root)
 
     @classmethod
     def load(cls, config_path: str | Path | None = None) -> "StructuralLabConfig":
-        root_dir = Path(__file__).resolve().parents[2]
+        root_dir = project_root()
         default_json = root_dir / "structural_compounding_lab" / "config" / "structural_compounding_settings.json"
         candidate = Path(config_path) if config_path is not None else default_json
         if not candidate.is_absolute():
