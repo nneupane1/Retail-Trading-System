@@ -1,0 +1,37 @@
+{
+  "trusted_1h_baseline_rolling_5y_average_eur": {
+    "value": 792824.56,
+    "tolerance": 0.5
+  },
+  "trusted_1h_baseline_rolling_5y_median_eur": {
+    "value": 786049.45,
+    "tolerance": 0.5
+  },
+  "trusted_1h_baseline_1m_hit_windows": {
+    "value": 12,
+    "tolerance": 0
+  },
+  "six_h_context_final_classification": "SIX_H_CONTEXT_IMPROVES_1H_RESEARCH_ONLY",
+  "six_h_context_best_variant": "LIGHT_BOOST_6H_CONFLUENCE",
+  "six_h_context_normal_cost_rolling_5y_average_eur": {
+    "value": 881465.53,
+    "tolerance": 0.5
+  },
+  "six_h_context_normal_cost_rolling_5y_median_eur": {
+    "value": 878431.05,
+    "tolerance": 0.5
+  },
+  "six_h_native_execution_final_classification": "SIX_H_NATIVE_EXECUTION_WEAK",
+  "twelve_h_execution_status": "execution retired / diagnostic only",
+  "daily_tide_status": "diagnostic only",
+  "weekly_deep_current_status": "diagnostic only",
+  "shadow_spec_final_classification": "SHADOW_SPEC_READY_WITH_6H_CONTEXT_RESEARCH_ONLY",
+  "shadow_observer_final_classification": "SHADOW_OBSERVER_READY_RESEARCH_ONLY",
+  "watchtower_final_classification": "WATCHTOWER_READY_BUT_WAITING_FOR_FORWARD_DAYS",
+  "fresh_updater_status": "public Binance klines only / no order endpoint",
+  "pilot_automation_final_classification": "AUTOMATION_READY_FOR_MANUAL_APPROVAL",
+  "future_candidate_base_capital_eur": 25000,
+  "projected_5y_equity_reference_eur": 1062500,
+  "capital_anchor_diagnostic_only": true,
+  "paper_validation_ready": false
+}

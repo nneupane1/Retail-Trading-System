@@ -34,7 +34,8 @@ The codebase now has two equally important surfaces:
 - [Research Validation Ladder](#research-validation-ladder)
 - [Promotion Status](#promotion-status)
 - [Future Market-Structure Refactor Scaffold](#future-market-structure-refactor-scaffold)
-- [Structural Compounding Research Lab](#structural-compounding-research-lab)
+- [Structural Compounding Lab](#structural-compounding-lab)
+- [Validation Philosophy: Research Windows vs Proof Windows](#validation-philosophy-research-windows-vs-proof-windows)
 - [Command Center Modes](#command-center-modes)
 - [Cockpit Surface Map](#cockpit-surface-map)
 - [Repository Map](#repository-map)
@@ -80,6 +81,7 @@ priority is making the existing routed stack more operationally complete:
 | Live continuity | Operationally hardened for paper | Engine must resume from prior state cleanly | Keep proving restart safety through soak evidence |
 | Dashboard UX | Multi-mode and telemetry-backed | Must show activity even when no trade fires | Keep improving density and elegance |
 | Capital-expression refactor | Scaffolded plus Phase 1 diagnostics and evidence review | Future allocator/capital research needs structure without contaminating runtime behavior | Keep passive until an explicit Phase 2 promotion |
+| Structural Compounding Lab | Research-only and now bridged into a shadow-forward observation stack | The trusted BTC `1H` research engine can now be observed on fresh public data without creating paper/live permissions | Finish the `90`-day shadow court before any future paper discussion |
 
 ## Current Production-Like Stack
 
@@ -128,7 +130,13 @@ same job.
 | Capital-expression scaffold | Is the next capital refactor represented structurally without changing behavior? | Completed as dormant scaffold |
 | Capital Phase 1 diagnostics | Are rejection, winner, bucket, and opportunity-cost reports available without behavior change? | Completed |
 | Capital Phase 1 evidence review | Has diagnostics output been converted into a passive Phase 2 decision memo? | Completed |
-| Full paper-runtime maturation | Is the system ready for prolonged 24/7 paper ops? | Current active gate |
+| Full paper-runtime maturation | Is the system ready for prolonged 24/7 paper ops? | Current routed-stack gate |
+| Structural evidence court | Did the BTC `1H` strict SR-aware engine earn forward observation rather than another premature promotion? | Completed research-only |
+| Shadow-forward validation spec | Is the forward court defined tightly enough to block accidental promotion and accidental execution? | Completed |
+| Shadow-forward observer | Can the trusted BTC `1H` engine reproduce forward decisions with `6H` context and no order path? | Completed |
+| `90`-day shadow watchtower | Can the observer survive append-only forward observation with heartbeat, readiness, and safety artifacts? | Active structural gate |
+| Fresh BTCUSDT updater + catch-up | Can stale BTC `1m` history be extended to the latest safe closed minute without duplication? | Completed |
+| `7`-day shadow pilot automation | Can the operator self-check, run once, generate a scheduler command, and inspect daily status safely? | Completed, awaiting optional scheduler install |
 
 ## Research Validation Ladder
 
@@ -220,17 +228,17 @@ Any future attempt to make market-structure context authoritative must go
 through its own backtest, holdout, Monte Carlo, and paper-soak validation
 before it is allowed anywhere near promotion.
 
-## Structural Compounding Research Lab
+## Structural Compounding Lab
 
-The repository now also includes a separate experimental project root:
+The repository also includes a fully isolated structural research surface under:
 
-`C:\Users\v25946b\Structural-Compounding-Lab`
+`structural_compounding_lab/`
 
-Retail Trading System now treats that external project root as the authoritative
-structural research project. The main repo keeps only read-only telemetry and
-cockpit bridges. This is not a branch of the active routed engine. It is a separate research lab
-for a future support/resistance + liquidity + EMA + pyramiding + cooldown +
-profit-vault compounding concept.
+This is not a branch of the active routed engine. It is a separate
+research-only lab for a future support/resistance + liquidity + EMA +
+pyramiding + cooldown + profit-vault compounding concept. The routed system
+can consume telemetry and summaries from it, but the lab does not inherit
+paper state, live state, allocator authority, or broker permissions.
 
 Current boundaries are strict:
 
@@ -252,7 +260,69 @@ The first frontend shell is available through the dashboard route family:
 This gives the lab a future-ready cockpit surface now, while keeping the active
 production-like cockpit routes unchanged.
 
-### Current Structural Research State
+### Current Shadow-Forward Milestone
+
+The Structural Compounding Lab remains research-only, but it has crossed an
+important milestone: the court is no longer only replaying old ledgers. It can
+now keep the trusted BTC `1H` research engine under forward observation with
+fresh public `1m` data, append-only watchtower artifacts, and a one-click pilot
+layer that never creates paper trades, live trades, or broker orders.
+
+The current shadow-forward court truth is:
+
+| Layer | Current artifact truth | Why it matters |
+| --- | --- | --- |
+| Validation specification | `SHADOW_SPEC_READY_WITH_6H_CONTEXT_RESEARCH_ONLY` | The forward court is defined before any future paper discussion |
+| Historical-forward observer | `SHADOW_OBSERVER_READY_RESEARCH_ONLY` | The trusted BTC `1H` engine can be replayed forward with `6H` context annotations and no order path |
+| Watchtower | `WATCHTOWER_READY_BUT_WAITING_FOR_FORWARD_DAYS` | The append-only readiness / heartbeat layer exists and is recording evidence |
+| Fresh BTC updater | `FRESH_DATA_READY_NO_NEW_ROWS` after successful catch-up | BTC `1m` continuity now resumes cleanly from the last stored timestamp without duplication |
+| Pilot automation | `AUTOMATION_READY_FOR_MANUAL_APPROVAL` | The operator can self-check, run once, generate a scheduler command, and inspect daily status safely |
+
+The concrete current state from the latest artifacts is:
+
+| Field | Current reading | Interpretation |
+| --- | --- | --- |
+| Trusted BTC `1H` baseline, normal cost rolling `5Y` average | `EUR 792,824.56` | Current realistic mission anchor |
+| Trusted BTC `1H` baseline, normal cost rolling `5Y` median | `EUR 786,049.45` | The median path is still below `EUR 1M`, so paper/live remains blocked |
+| `1M` hit windows under normal cost | `12` | Edge exists, but not strongly enough to skip forward observation |
+| Canonical BTC `1m` shadow tape | `structural_compounding_lab/data_storage/BTCUSDT/1m/btcusdt_1m_canonical_shadow_forward.csv` | Single dedupe-safe source of forward BTC data |
+| Latest canonical BTC timestamp | `2026-06-18T23:59:00+00:00` | Fresh data extension reached the latest safe closed minute |
+| Pilot days completed | `7 / 7` | The first mini-court passed its minimum observation span |
+| Full shadow days completed | `7 / 90` | The real watchtower court has started but is nowhere near promotion scale |
+| Observed `1H` decisions | `144` | Forward observation is based on real reproduced decisions, not only design documents |
+| Daily status color | `YELLOW` | The stack is healthy; the only current warning is that the Windows scheduler is not installed yet |
+| Future capital anchor | `EUR 25,000` planning number only | Diagnostic planning aid only; not used for shadow, paper, live, or broker sizing |
+
+The future capital anchor is intentionally only a planning reference, but the
+current diagnostic projection is explicit: if the trusted BTC `1H` engine
+projects roughly `EUR 850k` over five years from a `EUR 20k` research anchor,
+then a simple linear planning scale places a hypothetical `EUR 25k` seed near
+`EUR 1.0625M` over the same path. This is **not** a guarantee, **not** an
+active capital rule, and **not** permission to bypass the shadow court. It is
+only the planning reason the current future-candidate base capital anchor is
+recorded as `EUR 25,000` while paper/live remains blocked.
+
+This is the milestone achieved: the lab stopped chasing endless new wolves and
+built a clean forward observation court around the proven animal. The broker
+still sleeps, the ledger stays awake, and every guard remains pointed at
+blocking accidental promotion.
+
+The hard safety boundaries remain unchanged:
+
+- `research_only=true`
+- `paper_allowed=false`
+- `live_allowed=false`
+- `real_money_allowed=false`
+- `behavior_change_allowed=false`
+- no order path exists
+- no paper trades are created
+- no live trades are created
+- no broker execution is possible
+
+### Historical Early Compounding Snapshot
+
+This block is retained as historical context from the earlier compounding
+discovery phase. It is no longer the primary court state.
 
 The Structural Compounding Lab remains research-only. It now has two meaningful
 read-only evidence layers on top of the base backtest artifacts:
@@ -298,6 +368,431 @@ The audit also makes two strategic facts explicit:
 - the lab is no longer suffering from "too few trades"
 - compounding quality is currently more constrained by expectancy shape than by
   raw opportunity flow
+
+### 1. Project Mission
+
+The Structural Compounding Lab starts from a simple but demanding mission:
+prove whether structural BTC trading can reasonably grow a shared mission
+account from `EUR 20,000` to `EUR 1,000,000` inside many rolling five-year
+windows rather than only on one beautiful long backtest. Higher ambitions such
+as `EUR 3,000,000` or `EUR 5,000,000` are allowed only if the evidence becomes
+materially stronger. The lab assumes no external withdrawals during the mission
+test, because the compounding question is specifically about what the engine
+could do if capital is left intact and risk is stepped up only through rules
+that survive court-grade validation.
+
+This is not a "make the equity curve pretty" project. It is a structural
+compounding research program that tries to answer whether a hard BTC mission is
+possible under realistic constraints rather than under fantasy conditions.
+
+> [!WARNING]
+> Research-only.
+> Not financial advice.
+> Not live-ready.
+> Not paper-ready unless explicitly promoted by future audits.
+> No real-money trading is allowed from these results.
+> The current work is evidence-gathering, not deployment.
+
+| Target | Meaning | Current Evidence Level | Status |
+| --- | --- | --- | --- |
+| 1M in 5Y | Base mission | promising but fragile | research-only |
+| 3M in 5Y | stronger compounding target | requires materially stronger redundancy or cleaner capital deployment than the current trusted BTC `1H` core alone | not proven |
+| 5M in 5Y | optimistic moonshot | requires second engine and robust allocation | not proven |
+
+### 2. Research Philosophy
+
+The lab uses a court-test methodology rather than a beauty-backtest
+methodology. A stunning full-sequence equity curve is interesting, but it is
+not enough. Rolling five-year windows matter more than one favorable start
+date. Monte Carlo matters because sequence luck matters. Cost stress matters
+because many structural systems die once fee drag, spread, and slippage are
+inserted. Missed trades matter because no real operator captures every single
+signal. Top-winner dependency matters because a strategy that lives on a few
+miracle trades is not yet robust. No-leakage checks matter because a profitable
+rule built on future information is worthless.
+
+Native replay also matters. Artifact-only accounting can create illusions.
+Shadow or paper infrastructure comes much later and is used to test operational
+reality, not to bypass weak research evidence.
+
+| Gate | What It Checks | Why It Matters |
+| --- | --- | --- |
+| No-leakage gate | No future or outcome fields are used for deployable rules | prevents fake edge |
+| Rolling 5Y gate | Can the system hit the mission from many start dates? | avoids one lucky history path |
+| Cost gate | Does edge survive realistic fees, spread, and slippage? | prevents fantasy backtests |
+| Missed-trade gate | Does the system survive downtime or missed entries? | tests operational robustness |
+| Top-winner gate | Does performance depend on a few miracle trades? | tests fragility |
+| Native replay gate | Can results be reproduced from candles end-to-end? | avoids artifact-only illusions |
+| Shadow-forward gate | Does live data behave like research data? | tests operational reality |
+
+### 3. Major Research Updates and Why They Happened
+
+The lab did not move in a straight line. Each audit existed because the
+previous result left a structural doubt unresolved.
+
+| Stage | Update / Audit | Why It Happened | What Changed | Key Result | Status / Lesson |
+| --- | --- | --- | --- | --- | --- |
+| 0 | `evidence_review_001` | Establish whether the original pullback and compounding idea deserved continuation | reviewed early opportunity evidence | pullback geometry looked interesting but not yet tradeable | continue research only |
+| 1 | `evidence_refinement_001` | Early detector was too loose and mixed signal with noise | tightened evidence framing | promising geometry remained, but tiny-stop pollution became obvious | useful but not enough |
+| 2 | `detector_tightening_001` | Stage 1 still allowed junk | hard detector tightening | junk reduced, but sample size collapsed | tighter is not automatically better |
+| 3 | `detector_tightening_002` | Thresholds still needed calibration | additional detector tightening and threshold work | quality improved, but tradability stayed weak | more tightening risked starving the engine |
+| 4 | `pullback_archetype_redesign_001` | Need to understand pullback types, not just scores | redesigned pullback archetypes | understanding improved, but live tradability did not yet improve | better taxonomy is not enough |
+| 5 | `participation_routing_001` | Hard rejection was becoming too blunt | participation routing overlay | reduced over-tight rejection, but still not mission-valid | routing helps, but not enough |
+| 6 | `daily_structural_opportunity_001` and `daily_opportunity_definition_refinement_001` | The project needed a broader Daily Structural Opportunity layer | opportunity logic moved away from narrow wiggle-chasing | direction improved toward structural quality instead of micro tightness | correct next abstraction |
+| 7 | `broad_historical_structural_replay_001` | Needed a broad native baseline from `2018-01-01` to `2026-06-13` | full BTC historical replay generated | raw broad history was informative but not mission-ready by itself | broad replay is baseline truth, not promotion proof |
+| 8 | `frozen_patch_validation_audit_001` | A frozen patch looked strong and needed retrospective validation | validated `BAD_LONGS_DISABLED_ONLY_PROVEN_SHORTS_KEPT` over available windows | looked promising and not obviously overfit, but true unseen proof was still unavailable | encouraging, still research-only |
+| 9 | `broad_patch_accounting_and_short_rescue_audit_001` | The broad patch result looked too large and needed accounting reconciliation | reconciled patched equity and short-rescue logic | removed-short rescue mattered, but theoretical compounding could mislead without native-style accounting | accounting discipline became mandatory |
+| 10 | `rolling_five_year_mission_viability_audit_001` | Needed direct five-year mission framing instead of raw end-equity admiration | computed rolling 5Y windows and variant comparisons | mission looked promising in some variants, but native-style and cost realism still mattered | 5Y windows became primary court |
+| 11 | `equal_highs_liquidity_sweep_rescue_forensic_audit_001` | Equal-highs short rescue looked attractive | forensic replay on rescue prototype | optimistic reconstruction collapsed under forensic treatment | winner-biased rescue logic was exposed |
+| 12 | `support_room_short_rescue_repair_audit_001` | Needed to test whether downside room was the real missing ingredient | added support-room style repair diagnostics | downside room clearly mattered, but not enough to move the 5Y mission | useful feature, not full solution |
+| 13 | `native_pre_entry_sr_feature_enrichment_audit_001` | Rescue logic needed native pre-entry SR fields instead of post-hoc intuition | enriched native pre-entry SR and room fields | signal quality improved materially, but still no 1M hit windows | feature enrichment helped, not mission-proof |
+| 14 | `native_sr_aware_structural_replay_reproduction_audit_001` | Enriched SR logic needed full native replay reproduction | reproduced SR-aware variants from candles | best native strict variant improved quality but still missed 1M in rolling 5Y windows | real edge existed, but mission still not proven |
+| 15 | `native_sr_aware_strict_stress_monte_carlo_audit_001` | Best strict native engine needed stress and Monte Carlo court testing | froze `NATIVE_SR_AWARE_STRICT` and stress-tested it | full sequence reached `EUR 3.30M`, but rolling 5Y averaged only `EUR 505.6k` with `0` 1M windows | the engine was strong but late |
+| 16 | `native_sr_aware_5y_mission_gap_audit_001` | Needed to explain why a strong full sequence still failed 5Y mission | decomposed timing and bridge options | gap was mainly late compounding timing, not absence of edge | capital deployment repair became the next direction |
+| 17 | `strict_sr_aware_milestone_bridge_monte_carlo_audit_001` | Tested whether simple milestone step-up could bridge the mission gap | applied frozen milestone bridge overlay | rolling 5Y average rose to `EUR 1.089M`, median to `EUR 1.015M`, with `21` 1M windows | powerful but fragile |
+| 18 | `milestone_bridge_fragility_driver_repair_audit_001` | Needed to find what actually made the bridge fragile | compared repair overlays around the base bridge | cost drag and low trade redundancy were the main fragility drivers; no repair beat the base bridge | fragility identified, not solved |
+| 19 | `execution_cost_realism_and_trade_redundancy_audit_001` | Bridge needed a harder operational reality test | enforced realistic cost and missed-trade framing | zero-cost survived, but normal costs and `1%` missed-trade tolerance weakened the mission | operational realism became the blocker |
+| 20 | `cost_resilient_trade_redundancy_expansion_audit_001` | Searched for clean non-oracle BTC-only redundancy | tested additional short and low-correlation sleeve ideas | best BTC-only expansion still failed to restore mission robustness | BTC-only redundancy remains insufficient |
+| 21 | `native_12h_execution_sleeve_discovery_audit_001` and shadow-forward court | Needed to test whether another sleeve was better than watching the trusted `1H` engine in the wild | `12H` execution failed to beat the repaired baseline, so the roadmap pivoted into non-executing forward observation | `12H` retired from execution role; shadow-forward became the next court | evidence, not sleeve hope, decides the throne |
+
+### 4. Current Best Candidate
+
+The current best proven engine is no longer described as "the most explosive
+thing we ever found." It is the trusted BTC `1H` strict SR-aware baseline under
+the repaired prior cost model. That baseline is not glamorous, but it is the
+most honest engine still standing after the redundancy, `12H`, multi-asset,
+bridge-fragility, execution-cost, and shadow-spec courts.
+
+The main blocker is no longer "does any edge exist?" Edge clearly exists. The
+main blockers are cost realism, missed-trade sensitivity, low redundancy, and
+whether the engine reproduces cleanly on fresh forward data without any hidden
+runtime divergence.
+
+| Candidate | Strength | Weakness | Current Verdict |
+| --- | --- | --- | --- |
+| Trusted BTC `1H` strict SR-aware baseline | best reconciled rolling `5Y` normal-cost mission profile; reproducible; suitable for shadow observation | still below fully robust `EUR 1M` mission and sensitive to missed-trade / cost drag | accepted as shadow-forward core, not paper/live-ready |
+| Milestone bridge overlays | can push rolling `5Y` above `EUR 1M` in some research runs | fragility remains too high to treat as deployable capital logic | research-only comparison branch |
+| BTC-only redundancy sleeves | attempted extra filler and low-correlation sleeves | did not beat the trusted BTC `1H` baseline under realistic cost | rejected for promotion |
+| Native `12H` execution | independently audited after baseline repair | failed to beat the repaired BTC `1H` baseline | retired from execution role for now |
+| Multi-asset structural redundancy | first-pass non-BTC expansion audited | too weak to move the mission meaningfully | not current promotion path |
+
+### 5. Current Known Metrics
+
+The table below summarizes the latest known headline metrics from the core
+Structural Compounding Lab court reports. Full-sequence equity is included for
+context, but mission decisions are driven primarily by rolling five-year
+metrics.
+
+| Audit | Full Sequence Ending Equity | Rolling 5Y Avg | Rolling 5Y Median | 1M Hit Windows | Final Classification |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `execution_cost_realism_and_trade_redundancy_audit_001` baseline row `NORMAL_MIXED_MAKER_TAKER_COST` | `EUR 35,431,111.82` | `EUR 792,824.56` | `EUR 786,049.45` | `12` | trusted normal-cost mission anchor |
+| `cost_resilient_trade_redundancy_expansion_audit_001` best BTC-only redundancy candidate | not available | `EUR 755,296.77` | `EUR 780,002.07` | `8` | `REDUNDANCY_EXPANSION_NEEDS_MULTI_ASSET_OR_NEW_SLEEVE` |
+| `native_12h_execution_sleeve_discovery_audit_001` repaired `1H + 12H` test | not available | `EUR 738,703.60` | `EUR 730,036.23` | not stated | `NATIVE_12H_EXECUTION_REJECTED` |
+| `multi_asset_structural_redundancy_discovery_audit_001` best portfolio variant | baseline held | `EUR 792,824.56` | `EUR 786,049.45` | `12` | `MULTI_ASSET_REDUNDANCY_WEAK` |
+| `shadow_forward_validation_spec_audit_001` | n/a | n/a | n/a | n/a | `SHADOW_SPEC_READY_WITH_6H_CONTEXT_RESEARCH_ONLY` |
+| `shadow_forward_observer_001` | n/a | n/a | n/a | n/a | `SHADOW_OBSERVER_READY_RESEARCH_ONLY` |
+| `shadow_forward_watchtower_001` | n/a | n/a | n/a | n/a | `WATCHTOWER_READY_BUT_WAITING_FOR_FORWARD_DAYS` |
+| `fresh_btcusdt_data_updater_001` latest rerun | n/a | n/a | n/a | n/a | `FRESH_DATA_READY_NO_NEW_ROWS` |
+| `shadow_forward_pilot_automation_001` | n/a | n/a | n/a | n/a | `AUTOMATION_READY_FOR_MANUAL_APPROVAL` |
+
+The most important interpretive rule is simple: full-sequence equity is
+secondary. A variant that looks stunning over one full sequence but weak across
+many rolling five-year windows does not yet own the mission.
+
+### 6. Cost and Operational Reality
+
+Normal cost assumptions matter more than zero-cost fantasy because the mission
+fails in the real world if it survives only in ideal fills. The current
+research state says the bridge family remains highly sensitive to realistic
+execution drag and to missed signals. The latest hardened audit also showed
+that missed-trade tolerance was only around `1%`, which is operationally
+severe. That means any future shadow-forward or paper infrastructure must be
+treated as server-grade monitoring and uptime work, not as a casual
+laptop-open-sometimes workflow.
+
+| Operational Risk | Current Finding | Implication |
+| --- | --- | --- |
+| Normal execution cost | drags rolling 5Y below the clean bridge mission level | cost model must be realistic |
+| 5x cost | punitive collapse case | stress-only, not the normal gate |
+| Missed trades | `1%` tolerance only | redundancy must improve |
+| Step-up transition months | mission-sensitive | uptime around key periods matters |
+| Top and high-volatility months | mission-sensitive | system cannot miss major windows |
+| Manual or laptop operation | likely insufficient | server-grade forward validation is required later |
+
+### 7. Why Shadow-Forward Matters More Than Another Sleeve Right Now
+
+Earlier versions of this README still pointed toward `12H` execution as the
+obvious next mission branch. That is no longer the correct sequence. The
+repaired `12H` court did not beat the trusted BTC `1H` baseline, and
+first-pass multi-asset redundancy also failed to move the mission enough.
+
+That means the next valuable truth is no longer "invent another sleeve first."
+The next valuable truth is "watch the proven engine behave on fresh data
+without letting it trade."
+
+Shadow-forward now matters because it answers four operational questions that
+backtests alone cannot settle:
+
+| Question | Why It Matters |
+| --- | --- |
+| Does the trusted `1H` engine reproduce forward decisions exactly from fresh public data? | verifies research-to-runtime integrity |
+| Can fresh BTC `1m` history be extended continuously without gaps or duplicate decision pollution? | verifies market-data continuity |
+| Can the observation stack survive operator reality, restarts, and scheduler workflows? | verifies operational discipline |
+| Can all of this stay strictly non-executing while still being useful? | prevents accidental paper/live contamination |
+
+### 8. Future Capital Routing Vision
+
+The lab should not solve its capital problem by building an overfit optimizer.
+The future routing vision is intentionally simple: one shared mission account,
+sleeve-level risk budgets, milestone step-up only after equity progress,
+drawdown brakes, and overlap checks so the engine does not blindly take the
+same BTC move twice.
+
+| Capital Rule | Purpose |
+| --- | --- |
+| Shared mission equity | lets compounding work across sleeves |
+| Sleeve allocation caps | prevents one sleeve dominating blindly |
+| Equity milestone step-up | increases risk only after progress |
+| Drawdown brake | protects the compounding engine |
+| Open-risk cap | prevents overlapping risk explosions |
+| Correlation and overlap check | avoids taking the same BTC move twice |
+| Simple fixed rules | avoids overfitting and allocator madness |
+
+The capital engine should route capital intelligently, but it should not become
+so "smart" that it suffocates the edge. The goal is simple compounding
+discipline, not a complex optimizer that curve-fits historical winners.
+
+### 9. Current Roadmap
+
+The current roadmap is research-only and sequential. The next headline is no
+longer "invent more pullback filters" and it is no longer "promote another
+sleeve quickly." The next headline is "complete the forward court around the
+trusted BTC `1H` engine without allowing a single accidental trading pathway."
+
+```mermaid
+flowchart TD
+    A[Trusted BTC 1H baseline reconciled] --> B[Complete shadow-forward specification]
+    B --> C[Run shadow observer with no order path]
+    C --> D[Run 90-day watchtower with fresh BTC updater]
+    D --> E[Operate 7-day one-click pilot safely]
+    E --> F{Did shadow court stay clean?}
+    F -- No --> G[Fix observation integrity only]
+    F -- Yes, after full gate --> H[Separate future paper-readiness court]
+    H --> I[Only then discuss paper validation]
+```
+
+| Step | Research Task | Condition to Run | Expected Decision |
+| --- | --- | --- | --- |
+| 1 | Keep the trusted BTC `1H` baseline frozen as the forward reference engine | already true | preserve one source of truth |
+| 2 | Extend canonical BTC `1m` data with the fresh updater when needed | whenever the local tape is stale | keep forward observation current without duplication |
+| 3 | Let the watchtower accumulate real forward days and reproduced `1H` decisions | current active structural gate | decide whether observation integrity survives time |
+| 4 | Use the one-click pilot layer for self-check, run-once, scheduler-command, and daily-status workflows | current operational path | prove real usage discipline |
+| 5 | Finish the `90`-day shadow court and minimum signal requirements | requires elapsed time, not more theory | decide whether a future paper-readiness court is even justified |
+| 6 | If the shadow court stays clean, write a separate paper-readiness court for the lab | only after shadow completion | decide whether paper becomes discussable |
+| 7 | Real money remains explicitly out of scope | always | keep `real_money_allowed=false` |
+
+### 10. Current Status Summary
+
+Father Court Verdict, stated without hype:
+
+- Edge exists.
+- The trusted BTC `1H` strict SR-aware baseline remains the only proven core
+  engine worthy of forward observation.
+- `1M` in five years is still alive as a research mission, but not yet robust
+  enough for paper/live promotion.
+- `12H` execution did not earn the throne.
+- First-pass multi-asset redundancy did not earn the throne.
+- Shadow-forward infrastructure now exists and is active, but remains strictly
+  non-executing.
+- The next real decision is not another sleeve promotion. It is whether the
+  watchtower completes a clean `90`-day forward court.
+
+### 11. Artifact Map
+
+The core Structural Compounding Lab outputs currently live under
+`structural_compounding_lab/output/`.
+
+| Artifact Folder | Purpose |
+| --- | --- |
+| `broad_historical_structural_replay_001/` | broad native BTC replay baseline |
+| `frozen_patch_validation_audit_001/` | frozen patch retrospective validation |
+| `broad_patch_accounting_and_short_rescue_audit_001/` | accounting reconciliation and removed-short rescue review |
+| `rolling_five_year_mission_viability_audit_001/` | five-year mission window court |
+| `equal_highs_liquidity_sweep_rescue_forensic_audit_001/` | forensic check on equal-highs rescue |
+| `support_room_short_rescue_repair_audit_001/` | downside-room repair diagnostics |
+| `native_pre_entry_sr_feature_enrichment_audit_001/` | native pre-entry SR feature enrichment |
+| `native_sr_aware_structural_replay_reproduction_audit_001/` | native SR-aware replay reproduction |
+| `native_sr_aware_strict_stress_monte_carlo_audit_001/` | strict SR-aware stress plus Monte Carlo court |
+| `native_sr_aware_5y_mission_gap_audit_001/` | five-year mission gap diagnosis |
+| `strict_sr_aware_milestone_bridge_monte_carlo_audit_001/` | milestone bridge Monte Carlo retest |
+| `milestone_bridge_fragility_driver_repair_audit_001/` | fragility-driver analysis around the bridge |
+| `execution_cost_realism_and_trade_redundancy_audit_001/` | cost realism and missed-trade audit |
+| `cost_resilient_trade_redundancy_expansion_audit_001/` | BTC-only redundancy expansion court |
+| `native_12h_execution_sleeve_discovery_audit_001/` | repaired `12H` execution court versus the trusted BTC `1H` baseline |
+| `multi_asset_structural_redundancy_discovery_audit_001/` | first-pass non-BTC redundancy court |
+| `shadow_forward_validation_spec_audit_001/` | explicit forward observation gate and reporting contract |
+| `shadow_forward_observer_001/` | non-executing observer over the trusted BTC `1H` engine |
+| `shadow_forward_watchtower_001/` | append-only readiness, heartbeat, safety, and `90`-day progress court |
+| `fresh_btcusdt_data_updater_001/` | public BTC `1m` updater with dedupe-safe catch-up and watchtower kickoff |
+| `shadow_forward_pilot_automation_001/` | self-check, run-once, scheduler-command, and daily-status operator layer |
+| `project_direction_review_001/` | plain-English research direction recap |
+
+### 12. Developer Notes
+
+The lab is only useful if its research discipline stays strict.
+
+- All new audits must write to new output folders.
+- Previous artifacts must not be overwritten.
+- Every audit must include `research_only` flags.
+- Any stochastic audit must report its repeat budget.
+- Low-repeat runs must be labeled scout-mode when applicable.
+- Future prompts should include the implementation quality contract.
+- Any timestamp logic must use robust fallback resolution.
+- Any mission decision must use rolling 5Y metrics, not only full-sequence metrics.
+- Any future 12H sleeve research must remain isolated from live, paper, and
+  production defaults until it passes its own court.
+
+### Latest README Update
+
+This README reflects the current state after the structural shadow-forward
+stack was added on top of the trusted BTC `1H` research engine: validation spec
+completed, observer completed, watchtower running, fresh BTC updater proven,
+and the one-click `7`-day pilot automation layer ready for manual approval.
+
+## Validation Philosophy: Research Windows vs Proof Windows
+
+The Structural Compounding Lab is not allowed to treat a profitable short window
+as proof of a million-euro edge. Short and recent samples are used to discover,
+separate, and diagnose candidate behavior. Long and multi-regime windows are
+used to decide whether that behavior is durable enough to deserve trust.
+
+In practical terms:
+
+- small and recent windows are research windows
+- large and multi-year windows are proof windows
+- a strategy idea may be discovered in a research window, but it is not trusted
+  until it survives proof windows, walk-forward validation, and paper/live-small
+  execution
+
+The current Structural Compounding Lab is researching an aggressive
+full-active-capital compounding model with the following working assumptions:
+
+- starting capital: `EUR 20,000`
+- target: long-term path toward `EUR 1,000,000`
+- withdrawals: `0` for five years in the research model
+- position model: full active capital per approved trade
+- fixed BTC stop-loss: `1%` price movement
+- profits reinvested: `true`
+- profit vault: internal protection rather than external withdrawal
+- cooldown: drawdown and chop protection
+- long and short both evaluated
+- moonshot contribution explicitly measured
+
+The `EUR 1,000,000` target is a research objective, not a promise, guarantee,
+or promotion signal. No result is treated as deployment-ready until it passes
+the validation ladder.
+
+### Validation Ladder
+
+1. Research Window
+   - Usually recent `6-12` months of data.
+   - Used to discover patterns, bugs, edge candidates, long/short asymmetry,
+     moonshot dependency, failure modes, and bad archetypes.
+   - A strong result here is only a hypothesis.
+2. Broad Historical Proof Window
+   - Multi-year data, ideally `5-8+` years where available.
+   - Used to test whether the hypothesis survives different BTC regimes: bull
+     trend, bear trend, sideways chop, high volatility, low volatility,
+     liquidation cascades, and slow grind.
+   - If the edge fails here, it is not discarded blindly; it is diagnosed as
+     regime-specific, overfit, or incomplete.
+3. Walk-Forward Validation
+   - Rules are frozen before testing unseen periods.
+   - No retuning after seeing the result.
+   - Used to test whether the edge generalizes outside the research window.
+4. Stress / Robustness Testing
+   - Fee/slippage sensitivity.
+   - Moonshot-capped results.
+   - Moonshot-removed results.
+   - Long-only and short-only breakdowns.
+   - Worst-month and worst-day analysis.
+   - Loss-streak survival.
+   - Full-active-capital drawdown survival.
+   - Profit-vault and cooldown impact.
+5. Paper Trading
+   - `3-6` months minimum.
+   - Confirms live market timing, order assumptions, spread/slippage, missed
+     signals, execution delay, and operational reliability.
+   - Still not real-money proof.
+6. Live-Small Capital Trial
+   - Only after backtest, multi-year validation, walk-forward, stress tests,
+     and paper trading are acceptable.
+   - Starts with small capital, not full aggressive deployment.
+   - Scaling happens only if live-small results match the validated edge.
+
+### Refactor Rule
+
+Each refactor must improve evidence quality, not simply improve a short-window
+metric. A refactor is not considered successful because it increases profit on
+the research window. A refactor is considered useful only if it also improves
+at least some of:
+
+- out-of-sample stability
+- long/short expectancy clarity
+- drawdown control
+- moonshot dependency quality
+- regime robustness
+- trade frequency stability
+- profit factor
+- max drawdown
+- cooldown effectiveness
+- full-active-capital survival
+
+### Failure Is Useful
+
+If a promising research-window edge fails on `5-8` years of data, that is not
+wasted work. It usually means the edge was regime-specific, overfit,
+structurally incomplete, or dependent on rare outliers. The lab then either:
+
+- narrows the edge to the regime where it works
+- adds a regime filter
+- disables the weak archetype
+- preserves only the proven side
+- adds a missing diagnostic layer
+- rejects the idea
+
+The current audits already support that framing. Recent structural reviews
+showed:
+
+- the system is active enough
+- short-side edge is stronger than long-side edge
+- longs currently damage the curve
+- moonshot dependency is high
+- profit vault and cooldown matter
+- full-active-capital compounding survives the current observed sequence but is
+  not yet a promotion signal
+
+### Promotion Rule
+
+The system may not be promoted toward aggressive compounding unless:
+
+- multi-year proof windows remain profitable
+- walk-forward validation remains profitable
+- paper trading confirms the edge
+- max drawdown remains survivable
+- long/short contribution is understood
+- moonshot dependency is measured and acceptable
+- bad archetypes are disabled or controlled
+- full-active-capital replay survives loss clusters
+
+The Structural Compounding Lab must also remain explicit about its current
+safety state:
+
+- `research_only=true`
+- `paper_allowed=false` unless explicitly enabled in a future controlled stage
+- `live_allowed=false`
+- `real_money_allowed=false`
+- `behavior_change_allowed=false`
 
 ### Capital Refactor Status
 
@@ -791,6 +1286,10 @@ dashboard and engine should eventually reflect this behavior explicitly.
 | `8` | `python main_live.py` | Run the paper/live runtime loop directly |
 | `9` | `python run_backtest_cockpit.py` | Launch backtest cockpit stack |
 | `10` | `python run_live_cockpit.py` | Launch live paper cockpit stack |
+| `11` | `python -m structural_compounding_lab.shadow_forward.fresh_btcusdt_data_updater --mode update_and_catchup` | Extend canonical BTC shadow data and hand fresh candles to the watchtower |
+| `12` | `python -m structural_compounding_lab.shadow_forward.shadow_forward_pilot_automation --mode self_check` | Verify the research-only structural shadow pilot guard rails |
+| `13` | `python -m structural_compounding_lab.shadow_forward.shadow_forward_pilot_automation --mode manual_test_run` | Run one safe structural updater + watchtower cycle |
+| `14` | `python -m structural_compounding_lab.shadow_forward.shadow_forward_pilot_automation --mode daily_status` | Write current G/Y/R operator status for the structural shadow pilot |
 
 ### One-command cockpit launch
 
@@ -807,6 +1306,27 @@ The launcher is intended to:
 - monitor child-process health
 - shut services down cleanly
 
+### Structural shadow pilot workflow
+
+The Structural Compounding Lab has a separate forward-observation workflow. It
+is not a paper-trading launcher and it is not a broker launcher.
+
+```powershell
+python -m structural_compounding_lab.shadow_forward.shadow_forward_pilot_automation --mode self_check
+python -m structural_compounding_lab.shadow_forward.shadow_forward_pilot_automation --mode manual_test_run
+python -m structural_compounding_lab.shadow_forward.shadow_forward_pilot_automation --mode generate_scheduler_command
+python -m structural_compounding_lab.shadow_forward.shadow_forward_pilot_automation --mode daily_status
+python -m structural_compounding_lab.shadow_forward.shadow_forward_pilot_automation --mode status
+```
+
+This workflow currently proves:
+
+- fresh BTC `1m` history can be extended to the latest safe closed minute
+- the trusted BTC `1H` engine can be observed forward with `6H` context
+- the watchtower can append evidence without creating orders
+- the operator can inspect daily health before installing any scheduler
+- scheduler installation is optional and must be explicitly approved
+
 ## Current Research Conclusions
 
 The current research state is materially different from the older "more
@@ -818,9 +1338,11 @@ symbols must be better" assumption.
 | Selective breadth | Useful when symbols earn inclusion |
 | `1H` design | Best treated as a short-specialist execution sleeve |
 | `1H` long reintroduction | Not justified by current evidence |
-| `12H` role | Must remain a real execution sleeve, not just a context filter |
+| Trusted structural engine | BTC `1H` strict SR-aware baseline remains the accepted research core |
+| `12H` role | Execution promotion failed in the structural lab; remain retired from the structural execution throne for now |
 | `6H` role | Valuable as research, not yet as routed production exposure |
 | Allocator interaction | Cross-sleeve capital competition matters more than adding raw signals |
+| Structural lab next step | Finish `90` shadow-forward days before any future paper-readiness court |
 | System architecture | Specialization + coordination is better than forcing symmetry across layers |
 
 The broad 26-symbol expansion was not wasted. It established a durable local
@@ -1078,7 +1600,25 @@ python run_live_cockpit.py
 python -m structural_compounding_lab.diagnostics.five_year_compounding_audit
 ```
 
-### 10. Open the main command center
+### 10. Run the structural shadow pilot self-check
+
+```powershell
+python -m structural_compounding_lab.shadow_forward.shadow_forward_pilot_automation --mode self_check
+```
+
+### 11. Run one structural shadow pilot cycle
+
+```powershell
+python -m structural_compounding_lab.shadow_forward.shadow_forward_pilot_automation --mode manual_test_run
+```
+
+### 12. Check structural shadow pilot daily status
+
+```powershell
+python -m structural_compounding_lab.shadow_forward.shadow_forward_pilot_automation --mode daily_status
+```
+
+### 13. Open the main command center
 
 ```text
 http://127.0.0.1:3000/
@@ -1089,6 +1629,7 @@ From there, use:
 - `/paper`
 - `/backtest`
 - `/live`
+- `/structural-lab`
 
 ## Dependencies
 

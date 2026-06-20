@@ -1,0 +1,12 @@
+{
+  "generated_at_utc": "2026-06-19T23:12:13.503445+00:00",
+  "research_only": true,
+  "paper_allowed": false,
+  "live_allowed": false,
+  "real_money_allowed": false,
+  "behavior_change_allowed": false,
+  "notes": [
+    "Migration package generated from current worktree and artifact truth.",
+    "Legacy Retail Trading System areas were preserved and classified rather than deleted."
+  ]
+}

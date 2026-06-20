@@ -1,0 +1,11 @@
+path,exists,ignored,gitignore_rule,notes
+.env,False,True,.gitignore:1:.env	.env,ignored by git
+.env.template,True,True,.gitignore:3:.env.template	.env.template,ignored by git
+.env.example,True,False,,"not ignored; if large or regenerable, preserve via rebuild plan instead of blind commit"
+data_storage,True,True,.gitignore:9:data_storage/	data_storage,ignored by git
+backtest/output,True,False,,"not ignored; if large or regenerable, preserve via rebuild plan instead of blind commit"
+live_sim/output,True,False,,"not ignored; if large or regenerable, preserve via rebuild plan instead of blind commit"
+dashboard/node_modules,True,True,.gitignore:16:dashboard/node_modules/	dashboard/node_modules,ignored by git
+dashboard/.next,True,True,.gitignore:17:dashboard/.next/	dashboard/.next,ignored by git
+structural_compounding_lab/output,True,False,,"not ignored; if large or regenerable, preserve via rebuild plan instead of blind commit"
+structural_compounding_lab/data_storage,True,True,.gitignore:9:data_storage/	structural_compounding_lab/data_storage,ignored by git

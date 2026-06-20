@@ -1435,6 +1435,13 @@ def _structural_artifact_paths(root_dir: Path | None = None) -> dict[str, Path]:
     refined_root = output_root / "daily_opportunity_definition_refinement_001"
     legacy_root = output_root / "daily_structural_opportunity_001"
     five_year_root = output_root / "five_year_compounding_audit_001"
+    long_short_root = output_root / "long_short_edge_repair_audit_001"
+    long_damage_patch_root = output_root / "long_damage_control_patch_audit_001"
+    frozen_patch_validation_root = output_root / "frozen_patch_validation_audit_001"
+    frozen_patch_forensic_root = output_root / "frozen_patch_forensic_integrity_audit_001"
+    broad_historical_replay_root = output_root / "broad_historical_structural_replay_001"
+    broad_frozen_patch_root = output_root / "broad_frozen_patch_validation_001"
+    native_sr_strict_stress_root = output_root / "native_sr_aware_strict_stress_monte_carlo_audit_001"
     return {
         "summary": output_root / "summary.json",
         "master_lab_plan": output_root / "master_lab_plan.md",
@@ -1465,6 +1472,112 @@ def _structural_artifact_paths(root_dir: Path | None = None) -> dict[str, Path]:
         "five_year_compounding_moonshot_contribution": five_year_root / "diagnostics" / "moonshot_contribution_report.json",
         "five_year_compounding_scaling_safety": five_year_root / "diagnostics" / "scaling_safety_report.json",
         "five_year_compounding_failure_modes": five_year_root / "diagnostics" / "failure_modes_report.json",
+        "long_short_edge_repair_status": long_short_root / "status.json",
+        "long_short_edge_repair_summary": long_short_root / "long_short_edge_repair_summary.json",
+        "long_short_edge_repair_report": long_short_root / "long_short_edge_repair_report.md",
+        "long_short_edge_repair_long_breakdown": long_short_root / "diagnostics" / "long_edge_breakdown.csv",
+        "long_short_edge_repair_short_breakdown": long_short_root / "diagnostics" / "short_edge_breakdown.csv",
+        "long_short_edge_repair_archetype_breakdown": long_short_root / "diagnostics" / "archetype_expectancy_breakdown.csv",
+        "long_short_edge_repair_personality_breakdown": long_short_root / "diagnostics" / "personality_expectancy_breakdown.csv",
+        "long_short_edge_repair_long_failure_modes": long_short_root / "diagnostics" / "long_failure_modes.csv",
+        "long_short_edge_repair_short_success_modes": long_short_root / "diagnostics" / "short_success_modes.csv",
+        "long_short_edge_repair_moonshot_repeatability": long_short_root / "diagnostics" / "moonshot_repeatability_report.csv",
+        "long_short_edge_repair_moonshot_dependency": long_short_root / "diagnostics" / "moonshot_dependency_report.json",
+        "long_short_edge_repair_long_filters": long_short_root / "diagnostics" / "long_filters_research_candidates.json",
+        "long_short_edge_repair_short_preservation": long_short_root / "diagnostics" / "short_preservation_rules.json",
+        "long_short_edge_repair_recommendation": long_short_root / "diagnostics" / "edge_repair_recommendation.json",
+        "long_short_edge_repair_next_step": long_short_root / "reports" / "next_research_recommendation.json",
+        "long_damage_control_patch_status": long_damage_patch_root / "status.json",
+        "long_damage_control_patch_summary": long_damage_patch_root / "long_damage_control_patch_summary.json",
+        "long_damage_control_patch_report": long_damage_patch_root / "long_damage_control_patch_report.md",
+        "long_damage_control_patch_variant_summary": long_damage_patch_root / "diagnostics" / "patch_variant_summary.csv",
+        "long_damage_control_patch_trade_replay": long_damage_patch_root / "diagnostics" / "patch_variant_trade_replay.csv",
+        "long_damage_control_patch_disabled_longs": long_damage_patch_root / "diagnostics" / "disabled_long_archetype_impact.csv",
+        "long_damage_control_patch_preserved_shorts": long_damage_patch_root / "diagnostics" / "preserved_short_edge_impact.csv",
+        "long_damage_control_patch_moonshot_dependency": long_damage_patch_root / "diagnostics" / "moonshot_dependency_after_patch.json",
+        "long_damage_control_patch_full_capital_curve": long_damage_patch_root / "diagnostics" / "full_capital_compounding_after_patch.csv",
+        "long_damage_control_patch_drawdown": long_damage_patch_root / "diagnostics" / "drawdown_after_patch.csv",
+        "long_damage_control_patch_best_candidate": long_damage_patch_root / "diagnostics" / "best_patch_candidate.json",
+        "long_damage_control_patch_rejected_candidates": long_damage_patch_root / "diagnostics" / "rejected_patch_candidates.json",
+        "long_damage_control_patch_recommendation": long_damage_patch_root / "diagnostics" / "research_only_patch_recommendation.json",
+        "long_damage_control_patch_next_step": long_damage_patch_root / "reports" / "next_research_recommendation.json",
+        "frozen_patch_validation_status": frozen_patch_validation_root / "status.json",
+        "frozen_patch_validation_summary": frozen_patch_validation_root / "frozen_patch_validation_summary.json",
+        "frozen_patch_validation_report": frozen_patch_validation_root / "frozen_patch_validation_report.md",
+        "frozen_patch_validation_rules": frozen_patch_validation_root / "diagnostics" / "frozen_patch_rules.json",
+        "frozen_patch_validation_window_summary": frozen_patch_validation_root / "diagnostics" / "validation_window_summary.csv",
+        "frozen_patch_validation_year_by_year": frozen_patch_validation_root / "diagnostics" / "year_by_year_validation.csv",
+        "frozen_patch_validation_regime_summary": frozen_patch_validation_root / "diagnostics" / "regime_validation_summary.csv",
+        "frozen_patch_validation_walk_forward": frozen_patch_validation_root / "diagnostics" / "walk_forward_validation.csv",
+        "frozen_patch_validation_out_of_sample": frozen_patch_validation_root / "diagnostics" / "out_of_sample_validation.csv",
+        "frozen_patch_validation_trade_replay": frozen_patch_validation_root / "diagnostics" / "frozen_patch_trade_replay.csv",
+        "frozen_patch_validation_capital_curve": frozen_patch_validation_root / "diagnostics" / "full_active_capital_validation_curve.csv",
+        "frozen_patch_validation_drawdown": frozen_patch_validation_root / "diagnostics" / "drawdown_validation_report.csv",
+        "frozen_patch_validation_moonshot_dependency": frozen_patch_validation_root / "diagnostics" / "moonshot_dependency_validation.json",
+        "frozen_patch_validation_long_short_breakdown": frozen_patch_validation_root / "diagnostics" / "long_short_validation_breakdown.csv",
+        "frozen_patch_validation_failure_modes": frozen_patch_validation_root / "diagnostics" / "validation_failure_modes.csv",
+        "frozen_patch_validation_promotion_gate": frozen_patch_validation_root / "diagnostics" / "promotion_gate_report.json",
+        "frozen_patch_validation_next_step": frozen_patch_validation_root / "reports" / "next_research_recommendation.json",
+        "frozen_patch_forensic_status": frozen_patch_forensic_root / "status.json",
+        "frozen_patch_forensic_summary": frozen_patch_forensic_root / "forensic_integrity_summary.json",
+        "frozen_patch_forensic_report": frozen_patch_forensic_root / "forensic_integrity_report.md",
+        "frozen_patch_forensic_artifact_lineage": frozen_patch_forensic_root / "diagnostics" / "artifact_lineage_report.json",
+        "frozen_patch_forensic_data_coverage": frozen_patch_forensic_root / "diagnostics" / "data_coverage_report.json",
+        "frozen_patch_forensic_sample_reuse": frozen_patch_forensic_root / "diagnostics" / "sample_reuse_report.json",
+        "frozen_patch_forensic_leakage_risk": frozen_patch_forensic_root / "diagnostics" / "leakage_risk_report.json",
+        "frozen_patch_forensic_rule_origin": frozen_patch_forensic_root / "diagnostics" / "frozen_rule_origin_report.json",
+        "frozen_patch_forensic_source_history": frozen_patch_forensic_root / "diagnostics" / "source_history_availability_report.json",
+        "frozen_patch_forensic_validation_gap": frozen_patch_forensic_root / "diagnostics" / "validation_gap_report.json",
+        "frozen_patch_forensic_required_next_replay": frozen_patch_forensic_root / "diagnostics" / "required_next_replay_plan.json",
+        "frozen_patch_forensic_no_go_risks": frozen_patch_forensic_root / "diagnostics" / "no_go_risks.json",
+        "frozen_patch_forensic_next_step": frozen_patch_forensic_root / "reports" / "next_research_recommendation.json",
+        "broad_historical_replay_status": broad_historical_replay_root / "status.json",
+        "broad_historical_replay_summary": broad_historical_replay_root / "broad_historical_replay_summary.json",
+        "broad_historical_replay_report": broad_historical_replay_root / "broad_historical_replay_report.md",
+        "broad_historical_replay_source_data_coverage": broad_historical_replay_root / "diagnostics" / "source_data_coverage.json",
+        "broad_historical_replay_window_manifest": broad_historical_replay_root / "diagnostics" / "replay_window_manifest.json",
+        "broad_historical_replay_yearly_trade_counts": broad_historical_replay_root / "diagnostics" / "yearly_trade_counts.csv",
+        "broad_historical_replay_monthly_trade_counts": broad_historical_replay_root / "diagnostics" / "monthly_trade_counts.csv",
+        "broad_historical_replay_health_report": broad_historical_replay_root / "diagnostics" / "replay_health_report.json",
+        "broad_historical_replay_failure_report": broad_historical_replay_root / "diagnostics" / "replay_failure_report.json",
+        "broad_historical_replay_data_gap_report": broad_historical_replay_root / "diagnostics" / "data_gap_report.json",
+        "broad_historical_replay_no_future_leakage": broad_historical_replay_root / "diagnostics" / "no_future_leakage_checks.json",
+        "broad_historical_replay_generated_ledger_manifest": broad_historical_replay_root / "diagnostics" / "generated_ledger_manifest.json",
+        "broad_historical_replay_next_step": broad_historical_replay_root / "reports" / "next_research_recommendation.json",
+        "broad_frozen_patch_status": broad_frozen_patch_root / "status.json",
+        "broad_frozen_patch_summary": broad_frozen_patch_root / "broad_frozen_patch_summary.json",
+        "broad_frozen_patch_report": broad_frozen_patch_root / "broad_frozen_patch_report.md",
+        "broad_frozen_patch_raw_vs_patch_json": broad_frozen_patch_root / "diagnostics" / "raw_vs_frozen_patch_comparison.json",
+        "broad_frozen_patch_raw_vs_patch_csv": broad_frozen_patch_root / "diagnostics" / "raw_vs_frozen_patch_comparison.csv",
+        "broad_frozen_patch_yearly": broad_frozen_patch_root / "diagnostics" / "yearly_raw_vs_patch.csv",
+        "broad_frozen_patch_monthly": broad_frozen_patch_root / "diagnostics" / "monthly_raw_vs_patch.csv",
+        "broad_frozen_patch_long_short": broad_frozen_patch_root / "diagnostics" / "long_short_raw_vs_patch.json",
+        "broad_frozen_patch_archetypes": broad_frozen_patch_root / "diagnostics" / "archetype_raw_vs_patch.csv",
+        "broad_frozen_patch_disabled_trade_impact": broad_frozen_patch_root / "diagnostics" / "disabled_trade_impact.csv",
+        "broad_frozen_patch_preserved_trade_impact": broad_frozen_patch_root / "diagnostics" / "preserved_trade_impact.csv",
+        "broad_frozen_patch_moonshot": broad_frozen_patch_root / "diagnostics" / "moonshot_dependency_broad_patch.json",
+        "broad_frozen_patch_execution_costs": broad_frozen_patch_root / "diagnostics" / "execution_cost_sensitivity_broad_patch.json",
+        "broad_frozen_patch_drawdown": broad_frozen_patch_root / "diagnostics" / "drawdown_comparison.csv",
+        "broad_frozen_patch_profit_vault": broad_frozen_patch_root / "diagnostics" / "profit_vault_comparison.json",
+        "broad_frozen_patch_survival": broad_frozen_patch_root / "diagnostics" / "patch_survival_by_year.json",
+        "broad_frozen_patch_no_go": broad_frozen_patch_root / "diagnostics" / "no_go_risks.json",
+        "broad_frozen_patch_next_step_json": broad_frozen_patch_root / "reports" / "next_research_recommendation.json",
+        "broad_frozen_patch_next_step_md": broad_frozen_patch_root / "reports" / "next_research_recommendation.md",
+        "native_sr_strict_stress_status": native_sr_strict_stress_root / "status.json",
+        "native_sr_strict_stress_summary": native_sr_strict_stress_root / "native_sr_aware_strict_stress_monte_carlo_summary.json",
+        "native_sr_strict_stress_report": native_sr_strict_stress_root / "native_sr_aware_strict_stress_monte_carlo_report.md",
+        "native_sr_strict_stress_frozen_variant_spec": native_sr_strict_stress_root / "diagnostics" / "frozen_variant_spec.json",
+        "native_sr_strict_stress_pf_sanity": native_sr_strict_stress_root / "diagnostics" / "pf_42_sanity_audit.json",
+        "native_sr_strict_stress_pre_entry_integrity": native_sr_strict_stress_root / "diagnostics" / "pre_entry_rule_integrity_audit.json",
+        "native_sr_strict_stress_matrix": native_sr_strict_stress_root / "diagnostics" / "stress_test_matrix.csv",
+        "native_sr_strict_stress_rolling": native_sr_strict_stress_root / "diagnostics" / "rolling_5y_stress_summary.csv",
+        "native_sr_strict_stress_monte_carlo_summary": native_sr_strict_stress_root / "diagnostics" / "monte_carlo_summary.json",
+        "native_sr_strict_stress_monte_carlo_distribution": native_sr_strict_stress_root / "diagnostics" / "monte_carlo_distribution.csv",
+        "native_sr_strict_stress_drawdown_distribution": native_sr_strict_stress_root / "diagnostics" / "monte_carlo_drawdown_distribution.csv",
+        "native_sr_strict_stress_ruin_risk": native_sr_strict_stress_root / "diagnostics" / "monte_carlo_ruin_risk.json",
+        "native_sr_strict_stress_mission_gap": native_sr_strict_stress_root / "diagnostics" / "mission_gap_report.json",
+        "native_sr_strict_stress_promotion_gate": native_sr_strict_stress_root / "diagnostics" / "promotion_gate_report.json",
+        "native_sr_strict_stress_next_step": native_sr_strict_stress_root / "reports" / "next_research_recommendation.json",
         "daily_structural_opportunity_status": _prefer_existing_structural_artifact(
             refined_root / "status.json",
             legacy_root / "status.json",
@@ -1631,6 +1744,68 @@ def load_structural_lab_snapshot(
     five_year_compounding_moonshot_contribution = _read_json(paths["five_year_compounding_moonshot_contribution"], {})
     five_year_compounding_scaling_safety = _read_json(paths["five_year_compounding_scaling_safety"], {})
     five_year_compounding_failure_modes = _read_json(paths["five_year_compounding_failure_modes"], {})
+    long_short_edge_repair_status = _read_json(paths["long_short_edge_repair_status"], {})
+    long_short_edge_repair_summary = _read_json(paths["long_short_edge_repair_summary"], {})
+    long_short_edge_repair_moonshot_dependency = _read_json(paths["long_short_edge_repair_moonshot_dependency"], {})
+    long_short_edge_repair_long_filters = _read_json(paths["long_short_edge_repair_long_filters"], {})
+    long_short_edge_repair_short_preservation = _read_json(paths["long_short_edge_repair_short_preservation"], {})
+    long_short_edge_repair_recommendation = _read_json(paths["long_short_edge_repair_recommendation"], {})
+    long_short_edge_repair_next_step = _read_json(paths["long_short_edge_repair_next_step"], {})
+    long_damage_control_patch_status = _read_json(paths["long_damage_control_patch_status"], {})
+    long_damage_control_patch_summary = _read_json(paths["long_damage_control_patch_summary"], {})
+    long_damage_control_patch_moonshot_dependency = _read_json(paths["long_damage_control_patch_moonshot_dependency"], {})
+    long_damage_control_patch_best_candidate = _read_json(paths["long_damage_control_patch_best_candidate"], {})
+    long_damage_control_patch_rejected_candidates = _read_json(paths["long_damage_control_patch_rejected_candidates"], {})
+    long_damage_control_patch_recommendation = _read_json(paths["long_damage_control_patch_recommendation"], {})
+    long_damage_control_patch_next_step = _read_json(paths["long_damage_control_patch_next_step"], {})
+    frozen_patch_validation_status = _read_json(paths["frozen_patch_validation_status"], {})
+    frozen_patch_validation_summary = _read_json(paths["frozen_patch_validation_summary"], {})
+    frozen_patch_validation_rules = _read_json(paths["frozen_patch_validation_rules"], {})
+    frozen_patch_validation_moonshot_dependency = _read_json(paths["frozen_patch_validation_moonshot_dependency"], {})
+    frozen_patch_validation_promotion_gate = _read_json(paths["frozen_patch_validation_promotion_gate"], {})
+    frozen_patch_validation_next_step = _read_json(paths["frozen_patch_validation_next_step"], {})
+    frozen_patch_forensic_status = _read_json(paths["frozen_patch_forensic_status"], {})
+    frozen_patch_forensic_summary = _read_json(paths["frozen_patch_forensic_summary"], {})
+    frozen_patch_forensic_artifact_lineage = _read_json(paths["frozen_patch_forensic_artifact_lineage"], {})
+    frozen_patch_forensic_data_coverage = _read_json(paths["frozen_patch_forensic_data_coverage"], {})
+    frozen_patch_forensic_sample_reuse = _read_json(paths["frozen_patch_forensic_sample_reuse"], {})
+    frozen_patch_forensic_leakage_risk = _read_json(paths["frozen_patch_forensic_leakage_risk"], {})
+    frozen_patch_forensic_rule_origin = _read_json(paths["frozen_patch_forensic_rule_origin"], {})
+    frozen_patch_forensic_source_history = _read_json(paths["frozen_patch_forensic_source_history"], {})
+    frozen_patch_forensic_validation_gap = _read_json(paths["frozen_patch_forensic_validation_gap"], {})
+    frozen_patch_forensic_required_next_replay = _read_json(paths["frozen_patch_forensic_required_next_replay"], {})
+    frozen_patch_forensic_no_go_risks = _read_json(paths["frozen_patch_forensic_no_go_risks"], {})
+    frozen_patch_forensic_next_step = _read_json(paths["frozen_patch_forensic_next_step"], {})
+    broad_historical_replay_status = _read_json(paths["broad_historical_replay_status"], {})
+    broad_historical_replay_summary = _read_json(paths["broad_historical_replay_summary"], {})
+    broad_historical_replay_source_data_coverage = _read_json(paths["broad_historical_replay_source_data_coverage"], {})
+    broad_historical_replay_window_manifest = _read_json(paths["broad_historical_replay_window_manifest"], {})
+    broad_historical_replay_health_report = _read_json(paths["broad_historical_replay_health_report"], {})
+    broad_historical_replay_failure_report = _read_json(paths["broad_historical_replay_failure_report"], {})
+    broad_historical_replay_data_gap_report = _read_json(paths["broad_historical_replay_data_gap_report"], {})
+    broad_historical_replay_no_future_leakage = _read_json(paths["broad_historical_replay_no_future_leakage"], {})
+    broad_historical_replay_generated_ledger_manifest = _read_json(paths["broad_historical_replay_generated_ledger_manifest"], {})
+    broad_historical_replay_next_step = _read_json(paths["broad_historical_replay_next_step"], {})
+    broad_frozen_patch_status = _read_json(paths["broad_frozen_patch_status"], {})
+    broad_frozen_patch_summary = _read_json(paths["broad_frozen_patch_summary"], {})
+    broad_frozen_patch_raw_vs_patch_json = _read_json(paths["broad_frozen_patch_raw_vs_patch_json"], {})
+    broad_frozen_patch_long_short = _read_json(paths["broad_frozen_patch_long_short"], {})
+    broad_frozen_patch_moonshot = _read_json(paths["broad_frozen_patch_moonshot"], {})
+    broad_frozen_patch_execution_costs = _read_json(paths["broad_frozen_patch_execution_costs"], {})
+    broad_frozen_patch_profit_vault = _read_json(paths["broad_frozen_patch_profit_vault"], {})
+    broad_frozen_patch_survival = _read_json(paths["broad_frozen_patch_survival"], {})
+    broad_frozen_patch_no_go = _read_json(paths["broad_frozen_patch_no_go"], {})
+    broad_frozen_patch_next_step = _read_json(paths["broad_frozen_patch_next_step_json"], {})
+    native_sr_strict_stress_status = _read_json(paths["native_sr_strict_stress_status"], {})
+    native_sr_strict_stress_summary = _read_json(paths["native_sr_strict_stress_summary"], {})
+    native_sr_strict_stress_frozen_variant_spec = _read_json(paths["native_sr_strict_stress_frozen_variant_spec"], {})
+    native_sr_strict_stress_pf_sanity = _read_json(paths["native_sr_strict_stress_pf_sanity"], {})
+    native_sr_strict_stress_pre_entry_integrity = _read_json(paths["native_sr_strict_stress_pre_entry_integrity"], {})
+    native_sr_strict_stress_monte_carlo_summary = _read_json(paths["native_sr_strict_stress_monte_carlo_summary"], {})
+    native_sr_strict_stress_ruin_risk = _read_json(paths["native_sr_strict_stress_ruin_risk"], {})
+    native_sr_strict_stress_mission_gap = _read_json(paths["native_sr_strict_stress_mission_gap"], {})
+    native_sr_strict_stress_promotion_gate = _read_json(paths["native_sr_strict_stress_promotion_gate"], {})
+    native_sr_strict_stress_next_step = _read_json(paths["native_sr_strict_stress_next_step"], {})
     daily_structural_opportunity_summary = _read_json(paths["daily_structural_opportunity_summary"], {})
     daily_structural_opportunity_status = _read_json(paths["daily_structural_opportunity_status"], {})
     daily_structural_opportunity_participation_distribution = _read_json(
@@ -1654,8 +1829,49 @@ def load_structural_lab_snapshot(
     daily_structural_opportunity_candidates = _read_csv_rows(paths["daily_structural_opportunity_candidates"])
     five_year_compounding_long_short_breakdown = _read_csv_rows(paths["five_year_compounding_long_short_breakdown"])
     five_year_compounding_monthly_summary = _read_csv_rows(paths["five_year_compounding_monthly_summary"])
+    long_short_edge_repair_long_breakdown = _read_csv_rows(paths["long_short_edge_repair_long_breakdown"])
+    long_short_edge_repair_short_breakdown = _read_csv_rows(paths["long_short_edge_repair_short_breakdown"])
+    long_short_edge_repair_archetype_breakdown = _read_csv_rows(paths["long_short_edge_repair_archetype_breakdown"])
+    long_short_edge_repair_personality_breakdown = _read_csv_rows(paths["long_short_edge_repair_personality_breakdown"])
+    long_short_edge_repair_long_failure_modes = _read_csv_rows(paths["long_short_edge_repair_long_failure_modes"])
+    long_short_edge_repair_short_success_modes = _read_csv_rows(paths["long_short_edge_repair_short_success_modes"])
+    long_short_edge_repair_moonshot_repeatability = _read_csv_rows(paths["long_short_edge_repair_moonshot_repeatability"])
+    long_damage_control_patch_variant_summary = _read_csv_rows(paths["long_damage_control_patch_variant_summary"])
+    long_damage_control_patch_trade_replay = _read_csv_rows(paths["long_damage_control_patch_trade_replay"])
+    long_damage_control_patch_disabled_longs = _read_csv_rows(paths["long_damage_control_patch_disabled_longs"])
+    long_damage_control_patch_preserved_shorts = _read_csv_rows(paths["long_damage_control_patch_preserved_shorts"])
+    long_damage_control_patch_full_capital_curve = _read_csv_rows(paths["long_damage_control_patch_full_capital_curve"])
+    long_damage_control_patch_drawdown = _read_csv_rows(paths["long_damage_control_patch_drawdown"])
+    frozen_patch_validation_window_summary = _read_csv_rows(paths["frozen_patch_validation_window_summary"])
+    frozen_patch_validation_year_by_year = _read_csv_rows(paths["frozen_patch_validation_year_by_year"])
+    frozen_patch_validation_regime_summary = _read_csv_rows(paths["frozen_patch_validation_regime_summary"])
+    frozen_patch_validation_walk_forward = _read_csv_rows(paths["frozen_patch_validation_walk_forward"])
+    frozen_patch_validation_out_of_sample = _read_csv_rows(paths["frozen_patch_validation_out_of_sample"])
+    frozen_patch_validation_trade_replay = _read_csv_rows(paths["frozen_patch_validation_trade_replay"])
+    frozen_patch_validation_capital_curve = _read_csv_rows(paths["frozen_patch_validation_capital_curve"])
+    frozen_patch_validation_drawdown = _read_csv_rows(paths["frozen_patch_validation_drawdown"])
+    frozen_patch_validation_long_short_breakdown = _read_csv_rows(paths["frozen_patch_validation_long_short_breakdown"])
+    frozen_patch_validation_failure_modes = _read_csv_rows(paths["frozen_patch_validation_failure_modes"])
+    broad_frozen_patch_raw_vs_patch_csv = _read_csv_rows(paths["broad_frozen_patch_raw_vs_patch_csv"])
+    broad_frozen_patch_yearly = _read_csv_rows(paths["broad_frozen_patch_yearly"])
+    broad_frozen_patch_monthly = _read_csv_rows(paths["broad_frozen_patch_monthly"])
+    broad_frozen_patch_archetypes = _read_csv_rows(paths["broad_frozen_patch_archetypes"])
+    broad_frozen_patch_disabled_trade_impact = _read_csv_rows(paths["broad_frozen_patch_disabled_trade_impact"])
+    broad_frozen_patch_preserved_trade_impact = _read_csv_rows(paths["broad_frozen_patch_preserved_trade_impact"])
+    broad_frozen_patch_drawdown = _read_csv_rows(paths["broad_frozen_patch_drawdown"])
+    native_sr_strict_stress_matrix = _read_csv_rows(paths["native_sr_strict_stress_matrix"])
+    native_sr_strict_stress_rolling = _read_csv_rows(paths["native_sr_strict_stress_rolling"])
+    native_sr_strict_stress_monte_carlo_distribution = _read_csv_rows(paths["native_sr_strict_stress_monte_carlo_distribution"])
+    native_sr_strict_stress_drawdown_distribution = _read_csv_rows(paths["native_sr_strict_stress_drawdown_distribution"])
     report_markdown = _read_text(paths["report"], "")
     five_year_compounding_report = _read_text(paths["five_year_compounding_report"], "")
+    long_short_edge_repair_report = _read_text(paths["long_short_edge_repair_report"], "")
+    long_damage_control_patch_report = _read_text(paths["long_damage_control_patch_report"], "")
+    frozen_patch_validation_report = _read_text(paths["frozen_patch_validation_report"], "")
+    frozen_patch_forensic_report = _read_text(paths["frozen_patch_forensic_report"], "")
+    broad_historical_replay_report = _read_text(paths["broad_historical_replay_report"], "")
+    broad_frozen_patch_report = _read_text(paths["broad_frozen_patch_report"], "")
+    native_sr_strict_stress_report = _read_text(paths["native_sr_strict_stress_report"], "")
     has_run = _structural_has_run(paths)
     trade_frequency_pnl = build_trade_frequency_pnl(
         trades,
@@ -1767,6 +1983,216 @@ def load_structural_lab_snapshot(
                 or five_year_compounding_status.get("resolved_at_utc"),
                 "classification": five_year_compounding_summary.get("compounding_readiness_classification")
                 or five_year_compounding_status.get("classification"),
+                "read_only": True,
+            },
+        },
+        "long_short_edge_repair": {
+            "summary": long_short_edge_repair_summary,
+            "status": long_short_edge_repair_status,
+            "report_markdown": long_short_edge_repair_report,
+            "long_edge_breakdown": long_short_edge_repair_long_breakdown,
+            "short_edge_breakdown": long_short_edge_repair_short_breakdown,
+            "archetype_expectancy_breakdown": long_short_edge_repair_archetype_breakdown,
+            "personality_expectancy_breakdown": long_short_edge_repair_personality_breakdown,
+            "long_failure_modes": long_short_edge_repair_long_failure_modes,
+            "short_success_modes": long_short_edge_repair_short_success_modes,
+            "moonshot_repeatability": long_short_edge_repair_moonshot_repeatability,
+            "moonshot_dependency": long_short_edge_repair_moonshot_dependency,
+            "long_filters_research_candidates": long_short_edge_repair_long_filters,
+            "short_preservation_rules": long_short_edge_repair_short_preservation,
+            "edge_repair_recommendation": long_short_edge_repair_recommendation,
+            "next_research_recommendation": long_short_edge_repair_next_step,
+            "metadata": {
+                "source_files": [
+                    str(paths["trades"]),
+                    str(paths["setup_log"]),
+                    str(paths["level_log"]),
+                    str(paths["liquidity_events"]),
+                ],
+                "last_updated": long_short_edge_repair_summary.get("resolved_at_utc")
+                or long_short_edge_repair_status.get("resolved_at_utc"),
+                "classification": long_short_edge_repair_recommendation.get("recommended_next_research_patch")
+                or long_short_edge_repair_status.get("state"),
+                "read_only": True,
+            },
+        },
+        "long_damage_control_patch": {
+            "summary": long_damage_control_patch_summary,
+            "status": long_damage_control_patch_status,
+            "report_markdown": long_damage_control_patch_report,
+            "patch_variant_summary": long_damage_control_patch_variant_summary,
+            "patch_variant_trade_replay": long_damage_control_patch_trade_replay,
+            "disabled_long_archetype_impact": long_damage_control_patch_disabled_longs,
+            "preserved_short_edge_impact": long_damage_control_patch_preserved_shorts,
+            "moonshot_dependency_after_patch": long_damage_control_patch_moonshot_dependency,
+            "full_capital_compounding_after_patch": long_damage_control_patch_full_capital_curve,
+            "drawdown_after_patch": long_damage_control_patch_drawdown,
+            "best_patch_candidate": long_damage_control_patch_best_candidate,
+            "rejected_patch_candidates": long_damage_control_patch_rejected_candidates,
+            "research_only_patch_recommendation": long_damage_control_patch_recommendation,
+            "next_research_recommendation": long_damage_control_patch_next_step,
+            "metadata": {
+                "source_files": [
+                    str(paths["trades"]),
+                    str(paths["setup_log"]),
+                    str(paths["long_short_edge_repair_summary"]),
+                ],
+                "last_updated": long_damage_control_patch_summary.get("resolved_at_utc")
+                or long_damage_control_patch_status.get("resolved_at_utc"),
+                "classification": long_damage_control_patch_recommendation.get("recommended_research_only_patch")
+                or long_damage_control_patch_status.get("state"),
+                "read_only": True,
+            },
+        },
+        "frozen_patch_validation": {
+            "summary": frozen_patch_validation_summary,
+            "status": frozen_patch_validation_status,
+            "report_markdown": frozen_patch_validation_report,
+            "frozen_patch_rules": frozen_patch_validation_rules,
+            "validation_window_summary": frozen_patch_validation_window_summary,
+            "year_by_year_validation": frozen_patch_validation_year_by_year,
+            "regime_validation_summary": frozen_patch_validation_regime_summary,
+            "walk_forward_validation": frozen_patch_validation_walk_forward,
+            "out_of_sample_validation": frozen_patch_validation_out_of_sample,
+            "frozen_patch_trade_replay": frozen_patch_validation_trade_replay,
+            "full_active_capital_validation_curve": frozen_patch_validation_capital_curve,
+            "drawdown_validation_report": frozen_patch_validation_drawdown,
+            "moonshot_dependency_validation": frozen_patch_validation_moonshot_dependency,
+            "long_short_validation_breakdown": frozen_patch_validation_long_short_breakdown,
+            "validation_failure_modes": frozen_patch_validation_failure_modes,
+            "promotion_gate_report": frozen_patch_validation_promotion_gate,
+            "next_research_recommendation": frozen_patch_validation_next_step,
+            "metadata": {
+                "source_files": [
+                    str(paths["trades"]),
+                    str(paths["setup_log"]),
+                    str(paths["long_damage_control_patch_summary"]),
+                ],
+                "last_updated": frozen_patch_validation_summary.get("resolved_at_utc")
+                or frozen_patch_validation_status.get("resolved_at_utc"),
+                "classification": frozen_patch_validation_promotion_gate.get("classification")
+                or frozen_patch_validation_status.get("state"),
+                "read_only": True,
+            },
+        },
+        "frozen_patch_forensic_integrity": {
+            "summary": frozen_patch_forensic_summary,
+            "status": frozen_patch_forensic_status,
+            "report_markdown": frozen_patch_forensic_report,
+            "artifact_lineage": frozen_patch_forensic_artifact_lineage,
+            "data_coverage": frozen_patch_forensic_data_coverage,
+            "sample_reuse": frozen_patch_forensic_sample_reuse,
+            "leakage_risk": frozen_patch_forensic_leakage_risk,
+            "frozen_rule_origin": frozen_patch_forensic_rule_origin,
+            "source_history_availability": frozen_patch_forensic_source_history,
+            "validation_gap": frozen_patch_forensic_validation_gap,
+            "required_next_replay_plan": frozen_patch_forensic_required_next_replay,
+            "no_go_risks": frozen_patch_forensic_no_go_risks,
+            "next_research_recommendation": frozen_patch_forensic_next_step,
+            "metadata": {
+                "source_files": [
+                    str(paths["trades"]),
+                    str(paths["setup_log"]),
+                    str(paths["frozen_patch_validation_summary"]),
+                    str(paths["long_damage_control_patch_summary"]),
+                ],
+                "last_updated": frozen_patch_forensic_summary.get("resolved_at_utc")
+                or frozen_patch_forensic_status.get("resolved_at_utc"),
+                "classification": frozen_patch_forensic_summary.get("current_proof_status_label")
+                or frozen_patch_forensic_status.get("state"),
+                "read_only": True,
+            },
+        },
+        "broad_historical_structural_replay": {
+            "summary": broad_historical_replay_summary,
+            "status": broad_historical_replay_status,
+            "report_markdown": broad_historical_replay_report,
+            "source_data_coverage": broad_historical_replay_source_data_coverage,
+            "replay_window_manifest": broad_historical_replay_window_manifest,
+            "yearly_trade_counts": _read_csv_rows(paths["broad_historical_replay_yearly_trade_counts"]),
+            "monthly_trade_counts": _read_csv_rows(paths["broad_historical_replay_monthly_trade_counts"]),
+            "replay_health_report": broad_historical_replay_health_report,
+            "replay_failure_report": broad_historical_replay_failure_report,
+            "data_gap_report": broad_historical_replay_data_gap_report,
+            "no_future_leakage_checks": broad_historical_replay_no_future_leakage,
+            "generated_ledger_manifest": broad_historical_replay_generated_ledger_manifest,
+            "next_research_recommendation": broad_historical_replay_next_step,
+            "metadata": {
+                "source_files": [
+                    str(paths["broad_historical_replay_status"]),
+                    str(paths["broad_historical_replay_summary"]),
+                    str(paths["broad_historical_replay_source_data_coverage"]),
+                    str(paths["broad_historical_replay_generated_ledger_manifest"]),
+                ],
+                "last_updated": broad_historical_replay_summary.get("resolved_at_utc")
+                or broad_historical_replay_status.get("resolved_at_utc"),
+                "classification": broad_historical_replay_summary.get("next_required_step")
+                or broad_historical_replay_status.get("state"),
+                "read_only": True,
+            },
+        },
+        "broad_frozen_patch_validation": {
+            "summary": broad_frozen_patch_summary,
+            "status": broad_frozen_patch_status,
+            "report_markdown": broad_frozen_patch_report,
+            "raw_vs_patch": broad_frozen_patch_raw_vs_patch_json,
+            "raw_vs_patch_rows": broad_frozen_patch_raw_vs_patch_csv,
+            "yearly_raw_vs_patch": broad_frozen_patch_yearly,
+            "monthly_raw_vs_patch": broad_frozen_patch_monthly,
+            "long_short_raw_vs_patch": broad_frozen_patch_long_short,
+            "archetype_raw_vs_patch": broad_frozen_patch_archetypes,
+            "disabled_trade_impact": broad_frozen_patch_disabled_trade_impact,
+            "preserved_trade_impact": broad_frozen_patch_preserved_trade_impact,
+            "moonshot_dependency": broad_frozen_patch_moonshot,
+            "execution_cost_sensitivity": broad_frozen_patch_execution_costs,
+            "drawdown_comparison": broad_frozen_patch_drawdown,
+            "profit_vault_comparison": broad_frozen_patch_profit_vault,
+            "patch_survival_by_year": broad_frozen_patch_survival,
+            "no_go_risks": broad_frozen_patch_no_go,
+            "next_research_recommendation": broad_frozen_patch_next_step,
+            "metadata": {
+                "source_files": [
+                    str(paths["broad_historical_replay_summary"]),
+                    str(paths["broad_historical_replay_status"]),
+                    str(paths["frozen_patch_validation_rules"]),
+                    str(paths["broad_frozen_patch_summary"]),
+                ],
+                "last_updated": broad_frozen_patch_summary.get("resolved_at_utc")
+                or broad_frozen_patch_status.get("resolved_at_utc"),
+                "classification": broad_frozen_patch_summary.get("final_patch_classification")
+                or broad_frozen_patch_status.get("state"),
+                "read_only": True,
+            },
+        },
+        "native_sr_aware_strict_stress_monte_carlo": {
+            "summary": native_sr_strict_stress_summary,
+            "status": native_sr_strict_stress_status,
+            "report_markdown": native_sr_strict_stress_report,
+            "frozen_variant": native_sr_strict_stress_frozen_variant_spec,
+            "pf_42_sanity": native_sr_strict_stress_pf_sanity,
+            "pre_entry_rule_integrity": native_sr_strict_stress_pre_entry_integrity,
+            "stress_test_matrix": native_sr_strict_stress_matrix,
+            "rolling_5y_stress_summary": native_sr_strict_stress_rolling,
+            "monte_carlo_summary": native_sr_strict_stress_monte_carlo_summary,
+            "monte_carlo_distribution": native_sr_strict_stress_monte_carlo_distribution,
+            "monte_carlo_drawdown_distribution": native_sr_strict_stress_drawdown_distribution,
+            "mission_gap_report": native_sr_strict_stress_mission_gap,
+            "promotion_gate_report": native_sr_strict_stress_promotion_gate,
+            "monte_carlo_ruin_risk": native_sr_strict_stress_ruin_risk,
+            "next_research_recommendation": native_sr_strict_stress_next_step,
+            "metadata": {
+                "source_files": [
+                    str(paths["native_sr_strict_stress_summary"]),
+                    str(paths["native_sr_strict_stress_pf_sanity"]),
+                    str(paths["native_sr_strict_stress_pre_entry_integrity"]),
+                    str(paths["native_sr_strict_stress_monte_carlo_summary"]),
+                    str(paths["native_sr_strict_stress_promotion_gate"]),
+                ],
+                "last_updated": native_sr_strict_stress_summary.get("resolved_at_utc")
+                or native_sr_strict_stress_status.get("resolved_at_utc"),
+                "classification": native_sr_strict_stress_summary.get("promotion_gate_classification")
+                or native_sr_strict_stress_promotion_gate.get("classification")
+                or native_sr_strict_stress_status.get("state"),
                 "read_only": True,
             },
         },

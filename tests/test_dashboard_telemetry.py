@@ -5,7 +5,13 @@ from pathlib import Path
 
 import pandas as pd
 
-from common.dashboard_telemetry import build_trade_markers, list_live_runs, load_live_dashboard_snapshot, load_symbol_candles
+from common.dashboard_telemetry import (
+    build_trade_frequency_pnl,
+    build_trade_markers,
+    list_live_runs,
+    load_live_dashboard_snapshot,
+    load_symbol_candles,
+)
 
 
 class DummyConfig:
@@ -146,6 +152,76 @@ def _write_gate_artifacts(root: Path) -> None:
 
 
 class DashboardTelemetryTests(unittest.TestCase):
+    def test_trade_frequency_pnl_groups_across_periods(self):
+        payload = build_trade_frequency_pnl(
+            [
+                {
+                    "symbol": "BTCUSDT",
+                    "side": "long",
+                    "strategy_type": "core",
+                    "exit_reason": "target",
+                    "entry_time": "2026-06-01T09:00:00+00:00",
+                    "exit_time": "2026-06-01T10:00:00+00:00",
+                    "pnl": 100.0,
+                    "r_multiple": 1.5,
+                },
+                {
+                    "symbol": "ETHUSDT",
+                    "side": "short",
+                    "strategy_type": "h1_execution",
+                    "exit_reason": "trail",
+                    "entry_time": "2026-06-02T09:00:00+00:00",
+                    "exit_time": "2026-06-02T10:00:00+00:00",
+                    "pnl": -40.0,
+                    "r_multiple": -0.5,
+                },
+                {
+                    "symbol": "BTCUSDT",
+                    "side": "long",
+                    "strategy_type": "core",
+                    "exit_reason": "runner",
+                    "entry_time": "2026-07-03T09:00:00+00:00",
+                    "exit_time": "2026-07-03T10:00:00+00:00",
+                    "pnl": 70.0,
+                    "r_multiple": 0.8,
+                },
+            ],
+            source_files=["C:/tmp/trades.csv"],
+        )
+
+        self.assertEqual(3, payload["metadata"]["row_count"])
+        self.assertTrue(payload["metadata"]["read_only"])
+        self.assertEqual(2, len(payload["monthly"]))
+        self.assertEqual(2, len(payload["daily"][0:2]))
+        self.assertEqual(3, payload["summary"]["current_year_trade_count"])
+        self.assertAlmostEqual(43.333333333333336, payload["summary"]["avg_pnl_per_trade"])
+        self.assertAlmostEqual(2 / 3, payload["summary"]["win_rate"])
+
+    def test_trade_frequency_pnl_excludes_unrealized_without_mixing(self):
+        payload = build_trade_frequency_pnl(
+            [
+                {
+                    "symbol": "BTCUSDT",
+                    "side": "long",
+                    "entry_time": "2026-06-01T09:00:00+00:00",
+                    "status": "open",
+                    "unrealized_pnl": 88.0,
+                },
+                {
+                    "symbol": "BTCUSDT",
+                    "side": "long",
+                    "entry_time": "2026-06-01T09:00:00+00:00",
+                    "exit_time": "2026-06-01T10:00:00+00:00",
+                    "pnl": 12.0,
+                },
+            ],
+            source_files=["C:/tmp/trades.csv"],
+        )
+
+        self.assertEqual(1, payload["metadata"]["row_count"])
+        self.assertEqual(1, payload["metadata"]["excluded_open_or_unrealized_rows"])
+        self.assertEqual(12.0, payload["summary"]["avg_pnl_per_trade"])
+
     def test_load_live_dashboard_snapshot_reads_status_and_csvs(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -281,6 +357,76 @@ class DashboardTelemetryTests(unittest.TestCase):
                         "warning": "scaffold_only_no_trading_behavior_change",
                     }
                 ),
+                encoding="utf-8",
+            )
+            (root / "backtest" / "output" / "capital_refactor").mkdir(parents=True, exist_ok=True)
+            capital_master_root = root / "backtest" / "output" / "capital_refactor"
+            (capital_master_root / "master_capital_refactor_plan.json").write_text(
+                json.dumps(
+                    {
+                        "generated_at_utc": "2026-06-14T01:00:00+00:00",
+                        "layers": ["capital lanes", "execution realism"],
+                        "current_state": {
+                            "real_money_allowed": False,
+                            "behavior_change_allowed": False,
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (capital_master_root / "candidate_registry.json").write_text(
+                json.dumps(
+                    {
+                        "generated_at_utc": "2026-06-14T01:00:00+00:00",
+                        "candidate_count": 2,
+                        "candidates": [
+                            {"candidate_id": "phase3_12h_structural_relief_guarded"},
+                            {"candidate_id": "phase4_score_bucket_research"},
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (capital_master_root / "validation_ladder.json").write_text(
+                json.dumps(
+                    {
+                        "stages": [
+                            {"stage": "plan_spec"},
+                            {"stage": "unit_tests"},
+                            {"stage": "execution_cost_sensitivity"},
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (capital_master_root / "promotion_governance.json").write_text(
+                json.dumps(
+                    {
+                        "recommendation": "continue_research",
+                        "auto_promotion_supported": False,
+                        "allowed_recommendations": ["reject", "continue_research"],
+                        "safety_flags": {"real_money_allowed": False},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (capital_master_root / "execution_cost_research.json").write_text(
+                json.dumps(
+                    {
+                        "research_only": True,
+                        "acceptance_rule": "high_cost_sensitivity_cannot_be_ignored",
+                        "scenarios": [{"name": "low_cost"}, {"name": "normal_cost"}, {"name": "high_cost"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (capital_master_root / "execution_realism").mkdir(parents=True, exist_ok=True)
+            (capital_master_root / "execution_realism" / "execution_cost_model.json").write_text(
+                json.dumps({"research_only": True}),
+                encoding="utf-8",
+            )
+            (capital_master_root / "execution_realism" / "execution_cost_sensitivity.json").write_text(
+                json.dumps({"research_only": True, "warning": "scenario_definitions_only"}),
                 encoding="utf-8",
             )
             diagnostics_root = root / "backtest" / "output" / "capital_refactor" / "diagnostics"
@@ -473,6 +619,9 @@ class DashboardTelemetryTests(unittest.TestCase):
             self.assertFalse(payload["capital_refactor_phase1_diagnostics"]["real_money_allowed"])
             self.assertEqual("phase_1_evidence_review", payload["capital_refactor_phase1_evidence_review"]["phase"])
             self.assertTrue(payload["capital_refactor_phase1_evidence_review"]["evidence_strength"]["phase2_backtest_only_justified"])
+            self.assertEqual(2, payload["capital_refactor_candidate_registry"]["candidate_count"])
+            self.assertEqual("continue_research", payload["capital_refactor_promotion_governance"]["recommendation"])
+            self.assertTrue(payload["capital_refactor_execution_realism"]["research_only"])
             self.assertEqual("complete", payload["validation_truth"]["validation_status"])
             self.assertEqual("pass", payload["validation_truth"]["full_history_verdict"])
             self.assertEqual("pass", payload["validation_truth"]["trailing_holdout_verdict"])
@@ -492,6 +641,10 @@ class DashboardTelemetryTests(unittest.TestCase):
             self.assertEqual("healthy", payload["artifact_freshness"]["paper_soak_status"]["status"])
             self.assertIn("capital_refactor_scaffold_inventory", payload["artifact_freshness"])
             self.assertEqual("healthy", payload["artifact_freshness"]["capital_refactor_scaffold_inventory"]["status"])
+            self.assertEqual("healthy", payload["artifact_freshness"]["capital_refactor_master_plan"]["status"])
+            self.assertEqual("healthy", payload["artifact_freshness"]["capital_refactor_candidate_registry"]["status"])
+            self.assertEqual("healthy", payload["artifact_freshness"]["capital_refactor_validation_ladder"]["status"])
+            self.assertEqual("healthy", payload["artifact_freshness"]["capital_refactor_execution_cost_research"]["status"])
             self.assertEqual("healthy", payload["artifact_freshness"]["portfolio_status"]["status"])
             self.assertEqual("2026-06-14T00:00:00+00:00", payload["last_runtime_event"]["startup_time"])
             self.assertFalse(payload["readiness"]["real_money_allowed"])
@@ -500,6 +653,8 @@ class DashboardTelemetryTests(unittest.TestCase):
                 ["short"],
                 payload["readiness"]["runtime_config"]["strategy_allowed_sides"]["h1_execution"],
             )
+            self.assertTrue(payload["trade_frequency_pnl"]["metadata"]["read_only"])
+            self.assertIn(str(root / "trades.csv"), payload["trade_frequency_pnl"]["metadata"]["source_files"])
             self.assertEqual(soak_before, (root / "paper_soak_status.json").read_text(encoding="utf-8"))
 
     def test_load_live_dashboard_snapshot_backtest_mode_reads_replay_checkpoint(self):
@@ -592,6 +747,8 @@ class DashboardTelemetryTests(unittest.TestCase):
             self.assertEqual("full_history_latest_closed_day_v1", payload["validation_window"]["window_policy"])
             self.assertIn("BTCUSDT", payload["available_symbols"])
             self.assertTrue(any(row["symbol"] == "BTCUSDT" for row in payload["symbol_pipeline_rows"]))
+            self.assertTrue(payload["trade_frequency_pnl"]["metadata"]["read_only"])
+            self.assertEqual(1, payload["trade_frequency_pnl"]["summary"]["current_year_trade_count"])
 
     def test_load_live_dashboard_snapshot_reports_missing_artifacts_gracefully(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -605,11 +762,16 @@ class DashboardTelemetryTests(unittest.TestCase):
             self.assertEqual("missing", payload["artifact_freshness"]["baseline_freeze_snapshot"]["status"])
             self.assertEqual("missing", payload["artifact_freshness"]["capital_refactor_phase1_diagnostics_summary"]["status"])
             self.assertEqual("missing", payload["artifact_freshness"]["capital_refactor_phase1_evidence_review_json"]["status"])
+            self.assertEqual("missing", payload["artifact_freshness"]["capital_refactor_master_plan"]["status"])
+            self.assertEqual("missing", payload["artifact_freshness"]["capital_refactor_candidate_registry"]["status"])
+            self.assertEqual("missing", payload["artifact_freshness"]["capital_refactor_validation_ladder"]["status"])
             self.assertEqual("missing", payload["artifact_freshness"]["paper_soak_daily_report"]["status"])
             self.assertEqual("missing", payload["artifact_freshness"]["paper_soak_review"]["status"])
             self.assertEqual("missing", payload["artifact_freshness"]["paper_soak_review_history"]["status"])
             self.assertIn("missing_artifact:capital_refactor_phase1_diagnostics_summary", payload["operator_warning_list"])
             self.assertIn("missing_artifact:capital_refactor_phase1_evidence_review_json", payload["operator_warning_list"])
+            self.assertIn("missing_artifact:capital_refactor_master_plan", payload["operator_warning_list"])
+            self.assertIn("missing_artifact:capital_refactor_candidate_registry", payload["operator_warning_list"])
             self.assertIn("missing_artifact:baseline_freeze_snapshot", payload["operator_warning_list"])
             self.assertEqual("missing", payload["artifact_freshness"]["capital_refactor_scaffold_inventory"]["status"])
             self.assertEqual("missing", payload["artifact_freshness"]["paper_soak_status"]["status"])
@@ -620,6 +782,7 @@ class DashboardTelemetryTests(unittest.TestCase):
             self.assertIn("missing_artifact:paper_soak_review_history", payload["operator_warning_list"])
             self.assertIn("missing_artifact:paper_soak_status", payload["operator_warning_list"])
             self.assertIn("missing_artifact:paper_runtime_events", payload["operator_warning_list"])
+            self.assertEqual(0, payload["trade_frequency_pnl"]["metadata"]["row_count"])
 
     def test_stale_heartbeat_warning_surfaces_in_dashboard_telemetry(self):
         with tempfile.TemporaryDirectory() as tmpdir:

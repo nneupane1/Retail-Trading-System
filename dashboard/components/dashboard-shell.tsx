@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { CandlePanel } from "@/components/candle-panel";
 import { MiniLineChart } from "@/components/mini-line-chart";
+import { TradeFrequencyPnlPanel, type TradeFrequencyPnlPayload } from "@/components/trade-frequency-pnl-panel";
 
 type Row = Record<string, any>;
 type ViewKey = "overview" | "market" | "atlas" | "portfolio" | "allocator" | "runtime";
@@ -39,6 +40,11 @@ type Snapshot = {
   capital_refactor_scaffold_inventory?: Record<string, any>;
   capital_refactor_phase1_diagnostics?: Record<string, any>;
   capital_refactor_phase1_evidence_review?: Record<string, any>;
+  capital_refactor_master_plan?: Record<string, any>;
+  capital_refactor_candidate_registry?: Record<string, any>;
+  capital_refactor_validation_ladder?: Record<string, any>;
+  capital_refactor_promotion_governance?: Record<string, any>;
+  capital_refactor_execution_realism?: Record<string, any>;
   validation_truth?: Record<string, any>;
   artifact_freshness?: Record<string, Record<string, any>>;
   last_runtime_event?: Record<string, any>;
@@ -50,6 +56,7 @@ type Snapshot = {
   allocator_decision_rows: Row[];
   daily_summary_rows: Row[];
   trade_rows: Row[];
+  trade_frequency_pnl?: TradeFrequencyPnlPayload;
   signal_rows: Row[];
   engine_heartbeat: Record<string, any>;
   engine_cycle_rows: Row[];
@@ -652,6 +659,11 @@ export function DashboardShell({
   const capitalRefactorScaffold = snapshot?.capital_refactor_scaffold_inventory ?? {};
   const capitalRefactorDiagnostics = snapshot?.capital_refactor_phase1_diagnostics ?? {};
   const capitalRefactorEvidenceReview = snapshot?.capital_refactor_phase1_evidence_review ?? {};
+  const capitalRefactorMasterPlan = snapshot?.capital_refactor_master_plan ?? {};
+  const capitalRefactorCandidateRegistry = snapshot?.capital_refactor_candidate_registry ?? {};
+  const capitalRefactorValidationLadder = snapshot?.capital_refactor_validation_ladder ?? {};
+  const capitalRefactorPromotionGovernance = snapshot?.capital_refactor_promotion_governance ?? {};
+  const capitalRefactorExecutionRealism = snapshot?.capital_refactor_execution_realism ?? {};
   const validationTruth = snapshot?.validation_truth ?? {};
   const replayStatus = snapshot?.replay_status ?? {};
   const replayCheckpoint = snapshot?.replay_checkpoint ?? {};
@@ -826,6 +838,34 @@ export function DashboardShell({
         .filter((row: Row) => row.path || row.exists !== undefined),
     [artifactFreshness],
   );
+  const capitalResearchReports = useMemo<Row[]>(
+    () =>
+      [
+        "capital_refactor_master_plan",
+        "capital_refactor_candidate_registry",
+        "capital_refactor_validation_ladder",
+        "capital_refactor_promotion_governance",
+        "capital_refactor_execution_cost_research",
+        "capital_refactor_execution_cost_model",
+        "capital_refactor_execution_cost_sensitivity",
+      ]
+        .map((key) => ({
+          key,
+          ...((artifactFreshness[key] ?? {}) as Row),
+        }))
+        .filter((row: Row) => row.path || row.exists !== undefined),
+    [artifactFreshness],
+  );
+  const capitalCandidateCount = Number(capitalRefactorCandidateRegistry.candidate_count ?? 0);
+  const capitalLadderStages = Array.isArray(capitalRefactorValidationLadder.stages)
+    ? capitalRefactorValidationLadder.stages
+    : [];
+  const capitalMasterLayers = Array.isArray(capitalRefactorMasterPlan.layers)
+    ? capitalRefactorMasterPlan.layers
+    : [];
+  const executionCostScenarioCount = Array.isArray(capitalRefactorExecutionRealism.scenarios)
+    ? capitalRefactorExecutionRealism.scenarios.length
+    : 0;
   const latestDataTimestamp = validationTruth.latest_data_timestamp ?? readiness.latest_common_data_timestamp;
   const runtimeLastProcessedTimestamp =
     soakStatus.runtime_last_processed_timestamp ?? runtimeContext.runtime_last_processed_timestamp;
@@ -1526,6 +1566,14 @@ export function DashboardShell({
           </div>
         </SectionCard>
       </div>
+
+      <SectionCard title="Trade Frequency & PnL" eyebrow="Trading activity KPIs" accent="green">
+        <TradeFrequencyPnlPanel
+          payload={snapshot?.trade_frequency_pnl}
+          title="Trade Frequency & PnL"
+          subtitle="Daily / weekly / monthly / yearly realized trade telemetry"
+        />
+      </SectionCard>
     </div>
   );
 
@@ -2426,6 +2474,93 @@ export function DashboardShell({
             ) : (
               <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/55">
                 No Phase 1 evidence review artifact has been published yet.
+              </div>
+            )}
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Capital Refactor Research House" eyebrow="Candidate registry, ladder governance, and execution-cost realism" accent="orange">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <StatPill label="Current phase" value={String(capitalRefactorMasterPlan.current_state?.current_phase ?? capitalRefactorMasterPlan.current_phase ?? "phase3_guarded_12h_structural_relief")} />
+            <StatPill label="Candidate count" value={String(capitalCandidateCount)} tone={capitalCandidateCount > 0 ? "good" : "warning"} />
+            <StatPill label="Ladder stages" value={String(capitalLadderStages.length)} tone={capitalLadderStages.length > 0 ? "good" : "warning"} />
+            <StatPill label="Execution cost scenarios" value={String(executionCostScenarioCount)} tone={executionCostScenarioCount > 0 ? "good" : "warning"} />
+            <StatPill
+              label="Auto promotion"
+              value={String(capitalRefactorPromotionGovernance.auto_promotion_supported ?? false)}
+              tone={truthy(capitalRefactorPromotionGovernance.auto_promotion_supported) ? "warning" : "good"}
+            />
+            <StatPill
+              label="Manual recommendation"
+              value={String(capitalRefactorPromotionGovernance.recommendation ?? "continue_research")}
+              tone={String(capitalRefactorPromotionGovernance.recommendation ?? "").toLowerCase().includes("reject") ? "warning" : "neutral"}
+            />
+            <StatPill
+              label="Execution realism"
+              value={String(capitalRefactorExecutionRealism.research_only ?? true)}
+              tone={truthy(capitalRefactorExecutionRealism.research_only ?? true) ? "good" : "warning"}
+            />
+            <StatPill
+              label="Real-money allowed"
+              value={String(capitalRefactorPromotionGovernance.safety_flags?.real_money_allowed ?? false)}
+              tone={truthy(capitalRefactorPromotionGovernance.safety_flags?.real_money_allowed) ? "warning" : "good"}
+            />
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">Master layers</div>
+              <div className="mt-2 text-sm text-white/75">
+                {capitalMasterLayers.length ? capitalMasterLayers.slice(0, 6).join(" / ") : "none"}
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">Ladder order</div>
+              <div className="mt-2 text-sm text-white/75">
+                {capitalLadderStages.length
+                  ? capitalLadderStages.map((row: Row) => String(row.stage ?? "unknown")).join(" / ")
+                  : "none"}
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">Execution realism rule</div>
+              <div className="mt-2 text-sm text-white/75">
+                {String(capitalRefactorExecutionRealism.acceptance_rule ?? "No execution cost rule artifact published yet.")}
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">Governance</div>
+              <div className="mt-2 text-sm text-white/75">
+                {Array.isArray(capitalRefactorPromotionGovernance.allowed_recommendations)
+                  ? capitalRefactorPromotionGovernance.allowed_recommendations.join(" / ")
+                  : "continue_research / reject / inconclusive"}
+              </div>
+            </div>
+          </div>
+          <div className="mt-4 space-y-3">
+            {capitalResearchReports.length ? (
+              capitalResearchReports.map((artifact) => (
+                <div key={artifact.key} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div className="min-w-0">
+                      <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">{artifact.key}</div>
+                      <div className="mt-2 break-all text-sm text-white/75">{artifact.path ?? "unknown path"}</div>
+                    </div>
+                    <div
+                      className={clsx(
+                        "inline-flex rounded-full border px-3 py-1 text-[10px] uppercase tracking-[0.18em]",
+                        artifact.status === "healthy"
+                          ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-200"
+                          : "border-orange-400/20 bg-orange-400/10 text-orange-200",
+                      )}
+                    >
+                      {artifact.status ?? "unknown"}
+                    </div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/55">
+                No capital refactor master artifacts have been published yet.
               </div>
             )}
           </div>

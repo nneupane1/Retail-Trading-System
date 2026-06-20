@@ -38,6 +38,15 @@ const MODES = [
     copy:
       "Operational command deck for runtime health, synchronization, guard state, and future live-execution readiness on the same spatial layout.",
   },
+  {
+    href: "/structural-lab",
+    title: "Structural Lab",
+    eyebrow: "separate research rail",
+    accent: "from-fuchsia-400/25 via-cyan-400/10 to-transparent",
+    border: "border-fuchsia-300/18 hover:border-fuchsia-200/40",
+    copy:
+      "Isolated support/resistance, liquidity, EMA, pyramiding, cooldown, and profit-vault research cockpit scaffold, kept outside the active paper/backtest/live stack.",
+  },
 ];
 
 const MODULES = [
@@ -105,7 +114,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section className="grid gap-5 xl:grid-cols-3">
+        <section className="grid gap-5 xl:grid-cols-2 2xl:grid-cols-4">
           {MODES.map((mode) => (
             <Link
               key={mode.href}

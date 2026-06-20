@@ -109,6 +109,132 @@ type StructuralSnapshot = {
     failure_modes?: Record<string, any>;
     metadata?: Record<string, any>;
   };
+  long_short_edge_repair?: {
+    summary?: Record<string, any>;
+    status?: Record<string, any>;
+    report_markdown?: string;
+    long_edge_breakdown?: Row[];
+    short_edge_breakdown?: Row[];
+    archetype_expectancy_breakdown?: Row[];
+    personality_expectancy_breakdown?: Row[];
+    long_failure_modes?: Row[];
+    short_success_modes?: Row[];
+    moonshot_repeatability?: Row[];
+    moonshot_dependency?: Record<string, any>;
+    long_filters_research_candidates?: Record<string, any>;
+    short_preservation_rules?: Record<string, any>;
+    edge_repair_recommendation?: Record<string, any>;
+    next_research_recommendation?: Record<string, any>;
+    metadata?: Record<string, any>;
+  };
+  long_damage_control_patch?: {
+    summary?: Record<string, any>;
+    status?: Record<string, any>;
+    report_markdown?: string;
+    patch_variant_summary?: Row[];
+    patch_variant_trade_replay?: Row[];
+    disabled_long_archetype_impact?: Row[];
+    preserved_short_edge_impact?: Row[];
+    moonshot_dependency_after_patch?: Record<string, any>;
+    full_capital_compounding_after_patch?: Row[];
+    drawdown_after_patch?: Row[];
+    best_patch_candidate?: Record<string, any>;
+    rejected_patch_candidates?: Row[] | Record<string, any>;
+    research_only_patch_recommendation?: Record<string, any>;
+    next_research_recommendation?: Record<string, any>;
+    metadata?: Record<string, any>;
+  };
+  frozen_patch_validation?: {
+    summary?: Record<string, any>;
+    status?: Record<string, any>;
+    report_markdown?: string;
+    frozen_patch_rules?: Record<string, any>;
+    validation_window_summary?: Row[];
+    year_by_year_validation?: Row[];
+    regime_validation_summary?: Row[];
+    walk_forward_validation?: Row[];
+    out_of_sample_validation?: Row[];
+    frozen_patch_trade_replay?: Row[];
+    full_active_capital_validation_curve?: Row[];
+    drawdown_validation_report?: Row[];
+    moonshot_dependency_validation?: Record<string, any>;
+    long_short_validation_breakdown?: Row[];
+    validation_failure_modes?: Row[];
+    promotion_gate_report?: Record<string, any>;
+    next_research_recommendation?: Record<string, any>;
+    metadata?: Record<string, any>;
+  };
+  frozen_patch_forensic_integrity?: {
+    summary?: Record<string, any>;
+    status?: Record<string, any>;
+    report_markdown?: string;
+    artifact_lineage?: Record<string, any>;
+    data_coverage?: Record<string, any>;
+    sample_reuse?: Record<string, any>;
+    leakage_risk?: Record<string, any>;
+    frozen_rule_origin?: Record<string, any>;
+    source_history_availability?: Record<string, any>;
+    validation_gap?: Record<string, any>;
+    required_next_replay_plan?: Record<string, any>;
+    no_go_risks?: Record<string, any>;
+    next_research_recommendation?: Record<string, any>;
+    metadata?: Record<string, any>;
+  };
+  broad_historical_structural_replay?: {
+    summary?: Record<string, any>;
+    status?: Record<string, any>;
+    report_markdown?: string;
+    source_data_coverage?: Record<string, any>;
+    replay_window_manifest?: Record<string, any>;
+    yearly_trade_counts?: Row[];
+    monthly_trade_counts?: Row[];
+    replay_health_report?: Record<string, any>;
+    replay_failure_report?: Record<string, any>;
+    data_gap_report?: Record<string, any>;
+    no_future_leakage_checks?: Record<string, any>;
+    generated_ledger_manifest?: Record<string, any>;
+    next_research_recommendation?: Record<string, any>;
+    metadata?: Record<string, any>;
+  };
+  broad_frozen_patch_validation?: {
+    summary?: Record<string, any>;
+    status?: Record<string, any>;
+    report_markdown?: string;
+    raw_vs_patch?: Record<string, any>;
+    raw_vs_patch_rows?: Row[];
+    yearly_raw_vs_patch?: Row[];
+    monthly_raw_vs_patch?: Row[];
+    long_short_raw_vs_patch?: Record<string, any>;
+    archetype_raw_vs_patch?: Row[];
+    disabled_trade_impact?: Row[];
+    preserved_trade_impact?: Row[];
+    moonshot_dependency?: Record<string, any>;
+    execution_cost_sensitivity?: Record<string, any>;
+    drawdown_comparison?: Row[];
+    profit_vault_comparison?: Record<string, any>;
+    patch_survival_by_year?: Record<string, any>;
+    no_go_risks?: Record<string, any>;
+    next_research_recommendation?: Record<string, any>;
+    metadata?: Record<string, any>;
+  };
+  native_sr_aware_strict_stress_monte_carlo?: {
+    summary?: Record<string, any>;
+    status?: Record<string, any>;
+    report_markdown?: string;
+    frozen_variant?: Record<string, any>;
+    pf_42_sanity?: Record<string, any>;
+    pre_entry_rule_integrity?: Record<string, any>;
+    stress_test_matrix?: Row[];
+    rolling_5y_stress_summary?: Row[];
+    monte_carlo_summary?: Record<string, any>;
+    monte_carlo_distribution?: Row[];
+    monte_carlo_drawdown_distribution?: Row[];
+    mission_gap_report?: Record<string, any>;
+    promotion_gate_report?: Record<string, any>;
+    monte_carlo_ruin_risk?: Record<string, any>;
+    next_research_recommendation?: Record<string, any>;
+    metadata?: Record<string, any>;
+  };
   warnings: string[];
 };
 
@@ -340,6 +466,56 @@ export function StructuralLabShell({
   const fiveYearMoonshot = fiveYearAudit?.moonshot_contribution ?? {};
   const fiveYearScalingSafety = fiveYearAudit?.scaling_safety ?? {};
   const fiveYearFailureModes = fiveYearAudit?.failure_modes ?? {};
+  const longShortRepair = data?.long_short_edge_repair;
+  const longShortRepairSummary = longShortRepair?.summary ?? {};
+  const longShortRepairRecommendation = longShortRepair?.edge_repair_recommendation ?? {};
+  const longShortRepairArchetypes = longShortRepair?.archetype_expectancy_breakdown ?? [];
+  const longDamageControlPatch = data?.long_damage_control_patch;
+  const longDamageControlPatchSummary = longDamageControlPatch?.summary ?? {};
+  const longDamageControlPatchBest = longDamageControlPatch?.best_patch_candidate ?? {};
+  const longDamageControlPatchVariants = longDamageControlPatch?.patch_variant_summary ?? [];
+  const frozenPatchValidation = data?.frozen_patch_validation;
+  const frozenPatchValidationSummary = frozenPatchValidation?.summary ?? {};
+  const frozenPatchPromotionGate = frozenPatchValidation?.promotion_gate_report ?? {};
+  const frozenPatchValidationWindows = frozenPatchValidation?.validation_window_summary ?? [];
+  const frozenPatchYearRows = frozenPatchValidation?.year_by_year_validation ?? [];
+  const frozenPatchWalkForward = frozenPatchValidation?.walk_forward_validation ?? [];
+  const frozenPatchForensicIntegrity = data?.frozen_patch_forensic_integrity;
+  const frozenPatchForensicSummary = frozenPatchForensicIntegrity?.summary ?? {};
+  const frozenPatchForensicLineage = frozenPatchForensicIntegrity?.artifact_lineage ?? {};
+  const frozenPatchForensicCoverage = frozenPatchForensicIntegrity?.data_coverage ?? {};
+  const frozenPatchForensicSampleReuse = frozenPatchForensicIntegrity?.sample_reuse ?? {};
+  const frozenPatchForensicLeakage = frozenPatchForensicIntegrity?.leakage_risk ?? {};
+  const frozenPatchForensicGap = frozenPatchForensicIntegrity?.validation_gap ?? {};
+  const frozenPatchForensicNextReplay = frozenPatchForensicIntegrity?.required_next_replay_plan ?? {};
+  const frozenPatchForensicNoGoRisks = frozenPatchForensicIntegrity?.no_go_risks ?? {};
+  const broadHistoricalReplay = data?.broad_historical_structural_replay;
+  const broadHistoricalReplaySummary = broadHistoricalReplay?.summary ?? {};
+  const broadHistoricalReplayCoverage = broadHistoricalReplay?.source_data_coverage ?? {};
+  const broadHistoricalReplayHealth = broadHistoricalReplay?.replay_health_report ?? {};
+  const broadHistoricalReplayLeakage = broadHistoricalReplay?.no_future_leakage_checks ?? {};
+  const broadHistoricalReplayManifest = broadHistoricalReplay?.generated_ledger_manifest ?? {};
+  const broadFrozenPatchValidation = data?.broad_frozen_patch_validation;
+  const broadFrozenPatchSummary = broadFrozenPatchValidation?.summary ?? {};
+  const broadFrozenPatchRawVsPatch = broadFrozenPatchValidation?.raw_vs_patch ?? {};
+  const broadFrozenPatchYearly = broadFrozenPatchValidation?.yearly_raw_vs_patch ?? [];
+  const broadFrozenPatchMoonshot = broadFrozenPatchValidation?.moonshot_dependency ?? {};
+  const broadFrozenPatchExecution = broadFrozenPatchValidation?.execution_cost_sensitivity ?? {};
+  const broadFrozenPatchNoGo = broadFrozenPatchValidation?.no_go_risks ?? {};
+  const nativeStrictStress = data?.native_sr_aware_strict_stress_monte_carlo;
+  const nativeStrictStressSummary = nativeStrictStress?.summary ?? {};
+  const nativeStrictStressFrozen = nativeStrictStress?.frozen_variant ?? {};
+  const nativeStrictStressPf = nativeStrictStress?.pf_42_sanity ?? {};
+  const nativeStrictStressIntegrity = nativeStrictStress?.pre_entry_rule_integrity ?? {};
+  const nativeStrictStressMonteCarlo = nativeStrictStress?.monte_carlo_summary ?? {};
+  const nativeStrictStressMissionGap = nativeStrictStress?.mission_gap_report ?? {};
+  const nativeStrictStressPromotion = nativeStrictStress?.promotion_gate_report ?? {};
+  const nativeStrictStressNextStep = nativeStrictStress?.next_research_recommendation ?? {};
+  const nativeStrictStressMeta = nativeStrictStress?.metadata ?? {};
+  const nativeStrictStressReferenceMode =
+    nativeStrictStressSummary?.monte_carlo_reference_mode && nativeStrictStressMonteCarlo?.modes
+      ? nativeStrictStressMonteCarlo.modes[nativeStrictStressSummary.monte_carlo_reference_mode] ?? {}
+      : {};
 
   const latestArtifacts = useMemo(() => {
     const freshness = data?.artifact_freshness ?? {};
@@ -373,6 +549,80 @@ export function StructuralLabShell({
           tone="cyan"
         />
       </div>
+
+      <Section eyebrow="Native strict validation" title="Native SR-Aware Strict Stress + Monte Carlo">
+        {nativeStrictStressMeta?.read_only && nativeStrictStressSummary?.variant_name ? (
+          <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              <MetricCard
+                label="Frozen variant"
+                value={String(nativeStrictStressFrozen?.variant_name ?? nativeStrictStressSummary?.variant_name ?? "n/a")}
+                subtext={`${nativeStrictStressFrozen?.trade_count ?? nativeStrictStressSummary?.trade_count ?? 0} trades`}
+              />
+              <MetricCard
+                label="PF sanity"
+                value={String(nativeStrictStressPf?.classification ?? nativeStrictStressSummary?.pf_sanity_verdict ?? "n/a")}
+                subtext={`reported PF ${Number(nativeStrictStressFrozen?.profit_factor ?? nativeStrictStressSummary?.normal_profit_factor ?? 0).toFixed(2)}`}
+                tone="orange"
+              />
+              <MetricCard
+                label="Integrity"
+                value={String(nativeStrictStressIntegrity?.classification ?? nativeStrictStressSummary?.pre_entry_integrity_verdict ?? "n/a")}
+                subtext="pre-entry only / read-only research"
+                tone="green"
+              />
+              <MetricCard
+                label="Normal equity"
+                value={formatMoney(nativeStrictStressSummary?.normal_ending_equity)}
+                subtext={`DD ${formatPct(nativeStrictStressSummary?.normal_max_drawdown_pct ?? 0)}`}
+                tone="green"
+              />
+              <MetricCard
+                label="MC p50"
+                value={formatMoney(nativeStrictStressReferenceMode?.median_ending_equity)}
+                subtext={`p25 ${formatMoney(nativeStrictStressReferenceMode?.p25_ending_equity)}`}
+              />
+              <MetricCard
+                label="MC > €1M"
+                value={formatPct(nativeStrictStressReferenceMode?.probability_end_above_1m ?? 0)}
+                subtext={`> €500k ${formatPct(nativeStrictStressReferenceMode?.probability_end_above_500k ?? 0)}`}
+                tone="cyan"
+              />
+            </div>
+            <div className="grid gap-4">
+              <div className="rounded-[24px] border border-white/10 bg-white/5 px-4 py-4 text-sm leading-7 text-white/68">
+                <div className="text-[10px] uppercase tracking-[0.28em] text-cyan-200/72">Promotion gate</div>
+                <div className="mt-3 text-lg font-semibold text-white">
+                  {String(nativeStrictStressPromotion?.classification ?? nativeStrictStressSummary?.promotion_gate_classification ?? "n/a")}
+                </div>
+                <div className="mt-3 text-white/62">
+                  Mission gap: {String(nativeStrictStressMissionGap?.verdict ?? nativeStrictStressSummary?.mission_gap_verdict ?? "n/a")}
+                </div>
+                <div className="mt-3 text-white/62">
+                  Ruin risk: {formatPct(nativeStrictStressReferenceMode?.probability_ruin_or_equity_below_50pct_start ?? 0)}
+                </div>
+                <div className="mt-3 text-white/62">
+                  Next action: {String(nativeStrictStressNextStep?.next_action ?? nativeStrictStressSummary?.next_research_action ?? "n/a")}
+                </div>
+              </div>
+              <div className="rounded-[24px] border border-white/10 bg-white/5 px-4 py-4 text-sm leading-7 text-white/68">
+                <div className="text-[10px] uppercase tracking-[0.28em] text-cyan-200/72">Reference mode</div>
+                <div className="mt-3 text-white/62">
+                  {String(nativeStrictStressSummary?.monte_carlo_reference_mode ?? "monthly_block_bootstrap")}
+                </div>
+                <div className="mt-2 text-white/62">
+                  Simulations {String(nativeStrictStressSummary?.monte_carlo_simulation_count ?? 0)}
+                </div>
+                <div className="mt-2 text-white/62">
+                  Rolling 5Y avg {formatMoney(nativeStrictStressSummary?.rolling_5y_average_ending_equity)}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <TableEmpty message="No native strict stress + Monte Carlo audit found yet." />
+        )}
+      </Section>
 
       <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
         <Section eyebrow="Compounding curve" title="Equity And Vault Rhythm">
@@ -552,6 +802,757 @@ export function StructuralLabShell({
           <EmptyState
             title="No 5-year full-capital audit found yet"
             body="Once `five_year_compounding_audit_001` exists, this section will show the full active-capital long/short replay curve, directional contribution, moonshot dependence, and whether a few high-R winners can overpower frequent -1R losses."
+          />
+        )}
+      </Section>
+
+      <Section eyebrow="Long vs Short Edge Repair Audit" title="Directional Edge Forensics">
+        {Object.keys(longShortRepairSummary).length ? (
+          <div className="grid gap-5">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+              <MetricCard
+                label="Long total R"
+                value={Number(longShortRepairSummary.long_total_R ?? 0).toFixed(2)}
+                subtext={`PF ${Number(longShortRepairSummary.long_profit_factor ?? 0).toFixed(2)}`}
+                tone="orange"
+              />
+              <MetricCard
+                label="Short total R"
+                value={Number(longShortRepairSummary.short_total_R ?? 0).toFixed(2)}
+                subtext={`PF ${Number(longShortRepairSummary.short_profit_factor ?? 0).toFixed(2)}`}
+                tone="green"
+              />
+              <MetricCard
+                label="Long win rate"
+                value={formatPct(longShortRepairSummary.long_win_rate)}
+                subtext={`${String(longShortRepairSummary.long_trade_count ?? 0)} trades`}
+                tone="orange"
+              />
+              <MetricCard
+                label="Short win rate"
+                value={formatPct(longShortRepairSummary.short_win_rate)}
+                subtext={`${String(longShortRepairSummary.short_trade_count ?? 0)} trades`}
+                tone="green"
+              />
+              <MetricCard
+                label="Moonshot contribution"
+                value={formatPct(longShortRepairSummary.moonshot_profit_contribution_pct_of_net)}
+                subtext={`${String(longShortRepairSummary.moonshot_5R_plus_count ?? 0)} at 5R+`}
+                tone="orange"
+              />
+              <MetricCard
+                label="Next patch"
+                value={String(longShortRepairSummary.recommended_next_research_patch ?? "n/a")}
+                subtext="research-only recommendation"
+              />
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-[24px] border border-emerald-300/20 bg-emerald-400/10 px-4 py-4">
+                <div className="text-[10px] uppercase tracking-[0.22em] text-emerald-100/72">Best long archetype</div>
+                <div className="mt-3 text-sm leading-6 text-white">{String(longShortRepairSummary.best_long_archetype ?? "n/a")}</div>
+              </div>
+              <div className="rounded-[24px] border border-orange-300/20 bg-orange-400/10 px-4 py-4">
+                <div className="text-[10px] uppercase tracking-[0.22em] text-orange-100/72">Worst long archetype</div>
+                <div className="mt-3 text-sm leading-6 text-white">{String(longShortRepairSummary.worst_long_archetype ?? "n/a")}</div>
+              </div>
+              <div className="rounded-[24px] border border-emerald-300/20 bg-emerald-400/10 px-4 py-4">
+                <div className="text-[10px] uppercase tracking-[0.22em] text-emerald-100/72">Best short archetype</div>
+                <div className="mt-3 text-sm leading-6 text-white">{String(longShortRepairSummary.best_short_archetype ?? "n/a")}</div>
+              </div>
+              <div className="rounded-[24px] border border-orange-300/20 bg-orange-400/10 px-4 py-4">
+                <div className="text-[10px] uppercase tracking-[0.22em] text-orange-100/72">Worst short archetype</div>
+                <div className="mt-3 text-sm leading-6 text-white">{String(longShortRepairSummary.worst_short_archetype ?? "n/a")}</div>
+              </div>
+            </div>
+
+            <div className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
+              <Section eyebrow="Patch guidance" title="Read-only recommendation" className="p-0">
+                <div className="space-y-3 px-5 py-5 text-sm text-white/68">
+                  <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                    <div className="text-[10px] uppercase tracking-[0.22em] text-white/45">Current problem</div>
+                    <div className="mt-2 leading-6 text-white/80">{String(longShortRepairRecommendation.current_problem ?? "n/a")}</div>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                    <div className="text-[10px] uppercase tracking-[0.22em] text-white/45">Recommended patch</div>
+                    <div className="mt-2 text-lg font-semibold text-cyan-100">{String(longShortRepairRecommendation.recommended_next_research_patch ?? "n/a")}</div>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 leading-7">
+                    <div className="text-[10px] uppercase tracking-[0.22em] text-white/45">Moonshot stress</div>
+                    <div className="mt-2">
+                      Profit without moonshots: {formatMoney(longShortRepairSummary.profit_without_moonshots)}<br />
+                      10R+ capped to 5R: {formatMoney(longShortRepairSummary.profit_with_10R_plus_capped_to_5R)}<br />
+                      All 5R+ capped to 3R: {formatMoney(longShortRepairSummary.profit_with_all_5R_plus_capped_to_3R)}
+                    </div>
+                  </div>
+                </div>
+              </Section>
+
+              <Section eyebrow="Expectancy map" title="Top archetype breakdown" className="p-0">
+                {longShortRepairArchetypes.length ? (
+                  <div className="overflow-x-auto px-5 py-5">
+                    <table className="min-w-full text-left text-sm">
+                      <thead className="text-white/45">
+                        <tr>
+                          <th className="pb-3 pr-4 font-medium">Side</th>
+                          <th className="pb-3 pr-4 font-medium">Pullback</th>
+                          <th className="pb-3 pr-4 font-medium">Personality</th>
+                          <th className="pb-3 pr-4 font-medium">Trades</th>
+                          <th className="pb-3 pr-4 font-medium">Total R</th>
+                          <th className="pb-3 pr-4 font-medium">Label</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {longShortRepairArchetypes.slice(0, 10).map((row, index) => (
+                          <tr key={`${row.side ?? "n/a"}-${row.pullback_type ?? "n/a"}-${index}`} className="border-t border-white/6">
+                            <td className="py-3 pr-4 font-medium text-white">{String(row.side ?? "n/a").toUpperCase()}</td>
+                            <td className="py-3 pr-4 text-white/68">{row.pullback_type ?? "n/a"}</td>
+                            <td className="py-3 pr-4 text-white/68">{row.personality_label ?? "n/a"}</td>
+                            <td className="py-3 pr-4 text-white/68">{row.trade_count ?? "0"}</td>
+                            <td className="py-3 pr-4 text-white/68">{Number(row.total_R ?? 0).toFixed(2)}</td>
+                            <td className="py-3 pr-4 text-white/68">{row.expectancy_label ?? "n/a"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <TableEmpty message="No long-vs-short edge repair audit has been generated yet." />
+                )}
+              </Section>
+            </div>
+          </div>
+        ) : (
+          <EmptyState
+            title="No long-vs-short edge repair audit found yet"
+            body="Once `long_short_edge_repair_audit_001` exists, this section will show the asymmetric expectancy split, moonshot dependency stress, the best and worst archetypes on both sides, and the next research-only repair patch."
+          />
+        )}
+      </Section>
+
+      <Section eyebrow="Long Damage Control Patch Audit" title="Short Preservation / Long Damage Control">
+        {Object.keys(longDamageControlPatchSummary).length ? (
+          <div className="grid gap-5">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+              <MetricCard
+                label="Best patch candidate"
+                value={String(longDamageControlPatchSummary.best_patch_candidate ?? "n/a")}
+                subtext={String(longDamageControlPatchSummary.recommended_research_only_patch ?? "research-only")}
+                tone="green"
+              />
+              <MetricCard
+                label="Baseline ending capital"
+                value={formatMoney(longDamageControlPatchSummary.baseline_ending_capital)}
+                subtext={`PF ${Number(longDamageControlPatchSummary.baseline_profit_factor ?? 0).toFixed(2)}`}
+                tone="orange"
+              />
+              <MetricCard
+                label="Best patch ending capital"
+                value={formatMoney(longDamageControlPatchSummary.best_patch_ending_capital)}
+                subtext={`PF ${Number(longDamageControlPatchSummary.best_patch_profit_factor ?? 0).toFixed(2)}`}
+                tone="green"
+              />
+              <MetricCard
+                label="Baseline max DD"
+                value={formatPct(longDamageControlPatchSummary.baseline_max_drawdown_pct)}
+                subtext={`R ${Number(longDamageControlPatchSummary.baseline_total_R ?? 0).toFixed(2)}`}
+                tone="orange"
+              />
+              <MetricCard
+                label="Best patch max DD"
+                value={formatPct(longDamageControlPatchSummary.best_patch_max_drawdown_pct)}
+                subtext={`R ${Number(longDamageControlPatchSummary.best_patch_total_R ?? 0).toFixed(2)}`}
+                tone="green"
+              />
+              <MetricCard
+                label="Moonshot dependency"
+                value={String(longDamageControlPatchSummary.moonshot_dependency_after_patch ?? "n/a")}
+                subtext={String(longDamageControlPatchSummary.readiness_classification_after_patch ?? "n/a")}
+              />
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <MetricCard
+                label="Long R removed"
+                value={Number(longDamageControlPatchSummary.long_R_removed ?? 0).toFixed(2)}
+                subtext="drag removed by patch"
+                tone="green"
+              />
+              <MetricCard
+                label="Short R preserved"
+                value={Number(longDamageControlPatchSummary.short_R_preserved ?? 0).toFixed(2)}
+                subtext={`${String(longDamageControlPatchBest.short_edge_preserved_pct ?? "n/a")} baseline share`}
+                tone="green"
+              />
+              <MetricCard
+                label="Trade count after patch"
+                value={String(longDamageControlPatchSummary.trade_count_after_patch ?? 0)}
+                subtext={`profit sans moonshots ${formatMoney(longDamageControlPatchSummary.profit_without_moonshots_after_patch)}`}
+              />
+              <MetricCard
+                label="Readiness after patch"
+                value={String(longDamageControlPatchSummary.readiness_classification_after_patch ?? "n/a")}
+                subtext="research-only classification"
+                tone="cyan"
+              />
+            </div>
+
+            <div className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
+              <Section eyebrow="Patch recommendation" title="Read-only candidate view" className="p-0">
+                <div className="space-y-3 px-5 py-5 text-sm text-white/68">
+                  <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                    <div className="text-[10px] uppercase tracking-[0.22em] text-white/45">Recommended patch</div>
+                    <div className="mt-2 text-lg font-semibold text-cyan-100">
+                      {String(longDamageControlPatchSummary.recommended_research_only_patch ?? "n/a")}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 leading-7">
+                    Baseline ending capital: {formatMoney(longDamageControlPatchSummary.baseline_ending_capital)}<br />
+                    Best patch ending capital: {formatMoney(longDamageControlPatchSummary.best_patch_ending_capital)}<br />
+                    Baseline PF: {Number(longDamageControlPatchSummary.baseline_profit_factor ?? 0).toFixed(2)}<br />
+                    Best patch PF: {Number(longDamageControlPatchSummary.best_patch_profit_factor ?? 0).toFixed(2)}
+                  </div>
+                  <div className="rounded-2xl border border-orange-400/18 bg-orange-400/10 px-4 py-3 leading-7 text-orange-100">
+                    This is diagnostic-only replay. No strategy, paper, live, allocator, or config mutation is exposed here.
+                  </div>
+                </div>
+              </Section>
+
+              <Section eyebrow="Variant scoreboard" title="Patch variants" className="p-0">
+                {longDamageControlPatchVariants.length ? (
+                  <div className="overflow-x-auto px-5 py-5">
+                    <table className="min-w-full text-left text-sm">
+                      <thead className="text-white/45">
+                        <tr>
+                          <th className="pb-3 pr-4 font-medium">Variant</th>
+                          <th className="pb-3 pr-4 font-medium">Trades</th>
+                          <th className="pb-3 pr-4 font-medium">End cap</th>
+                          <th className="pb-3 pr-4 font-medium">PF</th>
+                          <th className="pb-3 pr-4 font-medium">Max DD</th>
+                          <th className="pb-3 pr-4 font-medium">Dependency</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {longDamageControlPatchVariants.map((row, index) => (
+                          <tr key={`${row.variant_name ?? index}`} className="border-t border-white/6">
+                            <td className="py-3 pr-4 font-medium text-white">{row.variant_name ?? "n/a"}</td>
+                            <td className="py-3 pr-4 text-white/68">{row.trade_count ?? "0"}</td>
+                            <td className="py-3 pr-4 text-white/68">{formatMoney(row.ending_capital)}</td>
+                            <td className="py-3 pr-4 text-white/68">{Number(row.profit_factor ?? 0).toFixed(2)}</td>
+                            <td className="py-3 pr-4 text-white/68">{formatPct(row.max_drawdown_pct)}</td>
+                            <td className="py-3 pr-4 text-white/68">{row.moonshot_dependency_label ?? "n/a"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <TableEmpty message="No long damage control patch audit has been generated yet." />
+                )}
+              </Section>
+            </div>
+          </div>
+        ) : (
+          <EmptyState
+            title="No long damage control patch audit found yet"
+            body="Once `long_damage_control_patch_audit_001` exists, this section will compare baseline versus research-only long-filter / short-preservation patch variants, including compounding, drawdown, and moonshot dependency."
+          />
+        )}
+      </Section>
+
+      <Section eyebrow="Frozen Patch Multi-Year Validation" title="Frozen Patch Proof Audit">
+        {Object.keys(frozenPatchValidationSummary).length ? (
+          <div className="grid gap-5">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+              <MetricCard
+                label="Frozen patch candidate"
+                value={String(frozenPatchValidationSummary.frozen_patch_candidate ?? "n/a")}
+                subtext={String(frozenPatchValidationSummary.promotion_gate_classification ?? "research-only")}
+                tone="green"
+              />
+              <MetricCard
+                label="Current sample end cap"
+                value={formatMoney(longDamageControlPatchSummary.best_patch_ending_capital)}
+                subtext="patch-audit sample"
+                tone="cyan"
+              />
+              <MetricCard
+                label="Validation ending capital"
+                value={formatMoney(frozenPatchValidationSummary.validation_ending_capital)}
+                subtext={`${String(frozenPatchValidationSummary.validation_window_count ?? 0)} validation windows`}
+                tone="green"
+              />
+              <MetricCard
+                label="Pass / fail windows"
+                value={`${String(frozenPatchValidationSummary.year_window_pass_count ?? 0)} / ${String(frozenPatchValidationSummary.year_window_fail_count ?? 0)}`}
+                subtext="year-by-year labels"
+                tone="cyan"
+              />
+              <MetricCard
+                label="Worst validation DD"
+                value={formatPct(frozenPatchValidationSummary.max_validation_drawdown)}
+                subtext={String(frozenPatchValidationSummary.worst_validation_window ?? "n/a")}
+                tone="orange"
+              />
+              <MetricCard
+                label="Walk-forward pass rate"
+                value={formatPct(frozenPatchValidationSummary.walk_forward_pass_rate)}
+                subtext={String(frozenPatchPromotionGate.classification ?? "n/a")}
+                tone="cyan"
+              />
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <MetricCard
+                label="Best validation window"
+                value={String(frozenPatchValidationSummary.best_validation_window ?? "n/a")}
+                subtext={String(frozenPatchValidationSummary.recommended_next_action ?? "n/a")}
+                tone="green"
+              />
+              <MetricCard
+                label="Worst validation window"
+                value={String(frozenPatchValidationSummary.worst_validation_window ?? "n/a")}
+                subtext={String(frozenPatchValidationSummary.patch_appears_overfit ? "overfit risk flagged" : "overfit risk not dominant")}
+                tone="orange"
+              />
+              <MetricCard
+                label="Moonshot dependency"
+                value={String(frozenPatchValidationSummary.moonshot_dependency_in_validation ?? "n/a")}
+                subtext={`sans moonshots ${formatMoney(frozenPatchValidationSummary.profit_without_moonshots_in_validation)}`}
+                tone="cyan"
+              />
+              <MetricCard
+                label="Promotion gate"
+                value={String(frozenPatchValidationSummary.promotion_gate_classification ?? "n/a")}
+                subtext="read-only research gate"
+                tone="orange"
+              />
+            </div>
+
+            <div className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
+              <Section eyebrow="Frozen rules" title="Candidate and gate truth" className="p-0">
+                <div className="space-y-3 px-5 py-5 text-sm text-white/68">
+                  <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                    <div className="text-[10px] uppercase tracking-[0.22em] text-white/45">Promotion gate classification</div>
+                    <div className="mt-2 text-lg font-semibold text-cyan-100">{String(frozenPatchPromotionGate.classification ?? "n/a")}</div>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 leading-7">
+                    Validation ending capital: {formatMoney(frozenPatchValidationSummary.validation_ending_capital)}<br />
+                    Walk-forward pass rate: {formatPct(frozenPatchValidationSummary.walk_forward_pass_rate)}<br />
+                    True unseen proof available: {String(frozenPatchPromotionGate.true_unseen_proof_available ?? false)}
+                  </div>
+                  <div className="rounded-2xl border border-orange-400/18 bg-orange-400/10 px-4 py-3 leading-7 text-orange-100">
+                    Diagnostic-only validation. No live, paper, runtime, allocator, or config mutation is exposed here.
+                  </div>
+                </div>
+              </Section>
+
+              <Section eyebrow="Validation scoreboard" title="Year and window outcomes" className="p-0">
+                {frozenPatchYearRows.length || frozenPatchValidationWindows.length ? (
+                  <div className="overflow-x-auto px-5 py-5">
+                    <table className="min-w-full text-left text-sm">
+                      <thead className="text-white/45">
+                        <tr>
+                          <th className="pb-3 pr-4 font-medium">Window</th>
+                          <th className="pb-3 pr-4 font-medium">Trades</th>
+                          <th className="pb-3 pr-4 font-medium">End cap</th>
+                          <th className="pb-3 pr-4 font-medium">PF</th>
+                          <th className="pb-3 pr-4 font-medium">Max DD</th>
+                          <th className="pb-3 pr-4 font-medium">Label</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[...frozenPatchValidationWindows, ...frozenPatchYearRows.slice(0, 6)].map((row, index) => (
+                          <tr key={`${row.window_name ?? index}`} className="border-t border-white/6">
+                            <td className="py-3 pr-4 font-medium text-white">{row.window_name ?? "n/a"}</td>
+                            <td className="py-3 pr-4 text-white/68">{row.trade_count ?? "0"}</td>
+                            <td className="py-3 pr-4 text-white/68">{formatMoney(row.ending_capital_from_20000)}</td>
+                            <td className="py-3 pr-4 text-white/68">{Number(row.profit_factor ?? 0).toFixed(2)}</td>
+                            <td className="py-3 pr-4 text-white/68">{formatPct(row.max_drawdown_pct)}</td>
+                            <td className="py-3 pr-4 text-white/68">{row.validation_label ?? "n/a"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <TableEmpty message="No frozen patch multi-year validation audit has been generated yet." />
+                )}
+              </Section>
+            </div>
+          </div>
+        ) : (
+          <EmptyState
+            title="No frozen patch multi-year validation audit found yet"
+            body="Once `frozen_patch_validation_audit_001` exists, this section will show frozen-patch window proofs, walk-forward pass rate, moonshot dependency in validation, and the promotion-gate classification."
+          />
+        )}
+      </Section>
+
+      <Section eyebrow="Frozen Patch Forensic Integrity Audit" title="Proof Quality / Sample Reuse / Next Replay">
+        {Object.keys(frozenPatchForensicSummary).length ? (
+          <div className="grid gap-5">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <MetricCard
+                label="Current proof status"
+                value={String(frozenPatchForensicSummary.current_proof_status_label ?? "n/a")}
+                subtext="read-only integrity classification"
+                tone="orange"
+              />
+              <MetricCard
+                label="Available data years"
+                value={String((frozenPatchForensicSummary.available_source_years ?? []).join(", ") || "n/a")}
+                subtext={`trade years ${(frozenPatchForensicSummary.available_trade_years ?? []).join(", ") || "n/a"}`}
+                tone="cyan"
+              />
+              <MetricCard
+                label="Trade artifact date range"
+                value={String(frozenPatchForensicSummary.trade_artifact_date_range?.start ?? "n/a")}
+                subtext={String(frozenPatchForensicSummary.trade_artifact_date_range?.end ?? "n/a")}
+                tone="green"
+              />
+              <MetricCard
+                label="True unseen proof"
+                value={String(frozenPatchForensicSummary.true_unseen_proof_available ?? false)}
+                subtext="current truthful answer"
+                tone="orange"
+              />
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <MetricCard
+                label="Sample reuse risk"
+                value={String(frozenPatchForensicSummary.sample_reuse_risk ?? "n/a")}
+                subtext={String(frozenPatchForensicSampleReuse.current_validation_is_retrospective_only ? "retrospective only" : "independent sample")}
+                tone="orange"
+              />
+              <MetricCard
+                label="Leakage / overfit risk"
+                value={String(frozenPatchForensicSummary.leakage_overfit_risk ?? frozenPatchForensicLeakage.risk_level ?? "n/a")}
+                subtext={String(frozenPatchForensicLeakage.validation_windows_effectively_independent ? "independent windows" : "same-sample windows")}
+                tone="orange"
+              />
+              <MetricCard
+                label="Next required validation"
+                value={String(frozenPatchForensicSummary.next_required_validation ?? "n/a")}
+                subtext="exact replay still missing"
+                tone="cyan"
+              />
+              <MetricCard
+                label="Promotion blocker count"
+                value={String(frozenPatchForensicSummary.promotion_blocker_count ?? frozenPatchForensicNoGoRisks.promotion_blocker_count ?? 0)}
+                subtext="research-only blockers"
+                tone="orange"
+              />
+            </div>
+
+            <div className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
+              <Section eyebrow="Integrity truth" title="Lineage / Coverage / Gap" className="p-0">
+                <div className="space-y-3 px-5 py-5 text-sm text-white/68">
+                  <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 leading-7">
+                    Same-sample validation detected: {String(frozenPatchForensicLineage.same_trade_artifact_used_for_discovery_and_validation ?? "n/a")}<br />
+                    Raw source history sufficient to regenerate: {String(frozenPatchForensicCoverage.raw_source_history_sufficient_to_regenerate ?? "n/a")}<br />
+                    Coverage sufficient for multi-year validation now: {String(frozenPatchForensicCoverage.coverage_is_sufficient_for_multi_year_validation ?? "n/a")}
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                    <div className="text-[10px] uppercase tracking-[0.22em] text-white/45">What is proven</div>
+                    <div className="mt-2 space-y-2">
+                      {(frozenPatchForensicSummary.what_is_proven ?? []).slice(0, 3).map((item: string, index: number) => (
+                        <div key={`${item}-${index}`} className="text-sm leading-6 text-white/66">
+                          {item}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-orange-400/18 bg-orange-400/10 px-4 py-3 leading-7 text-orange-100">
+                    {String(frozenPatchForensicGap.why_1m_target_is_not_yet_proven ?? "This audit remains research-only and does not mutate paper/live/runtime behavior.")}
+                  </div>
+                </div>
+              </Section>
+
+              <Section eyebrow="Blockers and next replay" title="No-Go Risks" className="p-0">
+                {(frozenPatchForensicNoGoRisks.blockers ?? []).length ? (
+                  <div className="space-y-3 px-5 py-5">
+                    {(frozenPatchForensicNoGoRisks.blockers ?? []).map((item: string, index: number) => (
+                      <div
+                        key={`${item}-${index}`}
+                        className="rounded-2xl border border-orange-400/18 bg-orange-400/10 px-4 py-3 text-sm text-orange-100"
+                      >
+                        {item}
+                      </div>
+                    ))}
+                    <div className="rounded-2xl border border-cyan-400/18 bg-cyan-400/10 px-4 py-3 text-sm leading-7 text-cyan-100">
+                      {String(
+                        frozenPatchForensicGap.minimum_next_validation_needed
+                        ?? frozenPatchForensicSummary.next_required_validation
+                        ?? frozenPatchForensicNextReplay.stage_1_generate_broad_historical_structural_outputs?.purpose
+                        ?? "No next replay plan written yet.",
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <TableEmpty message="No frozen patch forensic integrity audit has been generated yet." />
+                )}
+              </Section>
+            </div>
+          </div>
+        ) : (
+          <EmptyState
+            title="No frozen patch forensic integrity audit found yet"
+            body="Once `frozen_patch_forensic_integrity_audit_001` exists, this section will show the true proof boundary: sample reuse, available data years, lineage truth, and the exact replay still required before promotion."
+          />
+        )}
+      </Section>
+
+      <Section eyebrow="Broad Historical Structural Replay" title="Raw BTC To Regenerated Multi-Year Ledger">
+        {Object.keys(broadHistoricalReplaySummary).length ? (
+          <div className="grid gap-5">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+              <MetricCard
+                label="Source data range"
+                value={String(broadHistoricalReplayCoverage.source_data_start ?? "n/a")}
+                subtext={String(broadHistoricalReplayCoverage.source_data_end ?? "n/a")}
+                tone="cyan"
+              />
+              <MetricCard
+                label="Generated ledger range"
+                value={String(broadHistoricalReplaySummary.generated_ledger_start ?? "n/a")}
+                subtext={String(broadHistoricalReplaySummary.generated_ledger_end ?? "n/a")}
+                tone="green"
+              />
+              <MetricCard
+                label="Years generated"
+                value={String((broadHistoricalReplaySummary.years_generated ?? []).join(", ") || "n/a")}
+                subtext={`${String((broadHistoricalReplayHealth.generated_trade_years ?? []).length)} trade years`}
+                tone="cyan"
+              />
+              <MetricCard
+                label="Trades generated"
+                value={String(broadHistoricalReplaySummary.trade_count ?? 0)}
+                subtext={`L ${String(broadHistoricalReplaySummary.long_trade_count ?? 0)} / S ${String(broadHistoricalReplaySummary.short_trade_count ?? 0)}`}
+                tone="green"
+              />
+              <MetricCard
+                label="Next required step"
+                value={String(broadHistoricalReplaySummary.next_required_step ?? "n/a")}
+                subtext="read-only replay gate"
+                tone="orange"
+              />
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <MetricCard
+                label="Replay health"
+                value={broadHistoricalReplayHealth.successful_replay ? "healthy" : "attention"}
+                subtext={`${String((broadHistoricalReplayHealth.zero_trade_windows ?? []).length)} zero-trade windows`}
+                tone={broadHistoricalReplayHealth.successful_replay ? "green" : "orange"}
+              />
+              <MetricCard
+                label="Safe for frozen patch validation"
+                value={String(broadHistoricalReplayHealth.safe_for_frozen_patch_validation ?? broadHistoricalReplaySummary.coverage_sufficient_for_frozen_patch_validation ?? false)}
+                subtext={`${String(broadHistoricalReplayLeakage.counts?.failed ?? 0)} leakage failures`}
+                tone={(broadHistoricalReplayHealth.safe_for_frozen_patch_validation ?? broadHistoricalReplaySummary.coverage_sufficient_for_frozen_patch_validation) ? "green" : "orange"}
+              />
+              <MetricCard
+                label="Missing minute count"
+                value={String(broadHistoricalReplayCoverage.missing_timestamp_count ?? 0)}
+                subtext={`${String(broadHistoricalReplayCoverage.duplicate_timestamp_count ?? 0)} duplicates removed`}
+                tone="cyan"
+              />
+              <MetricCard
+                label="Short-window untouched"
+                value={String(broadHistoricalReplayManifest.current_short_window_artifacts_untouched ?? "n/a")}
+                subtext={String(broadHistoricalReplayManifest.broad_replay_isolated ? "isolated output root" : "review isolation")}
+                tone={broadHistoricalReplayManifest.current_short_window_artifacts_untouched ? "green" : "orange"}
+              />
+            </div>
+
+            <div className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
+              <Section eyebrow="Manifest" title="Window and leakage truth" className="p-0">
+                <div className="space-y-3 px-5 py-5 text-sm text-white/68">
+                  <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 leading-7">
+                    Source file: {String(broadHistoricalReplayCoverage.source_path ?? "n/a")}<br />
+                    Cleaned rows: {String(broadHistoricalReplayCoverage.cleaned_rows ?? 0)}<br />
+                    Zero-trade windows: {String((broadHistoricalReplayHealth.zero_trade_windows ?? []).join(", ") || "none")}<br />
+                    Leakage unknown/manual-review checks: {String(broadHistoricalReplayLeakage.counts?.unknown ?? 0)}
+                  </div>
+                  <div className="rounded-2xl border border-orange-400/18 bg-orange-400/10 px-4 py-3 leading-7 text-orange-100">
+                    Read-only research telemetry only. No strategy, paper, live, allocator, or config behavior is exposed for mutation here.
+                  </div>
+                </div>
+              </Section>
+
+              <Section eyebrow="Window counts" title="Year-by-year trade generation" className="p-0">
+                {(broadHistoricalReplay?.yearly_trade_counts ?? []).length ? (
+                  <div className="overflow-x-auto px-5 py-5">
+                    <table className="min-w-full text-left text-sm">
+                      <thead className="text-white/45">
+                        <tr>
+                          <th className="pb-3 pr-4 font-medium">Year</th>
+                          <th className="pb-3 pr-4 font-medium">Trades</th>
+                          <th className="pb-3 pr-4 font-medium">Long</th>
+                          <th className="pb-3 pr-4 font-medium">Short</th>
+                          <th className="pb-3 pr-4 font-medium">Setups</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(broadHistoricalReplay?.yearly_trade_counts ?? []).map((row, index) => (
+                          <tr key={`${row.period ?? index}`} className="border-t border-white/6">
+                            <td className="py-3 pr-4 font-medium text-white">{row.period ?? "n/a"}</td>
+                            <td className="py-3 pr-4 text-white/68">{row.trade_count ?? "0"}</td>
+                            <td className="py-3 pr-4 text-white/68">{row.long_trade_count ?? "0"}</td>
+                            <td className="py-3 pr-4 text-white/68">{row.short_trade_count ?? "0"}</td>
+                            <td className="py-3 pr-4 text-white/68">{row.setup_count ?? "0"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <TableEmpty message="No broad historical replay artifacts have been generated yet." />
+                )}
+              </Section>
+            </div>
+          </div>
+        ) : (
+          <EmptyState
+            title="No broad historical replay generated yet"
+            body="Once `broad_historical_structural_replay_001` exists, this section will show the raw BTC source range, the regenerated ledger range, yearly trade counts, leakage-audit status, and whether the isolated multi-year ledger is ready for unchanged frozen-patch validation."
+          />
+        )}
+      </Section>
+
+      <Section eyebrow="Broad Frozen Patch Validation" title="Unchanged Patch Applied To The Broad Ledger">
+        {Object.keys(broadFrozenPatchSummary).length ? (
+          <div className="grid gap-5">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+              <MetricCard
+                label="Raw broad ending equity"
+                value={formatMoney(broadFrozenPatchSummary.raw_broad_ending_equity)}
+                subtext="completed structural replay ledger"
+                tone="cyan"
+              />
+              <MetricCard
+                label="Patched ending equity"
+                value={formatMoney(broadFrozenPatchSummary.patched_broad_ending_equity)}
+                subtext="frozen filtered-trade replay proxy"
+                tone="green"
+              />
+              <MetricCard
+                label="PF raw vs patch"
+                value={`${Number(broadFrozenPatchSummary.raw_broad_profit_factor ?? 0).toFixed(2)} -> ${Number(broadFrozenPatchSummary.patched_broad_profit_factor ?? 0).toFixed(2)}`}
+                subtext={`DD ${formatPct(broadFrozenPatchSummary.raw_broad_max_drawdown_pct)} -> ${formatPct(broadFrozenPatchSummary.patched_broad_max_drawdown_pct)}`}
+                tone="orange"
+              />
+              <MetricCard
+                label="Trades raw vs patch"
+                value={`${String(broadFrozenPatchSummary.raw_broad_trade_count ?? 0)} -> ${String(broadFrozenPatchSummary.patched_broad_trade_count ?? 0)}`}
+                subtext={`removed ${String(broadFrozenPatchSummary.removed_trade_count ?? 0)}`}
+                tone="green"
+              />
+              <MetricCard
+                label="Final classification"
+                value={String(broadFrozenPatchSummary.final_patch_classification ?? "n/a")}
+                subtext={String(broadFrozenPatchSummary.next_recommended_step ?? "research-only")}
+                tone="orange"
+              />
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <MetricCard
+                label="Long R removed"
+                value={String(Number(broadFrozenPatchSummary.long_R_removed ?? 0).toFixed(2))}
+                subtext="damage stripped by frozen rule"
+                tone="orange"
+              />
+              <MetricCard
+                label="Short R preserved"
+                value={String(Number(broadFrozenPatchSummary.short_R_preserved ?? 0).toFixed(2))}
+                subtext="broad short edge kept"
+                tone="green"
+              />
+              <MetricCard
+                label="Moonshot verdict"
+                value={String(broadFrozenPatchSummary.moonshot_dependency_verdict ?? broadFrozenPatchMoonshot?.patched?.classification ?? "n/a")}
+                subtext="dependency truth"
+                tone="cyan"
+              />
+              <MetricCard
+                label="Execution-cost verdict"
+                value={String(broadFrozenPatchSummary.execution_cost_verdict ?? "n/a")}
+                subtext={`${String((broadFrozenPatchExecution.scenarios?.low_cost?.patch_improves_cost_survival ?? false) ? "low-cost improved" : "low-cost still weak")}`}
+                tone="orange"
+              />
+            </div>
+
+            <div className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
+              <Section eyebrow="Year-by-year truth" title="Did the patch help or hurt?" className="p-0">
+                {broadFrozenPatchYearly.length ? (
+                  <div className="overflow-x-auto px-5 py-5">
+                    <table className="min-w-full text-left text-sm">
+                      <thead className="text-white/45">
+                        <tr>
+                          <th className="pb-3 pr-4 font-medium">Year</th>
+                          <th className="pb-3 pr-4 font-medium">Raw PnL</th>
+                          <th className="pb-3 pr-4 font-medium">Patch PnL</th>
+                          <th className="pb-3 pr-4 font-medium">Raw PF</th>
+                          <th className="pb-3 pr-4 font-medium">Patch PF</th>
+                          <th className="pb-3 pr-4 font-medium">Verdict</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {broadFrozenPatchYearly.slice(0, 9).map((row, index) => (
+                          <tr key={`${row.year ?? index}`} className="border-t border-white/6">
+                            <td className="py-3 pr-4 font-medium text-white">{row.year ?? "n/a"}</td>
+                            <td className="py-3 pr-4 text-white/68">{formatMoney(row.raw_pnl)}</td>
+                            <td className="py-3 pr-4 text-white/68">{formatMoney(row.patched_pnl)}</td>
+                            <td className="py-3 pr-4 text-white/68">{Number(row.raw_profit_factor ?? 0).toFixed(2)}</td>
+                            <td className="py-3 pr-4 text-white/68">{Number(row.patched_profit_factor ?? 0).toFixed(2)}</td>
+                            <td className="py-3 pr-4 text-white/68">{row.patch_helped_or_hurt ?? "n/a"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <TableEmpty message="No broad frozen patch validation has been generated yet." />
+                )}
+              </Section>
+
+              <Section eyebrow="Forensic verdict" title="Risks / cost survival / next step" className="p-0">
+                <div className="space-y-3 px-5 py-5 text-sm text-white/68">
+                  <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 leading-7">
+                    Years helped: {String(broadFrozenPatchSummary.yearly_verdict?.years_helped ?? broadFrozenPatchValidation?.patch_survival_by_year?.years_helped ?? 0)}<br />
+                    Years hurt: {String(broadFrozenPatchSummary.yearly_verdict?.years_hurt ?? broadFrozenPatchValidation?.patch_survival_by_year?.years_hurt ?? 0)}<br />
+                    Consistency: {String(broadFrozenPatchSummary.yearly_verdict?.yearly_consistency_label ?? broadFrozenPatchValidation?.patch_survival_by_year?.yearly_consistency_label ?? "n/a")}
+                  </div>
+                  <div className="rounded-2xl border border-orange-400/18 bg-orange-400/10 px-4 py-3 leading-7 text-orange-100">
+                    {String(
+                      broadFrozenPatchValidation?.next_research_recommendation?.next_step
+                      ?? broadFrozenPatchSummary.next_recommended_step
+                      ?? "No next step written yet.",
+                    )}
+                  </div>
+                  {(broadFrozenPatchNoGo.blockers ?? []).length ? (
+                    <div className="rounded-2xl border border-orange-400/18 bg-orange-400/10 px-4 py-3 text-orange-100">
+                      Blockers: {(broadFrozenPatchNoGo.blockers ?? []).join(", ")}
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-emerald-400/18 bg-emerald-400/10 px-4 py-3 text-emerald-100">
+                      No explicit no-go blockers were written into the artifact.
+                    </div>
+                  )}
+                  <div className="rounded-2xl border border-cyan-400/18 bg-cyan-400/10 px-4 py-3 text-cyan-100">
+                    Read-only research telemetry only. This section does not mutate runtime, config, live, or paper state.
+                  </div>
+                </div>
+              </Section>
+            </div>
+          </div>
+        ) : (
+          <EmptyState
+            title="No broad frozen patch validation generated yet"
+            body="Once `broad_frozen_patch_validation_001` exists, this section will show the unchanged patch applied to the completed broad ledger, the raw-vs-patch yearly verdict, moonshot dependency, cost survival, and the final research-only classification."
           />
         )}
       </Section>
