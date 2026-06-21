@@ -223,3 +223,126 @@ Keep the runtime research-only and collect forward operational evidence.
 Optionally install a Mac-native scheduler only in a separately approved
 operator task. Continue the 90-day shadow validation; do not enable paper or
 live trading.
+
+## Binance reconnect, self-healing, and critical email alerting
+
+Classification:
+
+`BINANCE_RECONNECT_ALERTING_READY_RESEARCH_ONLY`
+
+### Retry policy
+
+The public fetch layer uses finite quick, medium, and slow retry tiers:
+
+- quick: 10, 20, and 30 seconds;
+- medium: 60, 120, and 180 seconds;
+- slow: 300 and 600 seconds.
+
+Every attempt records its timestamp, requested range, delay, result, row count,
+and sanitized failure type. Tests inject zero-delay timing. The runtime never
+retries forever.
+
+### Self-healing actions
+
+The runtime:
+
+- records internet, DNS, and Binance public-API checks;
+- retries the exact public kline range;
+- validates complete minute coverage and OHLC structure;
+- rejects empty, malformed, partial, future, or incomplete responses;
+- reduces failed large ranges into bounded smaller windows;
+- re-fetches bounded canonical gaps;
+- de-duplicates returned and local canonical timestamps;
+- re-audits gaps before processing decisions;
+- reconciles canonical/checkpoint divergence;
+- reconstructs missing checkpoint state from canonical and durable ledgers;
+- stops with RED on exhausted required catch-up or local durable-write failure.
+
+### YELLOW and RED behavior
+
+YELLOW is used when:
+
+- a temporary fetch issue is recovered after retries;
+- the scheduler is not installed;
+- the runtime remains safe and data integrity is preserved.
+
+RED is used when:
+
+- required candles cannot be fetched after all retry tiers and reduced-window recovery;
+- a gap or corruption remains;
+- checkpoint reconciliation is unsafe;
+- a canonical/checkpoint/decision write fails;
+- any research-only safety invariant is violated.
+
+### Critical email alert
+
+Final RED status triggers one immediate critical alert addressed to:
+
+`nneupane1@gmail.com`
+
+Subject:
+
+`[Retail Trading System] CRITICAL: Forward validation recovery failed`
+
+The body includes the run, project root, Git commit, exact reason, failed
+component, retry timeline, canonical and safe timestamps, missing range,
+fetch/append counts, gap/duplicate state, decision checkpoint, safety flags,
+and actionable operator steps.
+
+### SMTP and local draft behavior
+
+SMTP is configured only through untracked environment variables:
+
+- `RTS_ALERT_EMAIL_ENABLED`
+- `RTS_ALERT_EMAIL_TO`
+- `RTS_ALERT_EMAIL_FROM`
+- `RTS_ALERT_SMTP_HOST`
+- `RTS_ALERT_SMTP_PORT`
+- `RTS_ALERT_SMTP_USERNAME`
+- `RTS_ALERT_SMTP_PASSWORD`
+- `RTS_ALERT_EMAIL_DRY_RUN`
+- `RTS_ALERT_EMAIL_COOLDOWN_HOURS`
+
+No SMTP password or credential is hardcoded, logged, or written to reports.
+If SMTP is absent, disabled, fails, or is in dry-run mode, the alert is written
+to:
+
+`structural_compounding_lab/output/forward_validation_runtime/alerts/latest_failure_email_draft.txt`
+
+The runtime does not crash merely because SMTP is unavailable.
+
+### Alert throttling
+
+Alert state is stored at:
+
+`structural_compounding_lab/output/forward_validation_runtime/alerts/alert_state.json`
+
+The same failure signature is suppressed for six hours by default. A changed
+failure reason may alert immediately. Recovery email is not sent by default.
+
+### Status additions
+
+`latest_status.json` now includes:
+
+- retry attempt count and policy;
+- sanitized fetch failure type and retry timeline;
+- recovery actions attempted/succeeded/failed;
+- final failure signature;
+- email required/sent/draft fields;
+- alert path and throttle status/reason.
+
+### Safety confirmation
+
+- `research_only=true`
+- `real_money_allowed=false`
+- `paper_allowed=false`
+- `live_allowed=false`
+- `behavior_change_allowed=false`
+- `order_path_exists=false`
+- `broker_path_exists=false`
+- `paper_validation_ready=false`
+- `eur_25000_anchor_active=false`
+
+The reconnect and alerting layer does not change thresholds, entries, exits,
+sizing, `6H` context, paper/live permissions, broker behavior, or order paths.
+EUR 25,000 remains diagnostic-only.

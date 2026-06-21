@@ -4,11 +4,16 @@ import argparse
 import csv
 import hashlib
 import json
+import os
+import smtplib
+import socket
 import subprocess
 import sys
 import tempfile
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from email.message import EmailMessage
 from pathlib import Path
 from typing import Any, Callable
 
@@ -56,10 +61,21 @@ SAFETY_FLAGS = {
 
 FetchFunction = Callable[[pd.Timestamp, pd.Timestamp], pd.DataFrame]
 DecisionFunction = Callable[[pd.DataFrame, pd.Timestamp | None], list[dict[str, Any]]]
+SleepFunction = Callable[[float], None]
+
+DEFAULT_RETRY_DELAYS_SECONDS = (10.0, 20.0, 30.0, 60.0, 120.0, 180.0, 300.0, 600.0)
+DEFAULT_ALERT_TO = "nneupane1@gmail.com"
+ALERT_SUBJECT = "[Retail Trading System] CRITICAL: Forward validation recovery failed"
 
 
 class ForwardRuntimeInjectedCrash(RuntimeError):
     pass
+
+
+class FetchRecoveryError(RuntimeError):
+    def __init__(self, message: str, report: dict[str, Any]) -> None:
+        super().__init__(message)
+        self.report = report
 
 
 @dataclass(frozen=True)
@@ -77,6 +93,9 @@ class ForwardValidationRuntimeConfig:
     fault_injection: str | None = None
     fault_after_decisions: int = 1
     bootstrap_from_watchtower: bool = True
+    retry_delays_seconds: tuple[float, ...] = DEFAULT_RETRY_DELAYS_SECONDS
+    reduced_window_minutes: int = 240
+    sleep_function: SleepFunction = time.sleep
 
 
 def _now(config: ForwardValidationRuntimeConfig) -> datetime:
@@ -110,6 +129,8 @@ def _paths(output_root: Path) -> dict[str, Path]:
         "data_quality": output_root / "diagnostics" / "data_quality_latest.json",
         "fetch_report": output_root / "diagnostics" / "catchup_fetch_report.json",
         "idempotency": output_root / "diagnostics" / "idempotency_report.json",
+        "alert_draft": output_root / "alerts" / "latest_failure_email_draft.txt",
+        "alert_state": output_root / "alerts" / "alert_state.json",
     }
 
 
@@ -120,6 +141,7 @@ def _ensure_dirs(output_root: Path) -> None:
         output_root / "ledger",
         output_root / "diagnostics",
         output_root / "diagnostics" / "raw_fetch_chunks",
+        output_root / "alerts",
     ):
         path.mkdir(parents=True, exist_ok=True)
 
@@ -296,6 +318,358 @@ def _default_fetcher(config: ForwardValidationRuntimeConfig) -> FetchFunction:
     return fetch
 
 
+def _failure_type(exc: Exception) -> str:
+    text = str(exc).lower()
+    if "429" in text or "rate" in text:
+        return "http_429_rate_limit"
+    if "418" in text or "ban" in text:
+        return "http_418_temporary_restriction"
+    if any(value in text for value in ("500", "502", "503", "504", "5xx")):
+        return "http_5xx_binance"
+    if any(value in text for value in ("dns", "name resolution", "nodename")):
+        return "dns_failure"
+    if "timeout" in text:
+        return "network_timeout"
+    if any(value in text for value in ("json", "malformed", "decode")):
+        return "malformed_response"
+    if "empty" in text:
+        return "empty_response"
+    if "partial" in text or "missing_range" in text:
+        return "partial_kline_response"
+    if any(value in text for value in ("no space", "disk", "permission", "locked", "read-only")):
+        return "disk_or_local_write_failure"
+    return "public_fetch_failure"
+
+
+def _validate_fetched_range(frame: pd.DataFrame, start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:
+    required = ["timestamp", "open", "high", "low", "close", "volume"]
+    if frame is None or frame.empty:
+        raise ValueError("empty_response")
+    missing_columns = [column for column in required if column not in frame.columns]
+    if missing_columns:
+        raise ValueError(f"malformed_response_missing_columns:{','.join(missing_columns)}")
+    working = frame[required].copy()
+    working["timestamp"] = pd.to_datetime(working["timestamp"], utc=True, errors="coerce").dt.tz_convert(None)
+    for column in required[1:]:
+        working[column] = pd.to_numeric(working[column], errors="coerce")
+    working = working.dropna(subset=required)
+    working = working.loc[(working["timestamp"] >= start) & (working["timestamp"] <= end)]
+    working = working.drop_duplicates(subset=["timestamp"], keep="last").sort_values("timestamp").reset_index(drop=True)
+    expected = int((end - start).total_seconds() // 60) + 1
+    if len(working) != expected:
+        raise ValueError(f"partial_kline_response:expected={expected}:actual={len(working)}")
+    if working["timestamp"].iloc[0] != start or working["timestamp"].iloc[-1] != end:
+        raise ValueError("partial_kline_response:missing_range_boundary")
+    if _quality(working, end)["ohlc_sanity_failures"]:
+        raise ValueError("malformed_response:ohlc_sanity_failure")
+    return working
+
+
+def _fetch_with_recovery(
+    config: ForwardValidationRuntimeConfig,
+    fetcher: FetchFunction,
+    start: pd.Timestamp,
+    end: pd.Timestamp,
+    *,
+    purpose: str,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    timeline: list[dict[str, Any]] = []
+    actions_attempted = ["recheck_internet", "recheck_dns", "recheck_binance_public_api"]
+    actions_succeeded: list[str] = []
+    actions_failed: list[str] = []
+    if config.fetch_function is None:
+        try:
+            socket.getaddrinfo("api.binance.com", 443)
+            actions_succeeded.append("recheck_dns")
+        except OSError:
+            actions_failed.append("recheck_dns")
+        try:
+            with socket.create_connection(("api.binance.com", 443), timeout=3):
+                pass
+            actions_succeeded.extend(["recheck_internet", "recheck_binance_public_api"])
+        except OSError:
+            actions_failed.extend(["recheck_internet", "recheck_binance_public_api"])
+        actions_attempted.append("retry_public_kline_fetch")
+    else:
+        actions_succeeded.extend(["recheck_internet_mocked", "recheck_dns_mocked", "recheck_binance_public_api_mocked"])
+
+    last_error: Exception | None = None
+    for attempt, delay in enumerate((0.0, *config.retry_delays_seconds), start=1):
+        if delay > 0:
+            config.sleep_function(delay)
+        started = _now(config).isoformat()
+        try:
+            fetched = _validate_fetched_range(fetcher(start, end), start, end)
+            timeline.append(
+                {
+                    "attempt": attempt,
+                    "purpose": purpose,
+                    "window_start": start.isoformat(),
+                    "window_end": end.isoformat(),
+                    "delay_before_seconds": delay,
+                    "started_at": started,
+                    "success": True,
+                    "rows": len(fetched),
+                }
+            )
+            actions_succeeded.append("retry_public_kline_fetch")
+            return fetched, {
+                "attempt_count": attempt,
+                "retry_timeline": timeline,
+                "failure_type": "",
+                "recovery_actions_attempted": actions_attempted,
+                "recovery_actions_succeeded": sorted(set(actions_succeeded)),
+                "recovery_actions_failed": sorted(set(actions_failed)),
+                "reduced_window_used": False,
+            }
+        except Exception as exc:
+            last_error = exc
+            timeline.append(
+                {
+                    "attempt": attempt,
+                    "purpose": purpose,
+                    "window_start": start.isoformat(),
+                    "window_end": end.isoformat(),
+                    "delay_before_seconds": delay,
+                    "started_at": started,
+                    "success": False,
+                    "failure_type": _failure_type(exc),
+                    "error": str(exc)[:500],
+                }
+            )
+
+    actions_attempted.append("reduce_request_window")
+    chunks: list[pd.DataFrame] = []
+    cursor = start
+    chunk_minutes = max(1, int(config.reduced_window_minutes))
+    try:
+        while cursor <= end:
+            chunk_end = min(end, cursor + pd.Timedelta(minutes=chunk_minutes - 1))
+            raw = fetcher(cursor, chunk_end)
+            chunks.append(_validate_fetched_range(raw, cursor, chunk_end))
+            timeline.append(
+                {
+                    "attempt": len(timeline) + 1,
+                    "purpose": f"{purpose}_reduced_window",
+                    "window_start": cursor.isoformat(),
+                    "window_end": chunk_end.isoformat(),
+                    "delay_before_seconds": 0,
+                    "started_at": _now(config).isoformat(),
+                    "success": True,
+                    "rows": len(chunks[-1]),
+                }
+            )
+            cursor = chunk_end + pd.Timedelta(minutes=1)
+        combined = _validate_fetched_range(pd.concat(chunks, ignore_index=True), start, end)
+        actions_succeeded.append("reduce_request_window")
+        return combined, {
+            "attempt_count": len(timeline),
+            "retry_timeline": timeline,
+            "failure_type": "",
+            "recovery_actions_attempted": actions_attempted,
+            "recovery_actions_succeeded": sorted(set(actions_succeeded)),
+            "recovery_actions_failed": sorted(set(actions_failed)),
+            "reduced_window_used": True,
+        }
+    except Exception as exc:
+        last_error = exc
+        actions_failed.extend(["retry_public_kline_fetch", "reduce_request_window"])
+        timeline.append(
+            {
+                "attempt": len(timeline) + 1,
+                "purpose": f"{purpose}_reduced_window",
+                "window_start": cursor.isoformat(),
+                "window_end": end.isoformat(),
+                "delay_before_seconds": 0,
+                "started_at": _now(config).isoformat(),
+                "success": False,
+                "failure_type": _failure_type(exc),
+                "error": str(exc)[:500],
+            }
+        )
+    report = {
+        "attempt_count": len(timeline),
+        "retry_timeline": timeline,
+        "failure_type": _failure_type(last_error or RuntimeError("public_fetch_failure")),
+        "recovery_actions_attempted": actions_attempted,
+        "recovery_actions_succeeded": sorted(set(actions_succeeded)),
+        "recovery_actions_failed": sorted(set(actions_failed)),
+        "reduced_window_used": True,
+    }
+    raise FetchRecoveryError(str(last_error or "public_fetch_recovery_exhausted"), report)
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _failure_component(reason: str) -> str:
+    text = reason.lower()
+    if any(value in text for value in ("dns", "network", "timeout")):
+        return "DNS/network"
+    if any(value in text for value in ("fetch", "429", "418", "5xx", "binance")):
+        return "Binance fetch"
+    if "gap" in text:
+        return "data gap"
+    if "canonical" in text or "ohlc" in text:
+        return "canonical CSV"
+    if "checkpoint" in text:
+        return "checkpoint"
+    if "decision" in text:
+        return "decision processing"
+    if any(value in text for value in ("disk", "permission", "locked", "space")):
+        return "disk write"
+    if "scheduler" in text:
+        return "scheduler"
+    return "unknown"
+
+
+def _failure_signature(status: dict[str, Any]) -> str:
+    payload = {
+        "reason": status.get("final_reason"),
+        "failure_type": status.get("fetch_failure_type"),
+        "latest_canonical": status.get("latest_canonical_timestamp_after"),
+        "latest_safe": status.get("latest_safe_market_timestamp"),
+        "gaps_after": status.get("gaps_after"),
+    }
+    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+def _alert_body(config: ForwardValidationRuntimeConfig, status: dict[str, Any]) -> str:
+    actions = status.get("recovery_actions_attempted") or []
+    timeline = status.get("fetch_retry_timeline") or []
+    safety = {key: status.get(key) for key in SAFETY_FLAGS if key != "research_only"}
+    missing_start = status.get("latest_canonical_timestamp_after")
+    missing_end = status.get("latest_safe_market_timestamp")
+    lines = [
+        ALERT_SUBJECT,
+        "",
+        f"Recipient: {os.getenv('RTS_ALERT_EMAIL_TO', DEFAULT_ALERT_TO)}",
+        f"Run timestamp: {status.get('run_finished_at') or status.get('run_started_at')}",
+        f"Machine/project root: {config.project_root}",
+        f"Git commit hash: {_git_commit(config.project_root)}",
+        "Mode: research_only_forward_validation",
+        "Final status: RED",
+        f"Exact failure reason: {status.get('final_reason')}",
+        f"Failed component: {_failure_component(str(status.get('final_reason') or ''))}",
+        f"Retry attempts: {status.get('fetch_retry_attempts', 0)}",
+        f"Retry timeline: {json.dumps(timeline, sort_keys=True)}",
+        f"Recovery actions attempted: {json.dumps(actions)}",
+        f"Last successful canonical timestamp: {status.get('latest_canonical_timestamp_after')}",
+        f"Latest safe market timestamp: {status.get('latest_safe_market_timestamp')}",
+        f"Missing time range: {missing_start} -> {missing_end}",
+        f"Rows fetched/appended before failure: {status.get('rows_fetched', 0)} / {status.get('rows_appended', 0)}",
+        f"Gaps before/after: {status.get('gaps_before', 0)} / {status.get('gaps_after', 0)}",
+        f"Duplicates removed: {status.get('duplicates_removed', 0)}",
+        f"Last processed 1H decision: {status.get('last_processed_1h_decision_timestamp')}",
+        f"Decisions skipped as duplicates: {status.get('decisions_skipped_as_already_processed', 0)}",
+        f"Simulated trades skipped as duplicates: {status.get('simulated_trades_skipped_as_duplicates', 0)}",
+        f"Safety flags: {json.dumps(safety, sort_keys=True)}",
+        "",
+        "Immediate action required:",
+        "- Check internet connection and DNS.",
+        "- Check Binance public API availability.",
+        "- Inspect canonical CSV gap and fetch diagnostics.",
+        "- Inspect the runtime checkpoint.",
+        "- Free disk space or clear a file lock if applicable.",
+        "- Rerun forward runtime status/run_once after the issue is fixed.",
+        "- Do not enable paper or live trading.",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def _handle_red_alert(config: ForwardValidationRuntimeConfig, status: dict[str, Any]) -> dict[str, Any]:
+    paths = _paths(config.output_root)
+    signature = _failure_signature(status)
+    state = _read_json(paths["alert_state"], {})
+    cooldown_hours = float(os.getenv("RTS_ALERT_EMAIL_COOLDOWN_HOURS", "6") or 6)
+    previous_at = _timestamp(state.get("last_alert_sent_at"))
+    now_naive = pd.Timestamp(_now(config)).tz_convert("UTC").tz_localize(None)
+    throttled = bool(
+        state.get("last_alert_failure_signature") == signature
+        and previous_at is not None
+        and now_naive - previous_at < pd.Timedelta(hours=cooldown_hours)
+    )
+    if throttled:
+        return {
+            "final_failure_signature": signature,
+            "email_alert_required": True,
+            "email_alert_sent": False,
+            "email_alert_draft_written": False,
+            "email_alert_path": str(paths["alert_draft"]),
+            "alert_throttled": True,
+            "alert_throttle_reason": f"same_failure_inside_{cooldown_hours:g}_hour_cooldown",
+        }
+
+    body = _alert_body(config, status)
+    recipient = os.getenv("RTS_ALERT_EMAIL_TO", DEFAULT_ALERT_TO)
+    enabled = _env_bool("RTS_ALERT_EMAIL_ENABLED", False)
+    dry_run = _env_bool("RTS_ALERT_EMAIL_DRY_RUN", False)
+    host = os.getenv("RTS_ALERT_SMTP_HOST", "").strip()
+    sender = os.getenv("RTS_ALERT_EMAIL_FROM", "").strip()
+    username = os.getenv("RTS_ALERT_SMTP_USERNAME", "").strip()
+    password = os.getenv("RTS_ALERT_SMTP_PASSWORD", "")
+    sent = False
+    draft_written = False
+    alert_path = paths["alert_draft"]
+    alert_note = ""
+    if enabled and not dry_run and host and sender:
+        message = EmailMessage()
+        message["Subject"] = ALERT_SUBJECT
+        message["To"] = recipient
+        message["From"] = sender
+        message.set_content(body)
+        port = int(os.getenv("RTS_ALERT_SMTP_PORT", "587") or 587)
+        try:
+            with smtplib.SMTP(host, port, timeout=20) as smtp:
+                smtp.starttls()
+                if username and password:
+                    smtp.login(username, password)
+                smtp.send_message(message)
+            sent = True
+            alert_note = "critical failure email sent"
+        except Exception:
+            alert_path.write_text(body, encoding="utf-8")
+            draft_written = True
+            alert_note = "SMTP send failed; failure email draft written locally."
+    else:
+        alert_path.write_text(body, encoding="utf-8")
+        draft_written = True
+        alert_note = (
+            "SMTP dry-run enabled; failure email draft written locally."
+            if dry_run
+            else "SMTP not configured; failure email draft written locally."
+        )
+    alert_state = {
+        "last_alert_sent_at": _now(config).isoformat(),
+        "last_alert_failure_signature": signature,
+        "last_alert_status": STATUS_RED,
+        "alert_count_for_current_failure": (
+            int(state.get("alert_count_for_current_failure") or 0) + 1
+            if state.get("last_alert_failure_signature") == signature
+            else 1
+        ),
+        "email_sent": sent,
+        "email_draft_written": draft_written,
+        "recipient": recipient,
+        "note": alert_note,
+    }
+    _write_json(paths["alert_state"], alert_state)
+    return {
+        "final_failure_signature": signature,
+        "email_alert_required": True,
+        "email_alert_sent": sent,
+        "email_alert_draft_written": draft_written,
+        "email_alert_path": str(alert_path),
+        "alert_throttled": False,
+        "alert_throttle_reason": "",
+        "email_alert_note": alert_note,
+    }
+
+
 def _watchtower_bootstrap(config: ForwardValidationRuntimeConfig) -> pd.Timestamp | None:
     if not config.bootstrap_from_watchtower:
         return None
@@ -405,6 +779,24 @@ def _status_base(config: ForwardValidationRuntimeConfig) -> dict[str, Any]:
         "last_processed_1h_decision_timestamp": None,
         "self_check_passed": False,
         "scheduler_installed": config.scheduler_installed,
+        "fetch_retry_attempts": 0,
+        "fetch_retry_policy": {
+            "delays_seconds": list(config.retry_delays_seconds),
+            "reduced_window_minutes": config.reduced_window_minutes,
+            "bounded": True,
+        },
+        "fetch_failure_type": "",
+        "fetch_retry_timeline": [],
+        "recovery_actions_attempted": [],
+        "recovery_actions_succeeded": [],
+        "recovery_actions_failed": [],
+        "final_failure_signature": "",
+        "email_alert_required": False,
+        "email_alert_sent": False,
+        "email_alert_draft_written": False,
+        "email_alert_path": "",
+        "alert_throttled": False,
+        "alert_throttle_reason": "",
         **SAFETY_FLAGS,
         "final_reason": "run_not_completed",
     }
@@ -434,6 +826,8 @@ def run_once(config: ForwardValidationRuntimeConfig) -> dict[str, Any]:
     last_context = _timestamp(checkpoint.get("last_processed_6h_context_timestamp"))
     error_reason = ""
     fetch_failures: list[str] = []
+    fetch_reports: list[dict[str, Any]] = []
+    recovered_temporary_issue = False
     try:
         if not config.canonical_csv_path.exists():
             raise ValueError("canonical_csv_missing")
@@ -459,11 +853,20 @@ def run_once(config: ForwardValidationRuntimeConfig) -> dict[str, Any]:
         gap_ranges = _missing_ranges(frame, maximum_minutes=config.max_gap_backfill_minutes)
         for gap_start, gap_end in gap_ranges:
             try:
-                fetched = fetcher(gap_start, gap_end)
+                fetched, recovery_report = _fetch_with_recovery(
+                    config,
+                    fetcher,
+                    gap_start,
+                    gap_end,
+                    purpose="bounded_gap_backfill",
+                )
+                fetch_reports.append(recovery_report)
+                recovered_temporary_issue = recovered_temporary_issue or recovery_report["attempt_count"] > 1 or recovery_report["reduced_window_used"]
                 status["rows_fetched"] += len(fetched)
                 frame = pd.concat([frame, fetched], ignore_index=True)
                 changed = True
-            except Exception as exc:
+            except FetchRecoveryError as exc:
+                fetch_reports.append(exc.report)
                 fetch_failures.append(f"gap_backfill_failed:{gap_start.isoformat()}:{exc}")
 
         last_canonical = frame["timestamp"].max()
@@ -475,11 +878,20 @@ def run_once(config: ForwardValidationRuntimeConfig) -> dict[str, Any]:
         if fetch_start <= fetch_end:
             status["outage_recovery_used"] = True
             try:
-                fetched = fetcher(fetch_start, fetch_end)
+                fetched, recovery_report = _fetch_with_recovery(
+                    config,
+                    fetcher,
+                    fetch_start,
+                    fetch_end,
+                    purpose="canonical_catchup",
+                )
+                fetch_reports.append(recovery_report)
+                recovered_temporary_issue = recovered_temporary_issue or recovery_report["attempt_count"] > 1 or recovery_report["reduced_window_used"]
                 status["rows_fetched"] += len(fetched)
                 frame = pd.concat([frame, fetched], ignore_index=True)
                 changed = changed or not fetched.empty
-            except Exception as exc:
+            except FetchRecoveryError as exc:
+                fetch_reports.append(exc.report)
                 fetch_failures.append(f"catchup_fetch_failed:{exc}")
 
         before_final_dedupe = len(frame)
@@ -495,6 +907,22 @@ def run_once(config: ForwardValidationRuntimeConfig) -> dict[str, Any]:
                 "caught_up_to_realtime": after_quality["last_timestamp"] == latest_safe.isoformat(),
             }
         )
+        status["fetch_retry_attempts"] = sum(int(report.get("attempt_count") or 0) for report in fetch_reports)
+        status["fetch_retry_timeline"] = [
+            item for report in fetch_reports for item in report.get("retry_timeline", [])
+        ]
+        status["fetch_failure_type"] = next(
+            (str(report.get("failure_type") or "") for report in reversed(fetch_reports) if report.get("failure_type")),
+            "",
+        )
+        for field in ("recovery_actions_attempted", "recovery_actions_succeeded", "recovery_actions_failed"):
+            status[field] = sorted(
+                {
+                    str(item)
+                    for report in fetch_reports
+                    for item in report.get(field, [])
+                }
+            )
         _write_json(paths["data_quality"], {"before": before_quality, "after": after_quality, **SAFETY_FLAGS})
         _write_json(
             paths["fetch_report"],
@@ -505,6 +933,7 @@ def run_once(config: ForwardValidationRuntimeConfig) -> dict[str, Any]:
                 "rows_appended": status["rows_appended"],
                 "gap_backfill_ranges": [[start.isoformat(), end.isoformat()] for start, end in gap_ranges],
                 "failures": fetch_failures,
+                "retry_reports": fetch_reports,
                 "public_binance_klines_only": True,
                 "private_api_used": False,
                 "signed_request_used": False,
@@ -533,6 +962,8 @@ def run_once(config: ForwardValidationRuntimeConfig) -> dict[str, Any]:
             raise ForwardRuntimeInjectedCrash("injected_crash_after_data_append")
         if after_quality["gap_count"] or after_quality["ohlc_sanity_failures"]:
             raise ValueError("canonical_unrecoverable_after_backfill")
+        if fetch_failures and not status["caught_up_to_realtime"]:
+            raise ValueError(f"public_fetch_recovery_exhausted:{fetch_failures[-1]}")
 
         decision_function = config.decision_function or (lambda data, after: _default_decisions(config, data, after))
         candidates = sorted(decision_function(frame, last_processed), key=lambda row: str(row.get("timestamp") or ""))
@@ -618,9 +1049,9 @@ def run_once(config: ForwardValidationRuntimeConfig) -> dict[str, Any]:
         if after_quality["gap_count"] or after_quality["duplicate_count"] or after_quality["ohlc_sanity_failures"]:
             status["status"] = STATUS_RED
             status["final_reason"] = "canonical_data_corrupt_or_unrecoverable"
-        elif fetch_failures or not status["caught_up_to_realtime"]:
+        elif recovered_temporary_issue:
             status["status"] = STATUS_YELLOW
-            status["final_reason"] = "public_fetch_unavailable_or_canonical_stale"
+            status["final_reason"] = "temporary_fetch_issue_recovered_after_retry"
         elif not config.scheduler_installed:
             status["status"] = STATUS_YELLOW
             status["final_reason"] = "scheduler_not_installed_but_runtime_healthy"
@@ -648,6 +1079,7 @@ def run_once(config: ForwardValidationRuntimeConfig) -> dict[str, Any]:
         error_reason = str(exc)
         status["status"] = STATUS_RED
         status["final_reason"] = error_reason
+        status["fetch_failure_type"] = status["fetch_failure_type"] or _failure_type(exc)
         status["self_check_passed"] = False
         if config.canonical_csv_path.exists():
             try:
@@ -670,6 +1102,9 @@ def run_once(config: ForwardValidationRuntimeConfig) -> dict[str, Any]:
             except Exception:
                 pass
     status["run_finished_at"] = _now(config).isoformat()
+    status["last_processed_1h_decision_timestamp"] = last_processed.isoformat() if last_processed is not None else None
+    if status["status"] == STATUS_RED:
+        status.update(_handle_red_alert(config, status))
     _write_json(paths["status"], status)
     _write_json(
         paths["idempotency"],
@@ -758,6 +1193,8 @@ def run_outage_recovery_audit(config: ForwardValidationRuntimeConfig) -> dict[st
                 fault_injection=fault,
                 fault_after_decisions=2,
                 bootstrap_from_watchtower=False,
+                retry_delays_seconds=(0.0, 0.0, 0.0),
+                sleep_function=lambda _: None,
             )
             before = _quality(_load_canonical(canonical), _latest_safe_timestamp(now_value))
             crashed = False
@@ -815,7 +1252,7 @@ def run_outage_recovery_audit(config: ForwardValidationRuntimeConfig) -> dict[st
     execute_case("crash_after_partial_decision_processing", identity, expected=STATUS_YELLOW, fault="after_partial_decisions")
     execute_case("duplicate_candle_fetch", lambda frame: pd.concat([frame, frame.tail(5)], ignore_index=True), expected=STATUS_YELLOW)
     execute_case("missing_candle_gap_then_backfill", lambda frame: frame.drop(frame.index[-120]).copy(), expected=STATUS_YELLOW)
-    execute_case("binance_fetch_failure_timeout", drop_tail(30), expected=STATUS_YELLOW, fetch_failure=True)
+    execute_case("binance_fetch_failure_timeout", drop_tail(30), expected=STATUS_RED, fetch_failure=True)
     execute_case("canonical_exists_checkpoint_missing", identity, expected=STATUS_YELLOW)
     execute_case("checkpoint_exists_canonical_ahead", identity, expected=STATUS_YELLOW)
     execute_case("canonical_duplicate_timestamps", lambda frame: pd.concat([frame, frame.tail(1)], ignore_index=True), expected=STATUS_YELLOW)
